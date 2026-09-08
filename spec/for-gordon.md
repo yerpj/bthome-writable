@@ -1,0 +1,129 @@
+# Points to raise with Gordon
+
+Working list for the espruino#8013 discussion. Everything here came out of
+actually implementing the design; nothing here is a re-opening of a settled
+question. Ordered by how much it needs an answer.
+
+---
+
+## 1. A bug in the upstream `BTHome` module
+
+`humidity` in `getAdvertisement`'s encoding table pushes the entry object where
+it means to push the value:
+
+```js
+humidity : e => [0x2E, e, 1],          // current
+humidity : e => [0x2E, Math.round(e.v)],   // presumably intended
+```
+
+Every neighbouring entry uses `e.v`, and the trailing `1` looks like a factor
+left over from the `b16` helper's signature. A device advertising `humidity`
+would emit an object rather than a byte. Unrelated to this project — found while
+reading the module to wrap it — but worth fixing.
+
+Source: https://www.espruino.com/modules/BTHome.js
+
+---
+
+## 2. Write-only objects: §3 says something undetectable
+
+**Needs a decision.** The working document declares a write-only object by
+advertising it "with an empty/zero value".
+
+For a variable-length object that is unambiguous — a length byte of 0 cannot
+arise any other way. For a **fixed-length** object it cannot be detected at all:
+a light that is off advertises `1E 00`, byte-identical to a "zero value"
+placeholder. A receiver cannot tell a write-only trigger from an actuator that
+happens to be off, and guessing wrong means either exposing a real switch as a
+stateless entity, or waiting forever for a confirmation that will never come.
+
+**Proposed wording:** a write-only object is a *variable-length* object
+advertising length 0, or an *event-class* object advertising its "none" value.
+Nothing is lost: write-only exists for actuators with no meaningful uplink — a
+display, a buzzer, a trigger — which are exactly those classes. A write-only
+boolean is close to meaningless, and a device wanting one can use an event
+object.
+
+Implemented that way on both sides already (decisions.md D-009); the spec text
+is what needs your agreement.
+
+---
+
+## 3. Encrypted write payload: field order corrected
+
+**Already changed, flagging for the record.** §3.4 of the working document put
+the counter *before* the ciphertext:
+
+```
+[counter u32 LE][ciphertext][MIC 4]      working document
+[ciphertext][counter u32 LE][MIC 4]      PROTOCOL.md, as shipped
+```
+
+BTHome's own encrypted advertising uses the second order. Keeping the write
+different means neither side can share its framing code between the two
+directions — concretely awkward on Espruino, which must both build encrypted
+advertising and parse encrypted writes on a constrained target — and it is a
+gratuitous divergence in a specification whose case to the BTHome maintainers
+rests on reusing BTHome's own formats. My guess is the original order was
+written in passing rather than chosen.
+
+Test vectors are generated in the new order (decisions.md D-008).
+
+---
+
+## 4. The packet-id object shifts every bitmask bit
+
+**No decision needed, but it will trip implementers.** Your worked example
+(`40 0161 1E01 FF02`) omits BTHome's packet-id object, so the battery is at
+position 0 and the light at position 1. The Espruino module emits the packet id
+— your own `getAdvertisement` always does — which puts it at position 0 and
+makes the same device advertise `FF 04`, not `FF 02`.
+
+Correct under the same rule, but it caught me while writing the module. The spec
+now says so normatively (§2.2) and shows the same device both ways (§8.3).
+
+---
+
+## 5. The capacity limit needed arithmetic, not a round number
+
+"Everything must fit in a 31-byte advertising payload" is true but not
+actionable: the Flags AD structure (3 bytes) and the Service Data header (4)
+come out first, and then the device-information byte. The usable budget is **23
+bytes for objects, declaration included**. Spelled out in §2.3 and enforced at
+`setup()` on the device side.
+
+Eight writable one-byte objects plus the declaration come to 18 bytes, so the
+limit is comfortable — but it is much tighter than "31" suggests, and a device
+that also advertises a complete local name has considerably less.
+
+---
+
+## 6. Provisional UUIDs, if you have a convention
+
+```
+Service                2FAA47BC-3B0B-4B1A-9E2A-B4C2952E62F2
+Write characteristic   639333F3-F21F-4558-9D85-06FCAC3436C2   (write, write-no-response)
+```
+
+Randomly generated, and easy to change until the first release — after which
+they freeze permanently. If Espruino has a convention for module-owned UUIDs,
+now is the moment.
+
+---
+
+## 7. Verified, for the thread
+
+`bthome-ble` skips an unknown object ID with a DEBUG log and stops parsing
+there; it does not error. So the declaration can live in the BTHome service data
+itself and the manufacturer-data fallback is not needed. The catch: objects
+placed *after* the declaration are silently dropped for every existing BTHome
+install, so "declaration last" had to become a MUST rather than a SHOULD.
+
+Checked on both `bthome-ble` 3.24.0 and 3.22.1 (the version Home Assistant
+2025.1 pins). Method and full findings in `decisions.md` D-005; the check is a
+test in CI, so a regression on a future release surfaces on the next dependency
+bump.
+
+Pleasant side effect: `bthome-ble` already names duplicate objects `light_1`,
+`light_2`, … by their order in the packet — the same positional model as the
+bitmask, so upstream entity naming and our addressing agree by construction.
