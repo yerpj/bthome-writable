@@ -263,10 +263,16 @@ The device-information split closes *cross*-direction replay. Replaying an old
 ### 5.3 Encrypted write payload
 
 ```
-<counter u32 LE> <ciphertext> <MIC 4>
+<ciphertext> <counter u32 LE> <MIC 4>
 ```
 
 where the ciphertext is the AES-CCM encryption of the plaintext of §4.2.
+
+This is byte-for-byte the layout BTHome uses for encrypted advertising, minus
+the device-information byte (which for writes is implicit, §5.1). Both
+directions therefore share the same framing code on both sides — which matters
+on a constrained device that must both build encrypted advertising and parse
+encrypted writes (D-008).
 
 Unencrypted devices remain permitted, consistent with BTHome policy. A receiver
 SHOULD warn the user when a device exposes actuator-class writable objects
@@ -385,9 +391,5 @@ Open items:
    ID. Reserving it — ideally merging this specification — is the goal of the
    standardization step, to be pursued once a working proof of concept exists.
 2. **UUIDs are provisional** pending review in espruino#8013 (D-001).
-3. **Encrypted write field order.** §5.3 places the counter *before* the
-   ciphertext, whereas BTHome advertising places it *after*
-   (`ciphertext || counter || MIC`). Aligning the two would let both directions
-   share framing code on both sides. Raised with the owner; unresolved.
-4. **Manufacturer-data fallback** details remain unspecified (§2.5), pending a
+3. **Manufacturer-data fallback** details remain unspecified (§2.5), pending a
    need that does not currently exist.

@@ -139,3 +139,34 @@ two intervals of grace for slow ones. Zero-config is preserved (§ rule 4).
 
 Applies to read-write entities only; write-only entities (§3.2) are stateless
 and never wait for confirmation.
+
+---
+
+## D-008 — Encrypted write payload field order  [DECISION, T0.2]
+
+**Status:** decided by the owner, 2026-09-08. **Supersedes the working document
+§3.4**, which specified `[counter][ciphertext][MIC]`.
+
+The encrypted write payload is:
+
+```
+<ciphertext> <counter u32 LE> <MIC 4>
+```
+
+i.e. exactly BTHome's encrypted-advertising layout minus the device-information
+byte, which for writes is implicit (§5.1 of PROTOCOL.md).
+
+**Why the change.** The working document's order was almost certainly written in
+passing rather than chosen: it makes the two directions differ for no benefit.
+Aligning them lets both implementations share one framing routine — concretely
+relevant on the Espruino side, which must build encrypted advertising *and*
+parse encrypted writes on a RAM-constrained target. It also removes a gratuitous
+divergence from a specification whose case to the BTHome maintainers rests on
+reusing BTHome's own formats.
+
+The rejected alternative kept the counter at fixed offset 0, so a device could
+check it before decrypting without knowing the payload length. Marginal: the
+length of a GATT write is always known.
+
+**To do:** flag the correction to Gordon in espruino#8013 — it is a detail, but
+the working document is the shared artefact and it now differs from the spec.
