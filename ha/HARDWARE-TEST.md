@@ -8,11 +8,11 @@ Bluetooth proxy.
 Run `espruino/HARDWARE-TEST.md` first. If the device does not behave there,
 nothing here will make sense.
 
-> **Steps 1 to 3 and 5 are already done**, against Home Assistant 2026.7.4 on a
+> **Steps 1 to 3 are already done**, against Home Assistant 2026.7.4 on a
 > Raspberry Pi 3 with a Puck.js — the integration was deployed over the Samba
 > add-on and driven through the REST API. Results are recorded below each step.
-> What remains needs a hand on the hardware: powering the device off, and
-> opening a Web IDE session against it.
+> Steps 4, 6 and 7 need a hand on the hardware; step 5 needs an ESPHome proxy
+> powered up, and the three configured on that box were all offline.
 
 **Acceptance criteria (T1.2):** an end-to-end toggle from the Home Assistant UI,
 both directly and through an ESPHome proxy; and a plain BTHome device is never
@@ -120,6 +120,12 @@ one.
 Expected: the same behaviour, perhaps a second slower. Watch the ESPHome node's
 log while toggling — you should see a connection open and close per write, not a
 connection that stays up.
+
+> **Not done, 2026-09-08.** All three proxies configured on that box were
+> unreachable (`Connect call failed` for each in the log), so every measurement
+> above went through the Raspberry Pi's own adapter. This step is the one most
+> likely to behave differently, because the write competes for a proxy's few
+> connection slots — worth doing before anyone calls the MVP finished.
 
 ## Step 6 — availability
 
