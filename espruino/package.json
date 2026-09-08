@@ -1,0 +1,15 @@
+{
+  "name": "bthome-writable",
+  "version": "0.0.1",
+  "description": "Espruino module: BTHome advertising with writable objects over a single GATT characteristic",
+  "main": "BTHomeWritable.js",
+  "scripts": {
+    "lint": "eslint .",
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "eslint": "^9.18.0"
+  },
+  "license": "MIT",
+  "private": true
+}

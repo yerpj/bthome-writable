@@ -1,0 +1,3 @@
+# Home Assistant integration test harness.
+# Pin to a release matching the HA version we target; bump deliberately.
+pytest-homeassistant-custom-component>=0.13.200

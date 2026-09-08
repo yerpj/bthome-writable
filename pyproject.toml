@@ -1,0 +1,31 @@
+[project]
+name = "bthome-writable-tools"
+version = "0.0.0"
+description = "Tooling and tests for the bthome-writable project"
+requires-python = ">=3.12"
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+src = ["ha", "tools"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+    "SIM", # flake8-simplify
+    "TID", # flake8-tidy-imports
+    "RUF",
+]
+
+[tool.ruff.lint.isort]
+force-sort-within-sections = true
+known-first-party = ["custom_components", "tools"]
+combine-as-imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["ha/tests", "tools/tests"]
