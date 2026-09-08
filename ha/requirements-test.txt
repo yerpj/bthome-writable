@@ -10,3 +10,13 @@ pytest-homeassistant-custom-component==0.13.205
 # Runtime dependencies from the integration's manifest.
 bthome-ble>=3.22.1
 bleak-retry-connector>=3.5.0
+
+# Home Assistant's `bluetooth` component imports its `usb` component, which
+# imports pyserial. Real deployments get these from Home Assistant's own
+# bootstrap requirements; the test harness does not pull them, so the import
+# fails at collection time with a message that names neither Bluetooth nor USB.
+pyserial
+pyserial-asyncio-fast
+# ... and on Linux that component also wants pyudev, which is why this suite
+# passed on a Windows workstation and failed in CI.
+pyudev; sys_platform == "linux"

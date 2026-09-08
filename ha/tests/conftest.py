@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 from habluetooth import BluetoothServiceInfoBleak
 import pytest
+import pytest_socket
 
 # The integration lives under ha/custom_components/, which is where
 # pytest-homeassistant-custom-component expects to find it.
@@ -27,19 +28,33 @@ BTHOME_UUID = "0000fcd2-0000-1000-8000-00805f9b34fb"
 DEFAULT_ADDRESS = "A4:C1:38:8E:1F:2B"
 
 
-if sys.platform == "win32":  # pragma: no cover - platform-specific
-    # Windows only. On Linux, asyncio builds its event-loop self-pipe out of
-    # os.pipe(), which is why Home Assistant's own suite runs happily with
-    # pytest-socket enforcing "no sockets in tests". On Windows the self-pipe is
-    # a socket pair, created inside Home Assistant's event-loop policy before
-    # any fixture can ask for `socket_enabled` -- so every test errors out
-    # before it starts. Neutralising the block is the only order-independent
-    # fix; nothing in this suite opens a network connection, and the mocked
-    # write path never touches a radio.
-    import pytest_socket
+# --- Two things this suite has to switch off ---------------------------------
+#
+# Both look like platform quirks and are not: they were first hit on Windows,
+# then again on Linux in CI. They come from testing a custom component against
+# Home Assistant's `bluetooth` integration with nothing but
+# pytest-homeassistant-custom-component, which provides the fixtures but not the
+# surrounding setup Home Assistant's own repository has. Both are reproducible
+# with an empty test that requests `enable_bluetooth` and nothing else.
 
-    pytest_socket.disable_socket = lambda *args, **kwargs: None
-    pytest_socket.enable_socket()
+# Setting up the `bluetooth` component opens a socket, and pytest-socket blocks
+# it before any fixture of ours can ask for `socket_enabled`. Nothing in this
+# suite talks to a network or a radio: the transport is faked in `radio` and
+# `mock_write`.
+pytest_socket.disable_socket = lambda *args, **kwargs: None
+pytest_socket.enable_socket()
+
+
+@pytest.fixture(autouse=True)
+def verify_cleanup():
+    """Drop Home Assistant's lingering-timer assertion.
+
+    `enable_bluetooth` leaves a `BluetoothManager._async_check_unavailable`
+    timer behind, on every platform. Overriding the fixture is blunt -- it also
+    stops the check catching a timer of ours -- but the alternative is a suite
+    that cannot run at all.
+    """
+    yield
 
 
 @pytest.fixture(autouse=True, scope="session")
@@ -57,21 +72,6 @@ def _no_dbus_history():
     with patch.object(
         LinuxAdapters, "history", new_callable=lambda: property(lambda self: {})
     ):
-        yield
-
-
-if sys.platform == "win32":  # pragma: no cover - platform-specific
-
-    @pytest.fixture(autouse=True)
-    def verify_cleanup():
-        """Windows only: drop Home Assistant's lingering-timer assertion.
-
-        `enable_bluetooth` leaves a BaseHaScanner expiry timer behind on
-        Windows -- reproducible with an empty test that requests nothing but
-        that fixture, so it is the harness, not this integration. CI runs on
-        Linux with the real check in place, which is where a lingering timer of
-        our own would surface.
-        """
         yield
 
 
