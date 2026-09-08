@@ -402,7 +402,11 @@ def main() -> None:
     }
 
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    OUTPUT.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+    # newline="" keeps the LF endings the repo checks out on every platform.
+    # Without it, Windows writes CRLF and the determinism test fails on a fresh
+    # checkout, where git has just handed us LF.
+    with OUTPUT.open("w", encoding="utf-8", newline="") as handle:
+        handle.write(json.dumps(document, indent=2) + "\n")
     accepted = sum(1 for v in document["vectors"] if v["expect"] == "accept")
     rejected = len(document["vectors"]) - accepted
     print(
