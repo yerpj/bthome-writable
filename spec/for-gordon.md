@@ -127,3 +127,31 @@ bump.
 Pleasant side effect: `bthome-ble` already names duplicate objects `light_1`,
 `light_2`, … by their order in the packet — the same positional model as the
 bitmask, so upstream entity naming and our addressing agree by construction.
+
+---
+
+## 8. The `BTHome` module has no `illuminance` type
+
+BTHome object `0x05` (illuminance, uint24, 0.01 lux) is not in
+`getAdvertisement`'s table. It is a common enough sensor that its absence is
+noticeable — the light-loop example in this repo wanted it and had to go
+through the `raw` escape hatch instead:
+
+```js
+{ type: "raw", get: () => [0x05, v & 255, (v >> 8) & 255, (v >> 16) & 255] }
+```
+
+That works, and `raw` is clearly there for exactly this, but it puts the object
+ID and the byte order in the sketch rather than in the table where every other
+object's encoding lives. A one-line addition alongside `pressure`, which is
+already a `b24`:
+
+```js
+illuminance : e => b24(5, e, 100),      // lux, floating point
+```
+
+A related note for anyone reading that table: `raw` means "emit these bytes
+verbatim", which is *not* BTHome's raw object `0x54` (length-prefixed). Two
+different things sharing a name; worth a comment in the module, and something a
+wrapper has to be careful about — this repo's module briefly treated `raw` as
+length-prefixed and would have mis-parsed writes to one.
