@@ -68,3 +68,55 @@ confirmation.
 
 Normative wording: the declaration object MUST be the last element of the
 BTHome service data. Rationale in D-005 points 3 and 4.
+
+---
+
+## D-001 — GATT service and characteristic UUIDs  [DECISION, T0.2]
+
+**Status:** decided by the owner, 2026-09-08. Randomly generated (UUID v4), as
+the values are arbitrary and only need to be collision-free.
+
+```
+Service:              2FAA47BC-3B0B-4B1A-9E2A-B4C2952E62F2
+Write characteristic: 639333F3-F21F-4558-9D85-06FCAC3436C2
+```
+
+Properties on the characteristic: `write`, `write-no-response`.
+
+**Provisional until the first public release** — to be shown to Gordon in
+espruino#8013 first, in case the Espruino side has a convention. They freeze
+permanently at the first release (risk #11) and must never change after.
+
+---
+
+## D-002 — Bitmask bit numbering  [DECISION, T0.2]
+
+**Status:** adopted as recommended in the working document, awaiting Gordon's
+acknowledgement (trivial, but pin it before anyone writes a second
+implementation).
+
+Bit *n* of the declaration bitmask refers to the *n*-th BTHome object of the
+same packet, **bit 0 = the first object**, counting objects (not bytes) from the
+start of the payload, the device-information byte excluded. Confirmed against
+Gordon's own example: `40 0161 1E01 FF02` has battery at position 0 and the
+light at position 1, and declares `0x02` = bit 1 = the light.
+
+---
+
+## D-003 — Simultaneous BLE connection cap  [DECISION, T0.2]
+
+**Status:** decided by the owner, 2026-09-08. **Default 2, user-configurable**
+through the integration's options flow.
+
+A typical ESPHome Bluetooth proxy offers three connection slots; capping at two
+leaves room for an Espruino UART/Web-IDE session (the coexistence rule of §5).
+Made configurable for setups with several adapters or proxies. Zero-config is
+preserved: the option has a working default and is never required.
+
+---
+
+## D-004 — License  [DECISION, T0.2]
+
+**Status:** decided by the owner, 2026-09-08. **MIT**, both sides, one `LICENSE`
+at the repo root. Matches Espruino's own license and keeps friction lowest for
+an eventual merge into BTHome.
