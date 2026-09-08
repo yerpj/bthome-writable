@@ -6,22 +6,44 @@ from typing import Final
 
 DOMAIN: Final = "bthome_writable"
 
-# BTHome service data UUID, shared with the core `bthome` integration.
+# BTHome service data UUID, shared with the core `bthome` integration. Matching
+# on it means we see every BTHome device; the config flow aborts on the ones
+# without a declaration so users never see plain BTHome devices offered twice.
 BTHOME_SERVICE_UUID: Final = "0000fcd2-0000-1000-8000-00805f9b34fb"
 
 # --- Protocol constants (see spec/PROTOCOL.md) -------------------------------
 # Object ID carrying the writability declaration inside the BTHome service data.
 DECLARATION_OBJECT_ID: Final = 0xFF
 
-# BTHome device-information byte used in the AES-CCM nonce.
-# 0x41 is BTHome v2's advertising value; writes use 0xFF so a captured
-# advertisement can never validate as a write (and vice versa).
+# GATT service and characteristic (§4.1, decisions.md D-001). Provisional until
+# the first public release, frozen permanently after it.
+SERVICE_UUID: Final = "2faa47bc-3b0b-4b1a-9e2a-b4c2952e62f2"
+WRITE_CHARACTERISTIC_UUID: Final = "639333f3-f21f-4558-9d85-06fcac3436c2"
+
+# BTHome device-information byte used in the AES-CCM nonce (§5.1).
+# 0x41 is the advertising value; writes use 0xFF so a captured advertisement can
+# never validate as a write. Used from Phase 3 onwards.
 DEVICE_INFO_BYTE_ADVERTISING: Final = 0x41
 DEVICE_INFO_BYTE_WRITE: Final = 0xFF
 
-# --- Tunables ---------------------------------------------------------------
-# [DECISION] confirmation timeout and connection cap defaults, see spec/decisions.md.
-CONF_CONFIRM_TIMEOUT: Final = "confirm_timeout"
-DEFAULT_CONFIRM_TIMEOUT: Final = 5.0
+# --- Confirmation model (§6, decisions.md D-007) -----------------------------
+# The window is adaptive: a floor, and two of the device's observed advertising
+# intervals, so slowly advertising devices do not produce spurious reverts.
+CONFIRM_WINDOW_FLOOR: Final = 5.0
+CONFIRM_WINDOW_INTERVALS: Final = 2
+CONFIRM_WINDOW_CEILING: Final = 60.0
+"""An upper bound, so a device seen twice an hour cannot pin an entity
+optimistically for half an hour."""
+
+# --- Connection handling -----------------------------------------------------
+CONF_MAX_CONNECTIONS: Final = "max_connections"
 DEFAULT_MAX_CONNECTIONS: Final = 2
+"""A typical ESPHome proxy offers three slots; two leaves room for an Espruino
+UART/Web-IDE session (decisions.md D-003)."""
+
 MIN_MTU: Final = 64
+WRITE_DEBOUNCE: Final = 0.25
+"""Seconds to coalesce rapid changes -- a slider drag must produce one write,
+not one per pixel."""
+
+CONF_BINDKEY: Final = "bindkey"

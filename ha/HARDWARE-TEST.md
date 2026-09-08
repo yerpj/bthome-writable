@@ -1,0 +1,135 @@
+# T1.2 — hardware test procedure `[HW]`
+
+The integration is complete and covered by 57 automated tests, but every one of
+them runs against a fake radio. This is the part that needs a real Espruino
+board, a real Home Assistant, and — for the last section — a real ESPHome
+Bluetooth proxy.
+
+Run `espruino/HARDWARE-TEST.md` first. If the device does not behave there,
+nothing here will make sense.
+
+**Acceptance criteria (T1.2):** an end-to-end toggle from the Home Assistant UI,
+both directly and through an ESPHome proxy; and a plain BTHome device is never
+offered for setup.
+
+## Install
+
+1. Copy `ha/custom_components/bthome_writable/` into your Home Assistant
+   `config/custom_components/`.
+2. Restart Home Assistant.
+3. Flash the board with `espruino/examples/single-light.js` and `save()` it, so
+   it advertises on boot.
+
+## Step 1 — discovery, and the abort that matters
+
+Within a few seconds of the board powering up, **Settings → Devices & Services**
+should show a discovered **BTHome Writable** device.
+
+Click **Configure**. The dialog should read, with your board's MAC:
+
+> *… (A4:C1:38:…) declares 1 writable object(s).*
+
+Submit it.
+
+**Now the important half.** If you own any ordinary BTHome device — a Shelly
+BLU, an ATC-firmware thermometer, a plain Espruino BTHome beacon — confirm that
+**it is not offered by this integration.** It should appear only under the core
+BTHome integration, exactly as before.
+
+This is the test that protects every existing BTHome user from a duplicate
+discovery card, and it cannot be verified without a second, non-writable device.
+If you have none to hand, say so in the report rather than skipping it silently.
+
+## Step 2 — one device card, not two
+
+Open the new device. If the core BTHome integration also has this board (it
+will, if you set it up there), you should see **one card** carrying both:
+
+- the sensors core BTHome reads (battery, and the light as a *binary sensor*),
+- and the **switch** this integration adds.
+
+Two separate cards for the same MAC means the device merge failed — report the
+MAC shown on each.
+
+## Step 3 — the toggle
+
+Toggle the switch in the UI.
+
+Expected: **the LED follows within a second**, and the toggle stays where you
+put it.
+
+Do it several times, both directions. Then watch for the failure mode that
+matters: a toggle that **flips back on its own** after a few seconds means the
+device applied nothing, or its refreshed advertising never reached Home
+Assistant. Note how long it takes to flip back.
+
+## Step 4 — the confirmation really comes from advertising
+
+This distinguishes "it works" from "it looks like it works".
+
+1. Toggle the switch on.
+2. Immediately power the board off (pull the battery, or hold reset).
+
+Expected: the toggle **reverts to its last advertised state** after a few
+seconds, and `home-assistant.log` carries:
+
+```
+... did not advertise the written value within N.N s; reverting to its last advertised state
+```
+
+Then power the board back on. The entity should return with the state the board
+actually has, not the one you asked for.
+
+## Step 5 — through an ESPHome proxy
+
+Repeat step 3 with the board **out of range of the Home Assistant host's own
+adapter** but in range of an ESPHome Bluetooth proxy.
+
+This is the configuration most users will have, and the one most likely to
+break: the proxy has a small number of connection slots, and the write needs
+one.
+
+Expected: the same behaviour, perhaps a second slower. Watch the ESPHome node's
+log while toggling — you should see a connection open and close per write, not a
+connection that stays up.
+
+## Step 6 — availability
+
+Power the board off and leave it off.
+
+Expected: the switch goes **unavailable** within the same timeout the core
+BTHome sensors use. Power it back on: it returns.
+
+## Step 7 — coexistence with the Espruino Web IDE
+
+This one checks a rule we wrote into the design (§5 of the working document) and
+have never exercised.
+
+1. Connect to the board from the Espruino Web IDE over Web Bluetooth.
+2. While that session is open, toggle the switch in Home Assistant.
+
+Expected, in rough order of preference: the write succeeds; or it fails cleanly
+and the entity reverts with a logged warning. What must **not** happen is the
+IDE session dropping, or Home Assistant retrying in a loop.
+
+Note exactly what you observe — this is new ground, and the answer shapes the
+coexistence documentation.
+
+## What to report back
+
+- Whether a plain BTHome device was offered by this integration (step 1) — and
+  which device you tested with, or that you had none.
+- One card or two (step 2).
+- Whether the toggle held, and any flip-back delay (step 3).
+- The exact revert log line from step 4.
+- Whether step 5 worked, and how much slower it felt.
+- What happened in step 7, in as much detail as you can.
+
+Home Assistant's log with `custom_components.bthome_writable` at debug level is
+worth attaching for anything that fails:
+
+```yaml
+logger:
+  logs:
+    custom_components.bthome_writable: debug
+```

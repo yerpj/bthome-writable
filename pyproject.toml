@@ -8,6 +8,7 @@ requires-python = ">=3.12"
 line-length = 88
 target-version = "py312"
 src = ["ha", "tools"]
+extend-exclude = [".venv", ".venv-ha", "node_modules"]
 
 [tool.ruff.lint]
 select = [
@@ -25,7 +26,8 @@ select = [
 [tool.ruff.lint.isort]
 force-sort-within-sections = true
 known-first-party = ["custom_components", "tools"]
+known-third-party = ["homeassistant"]
 combine-as-imports = true
 
 [tool.pytest.ini_options]
-testpaths = ["ha/tests", "tools/tests"]
+testpaths = ["tools/tests"]

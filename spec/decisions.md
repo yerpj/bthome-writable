@@ -170,3 +170,42 @@ length of a GATT write is always known.
 
 **To do:** flag the correction to Gordon in espruino#8013 — it is a detail, but
 the working document is the shared artefact and it now differs from the spec.
+
+---
+
+## D-009 — Write-only detection is limited to variable-length objects  [DECISION, T1.2]
+
+**Status:** decided by the agent while implementing, **flagged to the owner for
+relay to Gordon** — it narrows a sentence of §3 that was written loosely.
+
+**The problem.** §3 says a write-only object is declared by advertising it "with
+an empty/zero value". For a variable-length object that is unambiguous: a length
+byte of 0 cannot occur any other way. For a **fixed-length** object it is not
+detectable at all — a light that is off advertises `1E 00`, byte-identical to a
+"zero value" placeholder. A receiver cannot tell a write-only trigger from an
+actuator that happens to be in its zero state, and guessing wrong means either
+exposing a stateless entity for a real switch, or applying the confirm/revert
+model to something that will never confirm.
+
+**The resolution.** Write-only is recognised only for variable-length objects
+(text, raw) advertising length 0, and — once T2.1 lands them — for event-class
+objects, whose "none" value is already a defined no-op rather than a state.
+Every other object is treated as read-write.
+
+**Why this loses nothing.** Write-only exists for actuators with no meaningful
+uplink: a display, a buzzer, a trigger. Those are exactly the variable-length
+and event-class objects. A write-only *boolean* is close to meaningless, and a
+device wanting one can advertise an event object instead.
+
+**Spec change required:** §3's "empty/zero value" should become "a
+variable-length object advertising a length of 0, or an event-class object
+advertising its 'none' value". Not applied to PROTOCOL.md yet — §3 is
+co-designed and rule 2 sends it through Gordon.
+
+**Cross-version re-check (2026-09-08).** D-005's findings were re-run against
+`bthome-ble` **3.22.1**, the version Home Assistant 2025.1 pins — the release the
+integration's test harness actually runs on. Every conclusion holds: `0xFF` is
+free (that release's highest assigned ID is `0x65`), unknown IDs are skipped
+quietly, and all fourteen advertising fixtures parse to exactly their expected
+sensors with no log record above DEBUG. The integration's manifest therefore
+requires `bthome-ble>=3.22.1` rather than the newest release.
