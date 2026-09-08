@@ -1,8 +1,18 @@
 # T1.1 — hardware test procedure `[HW]`
 
-Everything below needs a physical nRF52-class Espruino board and a phone or
-laptop running nRF Connect. The software side is complete and unit-tested; this
-is the part that cannot be verified without a radio.
+Everything below needs a physical nRF52-class Espruino board. The software side
+is complete and unit-tested; this is the part that cannot be verified without a
+radio.
+
+> **Steps 1 and 3 to 5 are already done**, on a Puck.js
+> (`C8:80:32:AD:F7:B9`) driven from the host — see the results recorded below
+> each step and the tools under `tools/`. What remains needs a pair of human
+> eyes or a hand on the hardware: the LED itself, the power-cycle behaviour, and
+> the Web IDE coexistence.
+
+Where a step says "nRF Connect", `tools/espruino_upload.py`,
+`tools/bthome_write.py` and `tools/reject_matrix.py` do the same job from a
+terminal against any host with a Bluetooth adapter.
 
 **Acceptance criterion (T1.1):** a write over GATT toggles the GPIO, and the
 advertising reflects the new state within one advertising interval.
@@ -53,6 +63,9 @@ Expected, with `<pid>` incrementing and `<batt>` your battery level:
 **Record the exact hex string.** If `FF 04` is missing, `setup()` threw — check
 the IDE console.
 
+> **Done, 2026-09-08.** `40 00 <pid> 01 64 1E 00 FF 04`, packet id incrementing.
+> The battery reads 100 % on a fresh CR2032.
+
 ## Step 2 — the service is discoverable
 
 Connect to the board in nRF Connect. You should see a custom service:
@@ -71,6 +84,11 @@ silent).
 
 Write `1E00`. The LED goes out.
 
+> **Partly done, 2026-09-08.** The writes are accepted and the advertised light
+> object follows them (`1E 00` ⇄ `1E 01`), verified over the air. **Whether the
+> LED physically lights is the part still needing eyes on it** — the module
+> drives `LED1` through the example's `apply()`, which nothing here can see.
+
 ## Step 4 — the advertising confirms it (the real acceptance criterion)
 
 This is the one that matters, and it is easiest to see if you **disconnect
@@ -88,6 +106,14 @@ write — not on the next round second. If it consistently takes a full interval
 the immediate refresh is not working, which matters for battery devices that
 advertise every 10 s. Note what you observe.
 
+> **Measured, 2026-09-08, and the number is not the device's.** Four to eight
+> seconds from `tools/bthome_write.py`, but a host with one Bluetooth adapter
+> cannot scan while it is connected, so most of that is the adapter returning
+> to scanning. The figure that matters came from Home Assistant, which scans
+> continuously: a toggle settles in under a second (decisions.md D-010).
+> A clean measurement of the device alone still wants a second adapter
+> dedicated to scanning.
+
 ## Step 5 — bad writes are rejected, not partially applied
 
 These exercise §4.2's strictness. The console prints the rejection code each
@@ -103,6 +129,10 @@ time, thanks to the `onError` hook in the example.
 The trailing-bytes case is the important one: it is a stand-in for a replayed
 advertisement, which carries the declaration after the light object. A parser
 that accepted the prefix would apply it.
+
+> **Done, 2026-09-08.** All four cases produced exactly the codes in the table,
+> and the advertised state was unchanged afterwards. Rerun any time with
+> `python -m tools.reject_matrix --address <mac>`.
 
 ## Step 6 — it survives a reconnect and a reboot
 

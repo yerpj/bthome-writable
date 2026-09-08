@@ -8,6 +8,12 @@ Bluetooth proxy.
 Run `espruino/HARDWARE-TEST.md` first. If the device does not behave there,
 nothing here will make sense.
 
+> **Steps 1 to 3 and 5 are already done**, against Home Assistant 2026.7.4 on a
+> Raspberry Pi 3 with a Puck.js — the integration was deployed over the Samba
+> add-on and driven through the REST API. Results are recorded below each step.
+> What remains needs a hand on the hardware: powering the device off, and
+> opening a Web IDE session against it.
+
 **Acceptance criteria (T1.2):** an end-to-end toggle from the Home Assistant UI,
 both directly and through an ESPHome proxy; and a plain BTHome device is never
 offered for setup.
@@ -40,6 +46,13 @@ This is the test that protects every existing BTHome user from a duplicate
 discovery card, and it cannot be verified without a second, non-writable device.
 If you have none to hand, say so in the report rather than skipping it silently.
 
+> **Done, 2026-09-08, on a box with eight BTHome devices configured.** The
+> integration's device list offered exactly one: the Puck.js carrying the
+> declaration. Every plain BTHome device was filtered out, including one seen
+> advertising at the time (`D5:83:51:F2:B2:3D`, service data
+> `40 00 82 01 4B 02 70 12 5A 00 00 5A FB FF` — no `FF` declaration).
+> Still worth a look in the UI to confirm no stray discovery card appears.
+
 ## Step 2 — one device card, not two
 
 Open the new device. If the core BTHome integration also has this board (it
@@ -50,6 +63,11 @@ will, if you set it up there), you should see **one card** carrying both:
 
 Two separate cards for the same MAC means the device merge failed — report the
 MAC shown on each.
+
+> **Done, 2026-09-08.** The switch landed on the existing device card rather
+> than a new one: the entity came up as
+> `switch.bureau_mobilesensf7b9_light`, inheriting both the device's name and
+> its area from the registry entry that was already there.
 
 ## Step 3 — the toggle
 
@@ -62,6 +80,16 @@ Do it several times, both directions. Then watch for the failure mode that
 matters: a toggle that **flips back on its own** after a few seconds means the
 device applied nothing, or its refreshed advertising never reached Home
 Assistant. Note how long it takes to flip back.
+
+> **Done, 2026-09-08 — and it found the bug this step was written for.** The
+> first run bounced on every toggle: `on` at 0.5 s, `off` at 5.3 s, `on` again
+> at 7.3 s. The write always worked; the confirmation window was being started
+> when the value was queued rather than when the device had been told, so it
+> expired before an answer was possible. Fixed (decisions.md D-010); three
+> consecutive toggles now settle in under a second with no flip-back, and the
+> device's advertising independently reads `1E 01`.
+>
+> The LED itself is still unverified — see step 3 of the Espruino procedure.
 
 ## Step 4 — the confirmation really comes from advertising
 
