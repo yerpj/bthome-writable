@@ -26,8 +26,14 @@ HEADER = """/* bthome-writable — {example}, self-contained.
  * espruino/BTHomeWritable.js or espruino/examples/{example} and rebuild.
  *
  * Paste the whole file into the Espruino Web IDE's right-hand pane and send it
- * to a connected nRF52 board. `require("BTHome")` is fetched automatically by
- * the IDE; everything else is inlined here.
+ * to a connected nRF52 board, or push it with tools/espruino_upload.py.
+ * `require("BTHome")` is resolved by either; everything else is inlined here.
+ *
+ * The module is inlined flat rather than wrapped in a closure, on purpose: the
+ * Espruino console cannot buffer a single ten-kilobyte statement, so an IIFE
+ * around the whole module is silently truncated. Flat means every declaration
+ * is its own small statement. It costs a polluted global namespace on a board
+ * that is running nothing else.
  */
 
 """
@@ -45,14 +51,10 @@ def bundle(example: Path) -> str:
 
     return (
         HEADER.format(example=example.name)
-        + "var BTHomeWritable = (function () {\n"
-        + "  var exports = {};\n\n"
+        + "var exports = {};\n\n"
         + module_source
-        + "\n  return exports;\n})();\n\n"
-        + "/* --- "
-        + example.name
-        + " ".ljust(0)
-        + " --- */\n\n"
+        + "\nvar BTHomeWritable = exports;\n\n"
+        + f"/* --- {example.name} --- */\n\n"
         + example_source
     )
 
@@ -104,11 +106,65 @@ def strip_comments(source: str) -> str:
     return "\n".join(line for line in lines if line.strip()) + "\n"
 
 
+def repl_unsafe_lines(source: str) -> list[tuple[int, str]]:
+    """Top-level lines that continue a statement onto the next one.
+
+    The Espruino console evaluates a pasted statement the moment a line ends
+    outside any bracket. A top-level statement split across lines is therefore
+    executed in halves: the first half raises a syntax error, the second is
+    evaluated as a stray expression, and the variable it was meant to define is
+    left undefined. Nothing warns — the upload simply produces a board that
+    misbehaves later, somewhere else.
+
+    Anything inside brackets is safe, which covers every function body, so in
+    practice this only catches wrapped top-level assignments — exactly what a
+    formatter introduces when a line grows past its limit.
+    """
+    offenders: list[tuple[int, str]] = []
+    depth = 0
+    quote: str | None = None
+
+    for lineno, line in enumerate(source.splitlines(), 1):
+        depth_at_start = depth
+        i = 0
+        while i < len(line):
+            char = line[i]
+            if quote:
+                if char == "\\":
+                    i += 2
+                    continue
+                if char == quote:
+                    quote = None
+            elif char in "\"'`":
+                quote = char
+            elif char in "([{":
+                depth += 1
+            elif char in ")]}":
+                depth -= 1
+            i += 1
+
+        stripped = line.strip()
+        at_top_level = depth_at_start == 0 and depth == 0 and stripped
+        if at_top_level and not stripped.endswith((";", "{", "}")):
+            offenders.append((lineno, stripped))
+    return offenders
+
+
 def main() -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     for example in sorted(EXAMPLES.glob("*.js")):
         text = bundle(example)
         compact = strip_comments(text)
+
+        offenders = repl_unsafe_lines(compact)
+        if offenders:
+            print(f"{example.name}: top-level statements split across lines:")
+            for lineno, line in offenders:
+                print(f"  line {lineno}: {line}")
+            raise SystemExit(
+                "these would be evaluated in halves by the Espruino console; "
+                "keep each top-level statement on one line"
+            )
 
         for target, content in (
             (OUTPUT_DIR / f"{example.stem}-standalone.js", text),

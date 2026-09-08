@@ -41,8 +41,12 @@ var DEVICE_INFO_PLAIN = 0x40;
 var ADV_PAYLOAD_BYTES = 31;
 var AD_FLAGS_BYTES = 3;
 var AD_SERVICE_DATA_HEADER_BYTES = 4;
-var SERVICE_DATA_BUDGET =
-  ADV_PAYLOAD_BYTES - AD_FLAGS_BYTES - AD_SERVICE_DATA_HEADER_BYTES;
+// On one line deliberately: the Espruino console evaluates a pasted top-level
+// statement as soon as a line ends outside any bracket, so wrapping this one
+// would leave SERVICE_DATA_BUDGET undefined on the board -- and an undefined
+// budget makes the capacity check below silently pass. See the guard in
+// tools/build_espruino_bundle.py.
+var SERVICE_DATA_BUDGET = ADV_PAYLOAD_BYTES - AD_FLAGS_BYTES - AD_SERVICE_DATA_HEADER_BYTES;
 
 /* Errors carry a `code` so callers can branch without matching on prose.
  * The device rejects the whole write on any of them (§4.2). */
@@ -508,6 +512,7 @@ function setup(options) {
     packetId: 0,
     interval: options.interval || 2000,
     onError: options.onError || null,
+    timer: undefined,
   };
 
   if (plan.writablePositions.length) {
@@ -533,6 +538,16 @@ function setup(options) {
   }
 
   refreshAdvertising();
+
+  // `interval` is the data refresh, not just the radio's advertising interval.
+  // Without this the packet is built once at setup and never again: sensor
+  // values freeze at whatever they read at boot, and the packet id never
+  // changes, which is what a receiver uses to tell a fresh advertisement from
+  // a repeat. Verified on hardware -- it looks like it works until you watch
+  // the battery reading never move.
+  if (state.timer !== undefined) clearInterval(state.timer);
+  state.timer = setInterval(refreshAdvertising, state.interval);
+
   return exports;
 }
 

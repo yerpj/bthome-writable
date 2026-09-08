@@ -26,11 +26,19 @@ const BUNDLES = fs
  * what it would have put on the air. */
 function run(source) {
   const advertised = [];
+  const timers = [];
   let written = null;
   let led = null;
 
   const context = {
     console: { log() {} },
+    setInterval(fn, ms) {
+      timers.push({ fn, ms });
+      return timers.length;
+    },
+    clearInterval(handle) {
+      if (handle !== undefined) timers.splice(handle - 1, 1);
+    },
     NRF: {
       setAdvertising(data) {
         advertised.push(data[0xfcd2].slice());
@@ -68,6 +76,7 @@ function run(source) {
   return {
     context,
     advertised,
+    timers,
     characteristics: written,
     led: () => led,
   };
@@ -112,6 +121,28 @@ for (const name of BUNDLES) {
 
     result.characteristics[uuids[0]].onWrite({ data: [0x1e, 0x00] });
     assert.equal(result.led(), false);
+  });
+
+  test(`${name}: schedules a periodic refresh of the advertised values`, () => {
+    /* Without it the packet is built once at setup and never again: sensor
+     * values freeze at their boot readings and the packet id never changes,
+     * which is what a receiver uses to tell a fresh advertisement from a
+     * repeat. Caught on hardware, where four consecutive captures all carried
+     * packet id 1. */
+    const source = fs.readFileSync(path.join(DIST, name), "utf8");
+    const result = run(source);
+
+    assert.equal(result.timers.length, 1, "setup should schedule one refresh");
+    assert.equal(result.timers[0].ms, 1000, "the example asks for 1000 ms");
+
+    const before = result.advertised.length;
+    result.timers[0].fn();
+    assert.equal(result.advertised.length, before + 1);
+    // The packet id is the second object, and it must move.
+    assert.notEqual(
+      hex(result.advertised[before]),
+      hex(result.advertised[before - 1])
+    );
   });
 
   test(`${name}: does not advertise the 128-bit service UUID`, () => {
