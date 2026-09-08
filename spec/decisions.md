@@ -259,3 +259,47 @@ independently confirmed as `4000cf01641e01ff04` — light object `1E 01`.
 **Consequence for the spec.** None: §6 already says the window covers the
 device's refresh. This was an implementation reading of it, and the diagram
 above is worth keeping for whoever implements the next receiver.
+
+---
+
+## D-011 — Reverting takes evidence, not just elapsed time  [VERIFY + fix, T1.2]
+
+**Status:** closed on hardware, 2026-09-08. Refines D-010, which fixed *when*
+the confirmation window opens; this fixes *what* closes it.
+
+**What was wrong.** The window was purely a timer. A receiver could therefore
+revert an entity having heard nothing at all from the device — a verdict
+reached on no evidence, and quite possibly wrong, since the device may have
+obeyed and simply not been heard.
+
+That is not a corner case. A host with a single Bluetooth adapter **cannot scan
+while it is connected**, and takes seconds to resume afterwards. Every write
+therefore begins with a deliberate blackout of exactly the channel the
+confirmation must arrive on. Measured on the development host: four
+advertisements caught in thirty seconds from a device advertising every two,
+with complete silence for stretches after each connection.
+
+**The rule now.** An unconfirmed value is reverted only once **both** hold:
+
+- the confirmation window has elapsed (D-007's adaptive value), and
+- at least **two** advertisements have arrived since the write landed.
+
+Two rather than one, because a single packet can already have been in flight
+when the write was issued and says nothing about whether the device obeyed.
+
+A ceiling still bounds the wait, so a device that has genuinely gone away does
+not pin an entity optimistically forever — and in that case the entity is on its
+way to `unavailable` anyway, which is the honest thing to show.
+
+**Result.** Four consecutive toggles from the Home Assistant UI, each settling
+in under half a second, none with a spurious transition. The warning logged on a
+real timeout now carries both numbers, so the two failure modes read apart at a
+glance: `did not advertise the written value within 1.0 s (0 advertisement(s)
+heard since the write)` is a deaf host, while the same message with two or more
+is a device that was asked and declined.
+
+**Note for the spec.** §6 says a receiver "MUST revert if no confirming
+advertisement arrives within its confirmation window" and leaves the window to
+the implementation, so nothing there needs changing. But the window being a
+duration is the obvious reading, and it is the wrong one — worth a sentence when
+§6 is next revised, so the next implementer does not rediscover this.

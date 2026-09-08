@@ -28,6 +28,33 @@ pytestmark = pytest.mark.usefixtures("custom_integration")
 FAST_DEBOUNCE = 0.01
 
 
+@pytest.fixture(autouse=True)
+def fast_confirmation(request):
+    """Shrink the confirmation window for every test in this module.
+
+    An entity that has written but not been confirmed keeps a task alive until
+    the ceiling, and `async_block_till_done` waits for it -- so production
+    values would make the suite wait a minute per write. The behaviour under
+    test is the ordering and the conditions, not the durations.
+
+    Opt out with `@pytest.mark.real_confirmation` where the durations are the
+    point.
+    """
+    if request.node.get_closest_marker("real_confirmation"):
+        yield
+        return
+
+    with (
+        patch(
+            "custom_components.bthome_writable.coordinator.CONFIRM_WINDOW_FLOOR", 0.05
+        ),
+        patch(
+            "custom_components.bthome_writable.coordinator.CONFIRM_WINDOW_CEILING", 1.0
+        ),
+    ):
+        yield
+
+
 async def setup_device(
     hass: HomeAssistant, radio, fixture_name: str
 ) -> MockConfigEntry:
@@ -167,17 +194,8 @@ async def test_an_unconfirmed_write_reverts(
     confirmed must go back to what the device actually says."""
     await setup_device(hass, radio, "espruino-single-light")
 
-    with (
-        patch(
-            "custom_components.bthome_writable.coordinator.WRITE_DEBOUNCE",
-            FAST_DEBOUNCE,
-        ),
-        patch(
-            "custom_components.bthome_writable.coordinator.CONFIRM_WINDOW_FLOOR", 0.05
-        ),
-        patch(
-            "custom_components.bthome_writable.coordinator.CONFIRM_WINDOW_CEILING", 0.05
-        ),
+    with patch(
+        "custom_components.bthome_writable.coordinator.WRITE_DEBOUNCE", FAST_DEBOUNCE
     ):
         await hass.services.async_call(
             "switch",
@@ -187,8 +205,12 @@ async def test_an_unconfirmed_write_reverts(
         )
         assert hass.states.get("switch.espruino_light_light").state == STATE_OFF
 
-        # The device never advertises the new value.
-        await settle(hass, 0.2)
+        # The device keeps advertising, but never the value that was written:
+        # it was heard from, and it did not obey.
+        for index in range(4):
+            await asyncio.sleep(0.1)
+            radio.push(service_info("espruino-single-light", time=float(index + 1)))
+        await settle(hass, 1.2)
 
     assert hass.states.get("switch.espruino_light_light").state == STATE_ON
     assert "did not advertise the written value" in caplog.text
@@ -285,6 +307,7 @@ async def test_the_device_merges_with_the_core_bthome_device_card(
     assert entry.entry_id in device.config_entries
 
 
+@pytest.mark.real_confirmation
 async def test_the_confirmation_window_follows_the_advertising_interval(
     hass: HomeAssistant, radio
 ) -> None:
@@ -375,3 +398,63 @@ async def test_the_confirmation_window_opens_when_the_write_lands(
 
     assert events == ["delivered:[2]"]
     assert [payload.hex() for payload in mock_write] == ["1e00"]
+
+
+async def test_a_deaf_host_waits_out_the_ceiling_instead_of_the_window(
+    hass: HomeAssistant, radio, mock_write, caplog
+) -> None:
+    """D-011: reverting takes evidence, not just elapsed time.
+
+    A host with one Bluetooth adapter cannot scan while it is connected and
+    takes seconds to resume, so the window can expire without a single
+    advertisement having arrived — a verdict on no evidence, and the device
+    may well have obeyed. So an unheard device holds its optimistic value all
+    the way to the ceiling rather than being written off after the window.
+
+    The log line carries both numbers, which is what makes the two cases
+    distinguishable here: the harness collapses `asyncio.sleep`, so wall-clock
+    timing tells us nothing.
+    """
+    await setup_device(hass, radio, "espruino-single-light")
+
+    with patch(
+        "custom_components.bthome_writable.coordinator.WRITE_DEBOUNCE", FAST_DEBOUNCE
+    ):
+        await hass.services.async_call(
+            "switch",
+            "turn_off",
+            {"entity_id": "switch.espruino_light_light"},
+            blocking=True,
+        )
+        # The radio stays silent throughout.
+        await settle(hass, 0.3)
+
+    assert hass.states.get("switch.espruino_light_light").state == STATE_ON
+    assert "0 advertisement(s) heard since the write" in caplog.text
+    assert "within 1.0 s" in caplog.text, "should have waited out the ceiling"
+
+
+async def test_a_heard_device_is_written_off_after_the_window_not_the_ceiling(
+    hass: HomeAssistant, radio, mock_write, caplog
+) -> None:
+    """The other half of D-011: once the device has been heard from and still
+    has not obeyed, there is nothing left to wait for."""
+    await setup_device(hass, radio, "espruino-single-light")
+
+    with patch(
+        "custom_components.bthome_writable.coordinator.WRITE_DEBOUNCE", FAST_DEBOUNCE
+    ):
+        await hass.services.async_call(
+            "switch",
+            "turn_off",
+            {"entity_id": "switch.espruino_light_light"},
+            blocking=True,
+        )
+        for index in range(4):
+            await asyncio.sleep(0.05)
+            radio.push(service_info("espruino-single-light", time=float(index + 1)))
+        await settle(hass, 0.3)
+
+    assert hass.states.get("switch.espruino_light_light").state == STATE_ON
+    assert "0 advertisement(s)" not in caplog.text
+    assert "within 1.0 s" not in caplog.text, "should not have needed the ceiling"

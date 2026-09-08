@@ -89,7 +89,9 @@ Assistant. Note how long it takes to flip back.
 > consecutive toggles now settle in under a second with no flip-back, and the
 > device's advertising independently reads `1E 01`.
 >
-> The LED itself is still unverified — see step 3 of the Espruino procedure.
+> The LED itself is verified too, by the device's own light sensor rather than
+> by eye — see step 3 of the Espruino procedure. Four further toggles after the
+> D-011 fix, each settling in under half a second with no spurious transition.
 
 ## Step 4 — the confirmation really comes from advertising
 

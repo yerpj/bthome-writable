@@ -18,6 +18,7 @@ from homeassistant.components import bluetooth
 from homeassistant.core import HomeAssistant, callback
 
 from .const import (
+    CONFIRM_ADVERTISEMENTS,
     CONFIRM_WINDOW_CEILING,
     CONFIRM_WINDOW_FLOOR,
     CONFIRM_WINDOW_INTERVALS,
@@ -64,6 +65,11 @@ class BTHomeWritableCoordinator:
         self.name = name or address
         self.declaration: Declaration | None = None
         self.available = False
+        self.advertisements = 0
+        """How many advertisements this device has been heard to send.
+
+        Entities use it to tell "the device did not answer" from "this host
+        heard nothing at all" (D-011)."""
 
         self._listeners: list[Callable[[], None]] = []
         self._write_listeners: list[Callable[[set[int], Exception | None], None]] = []
@@ -103,6 +109,7 @@ class BTHomeWritableCoordinator:
 
         self.declaration = declaration
         self.available = True
+        self.advertisements += 1
         self._notify()
 
     def _observe_interval(self, timestamp: float) -> None:
@@ -131,6 +138,16 @@ class BTHomeWritableCoordinator:
             CONFIRM_WINDOW_CEILING,
             max(CONFIRM_WINDOW_FLOOR, CONFIRM_WINDOW_INTERVALS * self._interval),
         )
+
+    @property
+    def confirm_ceiling(self) -> float:
+        """Hard upper bound on an optimistic value, however deaf the host is."""
+        return CONFIRM_WINDOW_CEILING
+
+    @property
+    def confirm_advertisements(self) -> int:
+        """Advertisements that must arrive after a write before reverting."""
+        return CONFIRM_ADVERTISEMENTS
 
     @callback
     def async_add_listener(self, listener: Callable[[], None]) -> Callable[[], None]:

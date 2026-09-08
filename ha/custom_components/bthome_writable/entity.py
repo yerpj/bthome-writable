@@ -118,14 +118,40 @@ class BTHomeWritableEntity(Entity):
         self._confirm_task = self.hass.async_create_task(self._await_confirmation())
 
     async def _await_confirmation(self) -> None:
-        await asyncio.sleep(self.coordinator.confirm_window)
-        if self._optimistic is None:
-            return
+        """Wait out the confirmation window, then revert if nothing arrived.
+
+        Two conditions, not one: the window must elapse *and* the device must
+        actually have been heard from. A host with a single Bluetooth adapter
+        cannot scan while it is connected and takes seconds to resume, so a
+        purely time-based window can expire having heard nothing at all —
+        reverting on no evidence (D-011). The ceiling stops that from becoming
+        an indefinite wait when a device really has gone away.
+        """
+        heard_before = self.coordinator.advertisements
+        waited = 0.0
+        step = 0.25
+
+        while waited < self.coordinator.confirm_ceiling:
+            await asyncio.sleep(step)
+            waited += step
+            if self._optimistic is None:
+                return
+
+            heard = self.coordinator.advertisements - heard_before
+            enough_time = waited >= self.coordinator.confirm_window
+            enough_evidence = heard >= self.coordinator.confirm_advertisements
+            if enough_time and enough_evidence:
+                break
+        else:
+            heard = self.coordinator.advertisements - heard_before
+
         _LOGGER.warning(
-            "%s: the device did not advertise the written value within %.1f s; "
-            "reverting to its last advertised state",
+            "%s: the device did not advertise the written value within %.1f s "
+            "(%d advertisement(s) heard since the write); reverting to its last "
+            "advertised state",
             self.entity_id,
-            self.coordinator.confirm_window,
+            waited,
+            heard,
         )
         self._revert()
 

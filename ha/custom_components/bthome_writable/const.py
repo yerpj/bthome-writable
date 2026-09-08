@@ -26,7 +26,7 @@ WRITE_CHARACTERISTIC_UUID: Final = "639333f3-f21f-4558-9d85-06fcac3436c2"
 DEVICE_INFO_BYTE_ADVERTISING: Final = 0x41
 DEVICE_INFO_BYTE_WRITE: Final = 0xFF
 
-# --- Confirmation model (§6, decisions.md D-007) -----------------------------
+# --- Confirmation model (§6, decisions.md D-007 and D-011) -------------------
 # The window is adaptive: a floor, and two of the device's observed advertising
 # intervals, so slowly advertising devices do not produce spurious reverts.
 CONFIRM_WINDOW_FLOOR: Final = 5.0
@@ -34,6 +34,17 @@ CONFIRM_WINDOW_INTERVALS: Final = 2
 CONFIRM_WINDOW_CEILING: Final = 60.0
 """An upper bound, so a device seen twice an hour cannot pin an entity
 optimistically for half an hour."""
+
+CONFIRM_ADVERTISEMENTS: Final = 2
+"""How many advertisements must arrive after a write before an unconfirmed
+value may be reverted.
+
+Time alone is not enough. A host with a single Bluetooth adapter cannot scan
+while it is connected, and takes seconds to resume afterwards, so the window
+can expire without the receiver having heard the device even once — reverting
+on the strength of having listened to nothing. Requiring a couple of actual
+advertisements makes the rule what it was always meant to be: the device was
+given two chances to say so and did not (D-011)."""
 
 # --- Connection handling -----------------------------------------------------
 CONF_MAX_CONNECTIONS: Final = "max_connections"

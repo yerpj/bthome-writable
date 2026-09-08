@@ -84,10 +84,15 @@ silent).
 
 Write `1E00`. The LED goes out.
 
-> **Partly done, 2026-09-08.** The writes are accepted and the advertised light
-> object follows them (`1E 00` ⇄ `1E 01`), verified over the air. **Whether the
-> LED physically lights is the part still needing eyes on it** — the module
-> drives `LED1` through the example's `apply()`, which nothing here can see.
+> **Done, 2026-09-08.** The writes are accepted and the advertised light object
+> follows them (`1E 00` ⇄ `1E 01`), verified over the air.
+>
+> The LED physically lighting was verified too, and without anyone watching it:
+> `examples/light-loop.js` drives the green LED and reads the Puck's light
+> sensor, which works through the red one. Commanding the light on raises the
+> device's own illuminance reading from 115 to 583 — **5.1x** — and commanding
+> it off brings it back to 115. Rerun with
+> `python -m tools.closed_loop --address <mac>`.
 
 ## Step 4 — the advertising confirms it (the real acceptance criterion)
 

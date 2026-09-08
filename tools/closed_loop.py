@@ -9,6 +9,12 @@ different LED — out of the same advertising packet.
 
 Needs a board running espruino/examples/light-loop.js. Exit status is 0 only if
 the measured illuminance actually moved with the commanded state.
+
+**On flaky hosts.** This has to hear the device, and some adapters scan badly —
+the Windows machine this was developed on regularly caught four advertisements
+in thirty seconds from a device advertising every two, and went deaf entirely
+for stretches after each connection. "nothing heard" from this tool usually
+means the host, not the board: check with a plain scan before believing it.
 """
 
 from __future__ import annotations
@@ -87,7 +93,7 @@ async def run(address: str) -> int:
     results: dict[bool, list[float]] = {}
 
     try:
-        if await fresh_packet(watcher, 0.0, 20.0) is None:
+        if await fresh_packet(watcher, 0.0, 60.0) is None:
             print(f"{address}: nothing heard", file=sys.stderr)
             return 1
 

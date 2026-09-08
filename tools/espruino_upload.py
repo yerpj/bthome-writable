@@ -165,7 +165,12 @@ async def find_address(name_hint: str | None) -> str:
 
 
 async def upload(
-    address: str, source: str, save: bool, settle: float, response: bool = True
+    address: str,
+    source: str,
+    save: bool,
+    settle: float,
+    response: bool = True,
+    reset: bool = True,
 ) -> str:
     print(f"connecting to {address} ...")
     async with BleakClient(address, timeout=30.0) as client:
@@ -176,6 +181,18 @@ async def upload(
         print(f"connected, MTU {client.mtu_size}, chunk {board.chunk}")
 
         await board.interrupt()
+
+        if reset:
+            # Upload into a clean interpreter. Re-uploading over a running
+            # program that has already registered a GATT service leaves a BLE
+            # restart queued, and code sent into that window gets interrupted
+            # part-way -- which showed up as a module cache that silently did
+            # not stick, and a setup() that stopped just before it armed its
+            # refresh timer. Both looked like bugs in the module.
+            await board.send("reset();\n")
+            await asyncio.sleep(2.5)
+            await board.interrupt()
+
         board.output.clear()
         await board.send(PREAMBLE)
         await asyncio.sleep(0.3)
@@ -205,6 +222,11 @@ def main() -> int:
         help="save() after upload so the code survives a power cycle",
     )
     parser.add_argument(
+        "--no-reset",
+        action="store_true",
+        help="upload over the running program instead of resetting first",
+    )
+    parser.add_argument(
         "--no-response",
         action="store_true",
         help="write without acknowledgement: faster, but drops bytes on long uploads",
@@ -223,7 +245,14 @@ def main() -> int:
 
     address = args.address or asyncio.run(find_address(args.name))
     console = asyncio.run(
-        upload(address, source, args.save, args.settle, not args.no_response)
+        upload(
+            address,
+            source,
+            args.save,
+            args.settle,
+            not args.no_response,
+            not args.no_reset,
+        )
     )
 
     print("\n=== board console ===")
