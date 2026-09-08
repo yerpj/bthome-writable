@@ -11,7 +11,9 @@ import logging
 from typing import Any
 
 from habluetooth import BluetoothServiceInfoBleak
+from homeassistant.components.bluetooth import async_discovered_service_info
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.const import CONF_ADDRESS
 import voluptuous as vol
 
 from .const import BTHOME_SERVICE_UUID, DOMAIN
@@ -45,6 +47,7 @@ class BTHomeWritableConfigFlow(ConfigFlow, domain=DOMAIN):
     def __init__(self) -> None:
         self._discovery: BluetoothServiceInfoBleak | None = None
         self._declaration: Declaration | None = None
+        self._candidates: dict[str, BluetoothServiceInfoBleak] = {}
 
     async def async_step_bluetooth(
         self, discovery_info: BluetoothServiceInfoBleak
@@ -97,11 +100,54 @@ class BTHomeWritableConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Manual setup is not offered: devices announce themselves.
+        """Pick from the writable devices already on the air.
 
-        A user with a writable device that HA has not discovered has a
-        Bluetooth reachability problem, which a form cannot fix. Asking them to
-        type a MAC would be the first step towards the manual-configuration
-        trap that sank the Generic Bluetooth Integration.
+        Nothing is typed here: the list is what the Bluetooth stack has already
+        heard, filtered to devices carrying a declaration. This is the standard
+        Home Assistant pattern and it exists for the user who dismissed the
+        discovery card — without it they would be stuck, since a device only
+        announces itself once.
+
+        Still zero-config in the sense that matters (CLAUDE.md rule 4): no MAC
+        to type, no YAML, nothing to look up. A device this list cannot show is
+        a device Home Assistant cannot hear, which a form could not fix anyway.
         """
-        return self.async_abort(reason="no_devices_found")
+        if user_input is not None:
+            address = user_input[CONF_ADDRESS]
+            await self.async_set_unique_id(address, raise_on_progress=False)
+            self._abort_if_unique_id_configured()
+
+            discovery = self._candidates[address]
+            declaration = declaration_from(discovery)
+            if declaration is None or not declaration.objects:
+                return self.async_abort(reason="not_supported")
+
+            self._discovery = discovery
+            self._declaration = declaration
+            return await self.async_step_confirm()
+
+        configured = self._async_current_ids()
+        self._candidates = {}
+        for discovery in async_discovered_service_info(self.hass, connectable=True):
+            if discovery.address in configured:
+                continue
+            declaration = declaration_from(discovery)
+            if declaration is not None and declaration.objects:
+                self._candidates[discovery.address] = discovery
+
+        if not self._candidates:
+            return self.async_abort(reason="no_devices_found")
+
+        return self.async_show_form(
+            step_id="user",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_ADDRESS): vol.In(
+                        {
+                            address: f"{discovery.name} ({address})"
+                            for address, discovery in self._candidates.items()
+                        }
+                    )
+                }
+            ),
+        )

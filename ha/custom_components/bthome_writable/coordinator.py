@@ -66,6 +66,7 @@ class BTHomeWritableCoordinator:
         self.available = False
 
         self._listeners: list[Callable[[], None]] = []
+        self._write_listeners: list[Callable[[set[int], Exception | None], None]] = []
         self._pending: dict[int, bytes] = {}
         self._pending_lock = asyncio.Lock()
         self._flush_task: asyncio.Task[None] | None = None
@@ -171,13 +172,44 @@ class BTHomeWritableCoordinator:
             if self._flush_task is None or self._flush_task.done():
                 self._flush_task = self.hass.async_create_task(self._flush_soon())
 
+    @callback
+    def async_add_write_listener(
+        self, listener: Callable[[set[int], Exception | None], None]
+    ) -> Callable[[], None]:
+        """Be told when a queued write has actually reached the device.
+
+        Entities need this to know when to start their confirmation window.
+        Starting it when the value was *queued* would fold the debounce, the
+        connection setup and the disconnect into a window that is meant to
+        measure only how long the device takes to refresh its advertising
+        (§6) — and on a host with a single Bluetooth adapter, which cannot
+        scan while it is connected, that is several seconds of the budget
+        spent before the device has even been told anything.
+        """
+        self._write_listeners.append(listener)
+
+        def remove() -> None:
+            self._write_listeners.remove(listener)
+
+        return remove
+
     async def _flush_soon(self) -> None:
         await asyncio.sleep(WRITE_DEBOUNCE)
         async with self._pending_lock:
             changes = dict(self._pending)
             self._pending.clear()
-        if changes:
+        if not changes:
+            return
+
+        error: Exception | None = None
+        try:
             await self._write_now(changes)
+        except Exception as caught:  # broad on purpose: reported to every listener
+            error = caught
+            _LOGGER.warning("%s: write failed: %s", self.address, caught)
+
+        for listener in list(self._write_listeners):
+            listener(set(changes), error)
 
     async def _write_now(self, changes: dict[int, bytes]) -> None:
         """Compose one write-all payload and deliver it (§4.2)."""

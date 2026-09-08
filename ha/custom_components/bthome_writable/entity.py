@@ -69,6 +69,9 @@ class BTHomeWritableEntity(Entity):
 
     async def async_added_to_hass(self) -> None:
         self.async_on_remove(self.coordinator.async_add_listener(self._advertised))
+        self.async_on_remove(
+            self.coordinator.async_add_write_listener(self._write_finished)
+        )
 
     @callback
     def _advertised(self) -> None:
@@ -79,7 +82,12 @@ class BTHomeWritableEntity(Entity):
         self.async_write_ha_state()
 
     async def async_apply(self, value: bytes) -> None:
-        """Write a new value and open the confirmation window (§6)."""
+        """Show the new value optimistically and queue the write (§6).
+
+        The confirmation window is *not* started here. It opens in
+        `_write_finished`, once the write has actually reached the device —
+        see the note on `async_add_write_listener`.
+        """
         self._optimistic = value
         self.async_write_ha_state()
         self._cancel_confirmation()
@@ -90,6 +98,23 @@ class BTHomeWritableEntity(Entity):
             self._revert()
             raise
 
+    @callback
+    def _write_finished(self, positions: set[int], error: Exception | None) -> None:
+        """The queued write has been delivered, or has failed."""
+        if self._position not in positions or self._optimistic is None:
+            return
+
+        if error is not None:
+            _LOGGER.warning(
+                "%s: the write did not reach the device (%s); showing its last "
+                "advertised state",
+                self.entity_id,
+                error,
+            )
+            self._revert()
+            return
+
+        self._cancel_confirmation()
         self._confirm_task = self.hass.async_create_task(self._await_confirmation())
 
     async def _await_confirmation(self) -> None:

@@ -209,3 +209,53 @@ free (that release's highest assigned ID is `0x65`), unknown IDs are skipped
 quietly, and all fourteen advertising fixtures parse to exactly their expected
 sensors with no log record above DEBUG. The integration's manifest therefore
 requires `bthome-ble>=3.22.1` rather than the newest release.
+
+---
+
+## D-010 — The confirmation window opens when the write lands  [VERIFY + fix, T1.2]
+
+**Status:** closed on hardware, 2026-09-08. Measured end to end: Home Assistant
+2026.7.4 on a Raspberry Pi 3 with its built-in adapter, writing to a Puck.js
+running the reference module.
+
+**What was wrong.** The confirmation window (§6, D-007) was started as soon as
+the entity queued its value. That folded four things into a window meant to
+measure only one:
+
+```
+click ─┬─ debounce ─┬─ connect ─┬─ write ─┬─ disconnect ─┬─ adapter resumes ─┬─ next adv
+       │            │           │         │              │  scanning         │
+       └────────────────────── window was measured from here ─────────────────┘
+                                          └── window should start here ───────┘
+```
+
+**What it looked like.** Every toggle bounced. Traced from the entity state:
+
+```
+turn_on    500 ms  on     (optimistic)
+          5343 ms  off    (window expired -- reverted)
+          7312 ms  on     (the confirming advertisement finally arrived)
+```
+
+The write always worked. The receiver simply gave up before the device could
+answer, then corrected itself two seconds later — which reads to a user as an
+actuator that refuses commands and then obeys anyway.
+
+**Why the tests missed it.** They mock the transport, so a write "completes"
+instantly and the two start times coincide. Only a real radio separates them:
+a host with one Bluetooth adapter cannot scan while it is connected, so several
+seconds pass between the click and the first moment a confirmation could even be
+observed.
+
+**The fix.** The coordinator now reports when a queued write has actually been
+delivered, and the entity opens its window then. A write that fails outright
+reverts immediately rather than waiting out a window for an answer that cannot
+come.
+
+**Result.** Three consecutive toggles from the Home Assistant UI, each settling
+in under a second with no spurious transition, and the device's advertising
+independently confirmed as `4000cf01641e01ff04` — light object `1E 01`.
+
+**Consequence for the spec.** None: §6 already says the window covers the
+device's refresh. This was an implementation reading of it, and the diagram
+above is worth keeping for whoever implements the next receiver.

@@ -17,6 +17,7 @@ import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.bthome_writable.const import DOMAIN
+from custom_components.bthome_writable.coordinator import WriteFailed
 
 from .conftest import DEFAULT_ADDRESS, service_info, with_light
 
@@ -298,3 +299,79 @@ async def test_the_confirmation_window_follows_the_advertising_interval(
     await hass.async_block_till_done()
 
     assert coordinator.confirm_window == pytest.approx(40.0, abs=2.0)
+
+
+async def test_a_write_that_never_reaches_the_device_reverts_at_once(
+    hass: HomeAssistant, radio, caplog
+) -> None:
+    """No point waiting out the confirmation window for a write that failed.
+
+    The window measures how long the device takes to refresh its advertising;
+    if the write never arrived there is nothing to wait for, and leaving the
+    entity showing a value that was never sent is the worst of both.
+    """
+    await setup_device(hass, radio, "espruino-single-light")
+
+    async def _fails(self, changes):
+        raise WriteFailed("no adapter could reach it")
+
+    with (
+        patch(
+            "custom_components.bthome_writable.coordinator.WRITE_DEBOUNCE",
+            FAST_DEBOUNCE,
+        ),
+        patch(
+            "custom_components.bthome_writable.coordinator."
+            "BTHomeWritableCoordinator._write_now",
+            _fails,
+        ),
+    ):
+        await hass.services.async_call(
+            "switch",
+            "turn_off",
+            {"entity_id": "switch.espruino_light_light"},
+            blocking=True,
+        )
+        await settle(hass)
+
+    assert hass.states.get("switch.espruino_light_light").state == STATE_ON
+    assert "did not reach the device" in caplog.text
+
+
+async def test_the_confirmation_window_opens_when_the_write_lands(
+    hass: HomeAssistant, radio, mock_write
+) -> None:
+    """The window must start when the device has been told, not when queued.
+
+    Measured on hardware: with the window opened at queue time, the debounce,
+    the connection setup and the disconnect were all inside it. On a host with
+    one Bluetooth adapter -- which cannot scan while connected -- they ate most
+    of a five-second window before the device could possibly be confirmed, and
+    the entity visibly bounced: on, off, then on again.
+    """
+    entry = await setup_device(hass, radio, "espruino-single-light")
+    coordinator = entry.runtime_data
+
+    events: list[str] = []
+    coordinator.async_add_write_listener(
+        lambda positions, error: events.append(f"delivered:{sorted(positions)}")
+    )
+
+    with patch(
+        "custom_components.bthome_writable.coordinator.WRITE_DEBOUNCE", FAST_DEBOUNCE
+    ):
+        await hass.services.async_call(
+            "switch",
+            "turn_off",
+            {"entity_id": "switch.espruino_light_light"},
+            blocking=True,
+        )
+        # The service call has returned and the entity already shows the new
+        # value -- but the write is still only queued, so nothing was delivered.
+        assert events == []
+        assert hass.states.get("switch.espruino_light_light").state == STATE_OFF
+
+        await settle(hass)
+
+    assert events == ["delivered:[2]"]
+    assert [payload.hex() for payload in mock_write] == ["1e00"]

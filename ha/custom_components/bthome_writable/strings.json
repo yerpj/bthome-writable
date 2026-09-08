@@ -5,13 +5,20 @@
       "confirm": {
         "title": "Set up {name}",
         "description": "{name} ({address}) declares {count} writable object(s). Home Assistant will create entities for them alongside the sensors it already reads from this device."
+      },
+      "user": {
+        "title": "Add a writable BTHome device",
+        "description": "These devices are on the air and declare writable objects. Pick the one to set up.",
+        "data": {
+          "address": "Device"
+        }
       }
     },
     "abort": {
       "already_configured": "This device is already configured.",
       "not_supported": "This is an ordinary BTHome device: it does not declare any of its objects as writable, so there is nothing for this integration to do. Its sensors are handled by the BTHome integration.",
       "nothing_writable": "This device carries a writability declaration, but it marks no usable object.",
-      "no_devices_found": "Writable BTHome devices announce themselves. If yours has not appeared, Home Assistant cannot currently receive its advertising — check that it is in range of an adapter or a Bluetooth proxy."
+      "no_devices_found": "No writable BTHome device is currently within range. These devices announce themselves, so if yours is powered and nearby it will appear on its own — check that it is in range of a Bluetooth adapter or proxy."
     }
   }
 }
