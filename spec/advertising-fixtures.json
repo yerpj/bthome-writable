@@ -199,6 +199,154 @@
       ]
     },
     {
+      "name": "espruino-single-light",
+      "description": "PROTOCOL.md \u00a78.3: \u00a78.1's device as the Espruino module emits it, with the packet-id object at position 0.",
+      "valid": true,
+      "device_info_byte": "40",
+      "service_data": "40000901611e01ff04",
+      "service_data_length": 9,
+      "objects": [
+        {
+          "object_id": "00",
+          "value": "09",
+          "name": "packet_id",
+          "position": 0
+        },
+        {
+          "object_id": "01",
+          "value": "61",
+          "name": "battery",
+          "position": 1
+        },
+        {
+          "object_id": "1e",
+          "value": "01",
+          "name": "light",
+          "position": 2
+        },
+        {
+          "object_id": "ff",
+          "value": "04",
+          "name": "declaration",
+          "position": 3
+        }
+      ],
+      "declaration": {
+        "bitmask": 4,
+        "bitmask_hex": "04",
+        "writable_positions": [
+          2
+        ],
+        "is_last_element": true
+      },
+      "expected_sensors": {
+        "packet_id": 9,
+        "battery": 97,
+        "light": true
+      },
+      "writes": [
+        {
+          "name": "light-off",
+          "description": "Identical to \u00a78.1's write: only writable objects travel.",
+          "objects": [
+            {
+              "object_id": "1e",
+              "value": "00",
+              "name": "light"
+            }
+          ],
+          "payload": "1e00"
+        }
+      ]
+    },
+    {
+      "name": "espruino-multi-instance",
+      "description": "The multi-instance device as the Espruino module emits it. Three light instances keep their declared order through the packet's ascending-object-id sort, which must therefore be stable.",
+      "valid": true,
+      "device_info_byte": "40",
+      "service_data": "40000a01611e011e001e01ff1c",
+      "service_data_length": 13,
+      "objects": [
+        {
+          "object_id": "00",
+          "value": "0a",
+          "name": "packet_id",
+          "position": 0
+        },
+        {
+          "object_id": "01",
+          "value": "61",
+          "name": "battery",
+          "position": 1
+        },
+        {
+          "object_id": "1e",
+          "value": "01",
+          "name": "light",
+          "position": 2
+        },
+        {
+          "object_id": "1e",
+          "value": "00",
+          "name": "light",
+          "position": 3
+        },
+        {
+          "object_id": "1e",
+          "value": "01",
+          "name": "light",
+          "position": 4
+        },
+        {
+          "object_id": "ff",
+          "value": "1c",
+          "name": "declaration",
+          "position": 5
+        }
+      ],
+      "declaration": {
+        "bitmask": 28,
+        "bitmask_hex": "1c",
+        "writable_positions": [
+          2,
+          3,
+          4
+        ],
+        "is_last_element": true
+      },
+      "expected_sensors": {
+        "packet_id": 10,
+        "battery": 97,
+        "light_1": true,
+        "light_2": false,
+        "light_3": true
+      },
+      "writes": [
+        {
+          "name": "second-light-off",
+          "description": "Positions address the instances; no per-instance ID exists.",
+          "objects": [
+            {
+              "object_id": "1e",
+              "value": "01",
+              "name": "light"
+            },
+            {
+              "object_id": "1e",
+              "value": "00",
+              "name": "light"
+            },
+            {
+              "object_id": "1e",
+              "value": "01",
+              "name": "light"
+            }
+          ],
+          "payload": "1e011e001e01"
+        }
+      ]
+    },
+    {
       "name": "write-only-display",
       "description": "A device whose only writable object is a write-only text: it advertises the placeholder and never the written value (\u00a73).",
       "valid": true,

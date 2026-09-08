@@ -139,6 +139,7 @@ def write(name: str, description: str, objects: list[dict[str, Any]]) -> dict[st
 
 BATTERY = lambda pct: obj(0x01, bytes([pct]), "battery")  # noqa: E731
 LIGHT = lambda on: obj(0x1E, bytes([1 if on else 0]), "light")  # noqa: E731
+PACKET_ID = lambda n: obj(0x00, bytes([n]), "packet_id")  # noqa: E731
 TEXT_EMPTY = obj(0x53, bytes([0]), "text", write_only=True)
 TEXT_NOOP = obj(0x53, bytes([0]), "text", note="length 0 = no-op (§4.3)")
 
@@ -195,6 +196,53 @@ def build_fixtures() -> list[dict[str, Any]]:
                         obj(0x53, bytes([5]) + b"hello", "text"),
                     ],
                 ),
+            ],
+        )
+    )
+
+    # The two fixtures a real Espruino device produces: same devices as above,
+    # but with BTHome's packet-id object at position 0, which shifts every
+    # bitmask bit by one (§2.2, §8.3). The reference module must reproduce these
+    # byte for byte.
+    fixtures.append(
+        fixture(
+            "espruino-single-light",
+            "PROTOCOL.md §8.3: §8.1's device as the Espruino module emits it, "
+            "with the packet-id object at position 0.",
+            [PACKET_ID(9), BATTERY(97), LIGHT(True)],
+            writable_positions=[2],
+            expected_sensors={"packet_id": 9, "battery": 97, "light": True},
+            writes=[
+                write(
+                    "light-off",
+                    "Identical to §8.1's write: only writable objects travel.",
+                    [LIGHT(False)],
+                )
+            ],
+        )
+    )
+
+    fixtures.append(
+        fixture(
+            "espruino-multi-instance",
+            "The multi-instance device as the Espruino module emits it. Three "
+            "light instances keep their declared order through the packet's "
+            "ascending-object-id sort, which must therefore be stable.",
+            [PACKET_ID(10), BATTERY(97), LIGHT(True), LIGHT(False), LIGHT(True)],
+            writable_positions=[2, 3, 4],
+            expected_sensors={
+                "packet_id": 10,
+                "battery": 97,
+                "light_1": True,
+                "light_2": False,
+                "light_3": True,
+            },
+            writes=[
+                write(
+                    "second-light-off",
+                    "Positions address the instances; no per-instance ID exists.",
+                    [LIGHT(True), LIGHT(False), LIGHT(True)],
+                )
             ],
         )
     )

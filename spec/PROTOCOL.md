@@ -76,6 +76,13 @@ The declaration is one BTHome object:
 - A bitmask of `0x00` is legal and means "nothing writable"; a device SHOULD then
   omit the declaration entirely.
 
+> **Positions count every object in the packet, including BTHome's own.** A
+> device that emits the packet-id object (`0x00`) — as most do, and as the
+> Espruino BTHome module always does — puts it at **position 0**, so its first
+> sensor is at position 1 and every bitmask bit shifts by one. This is
+> well-defined but easy to get wrong when reading the worked examples of §8,
+> which omit the packet id for brevity. §8.4 shows the same device both ways.
+
 **The declaration MUST be the last element of the BTHome service data.** This is
 normative, not stylistic: the reference BTHome parser stops at the first object
 ID it does not recognise, so any object placed *after* the declaration is
@@ -389,7 +396,26 @@ Turning off only the second light, leaving the display untouched:
 +-------------------- unchanged, resent from the last advertisement
 ```
 
-### 8.3 Rotation
+### 8.3 The same device with a packet-id object
+
+What §8.1's device actually broadcasts once it emits BTHome's packet-id object,
+which is what the Espruino reference implementation does:
+
+```
+40 00 09 01 61 1E 01 FF 04
+|  |     |     |     |
+|  |     |     |     +-- declaration: bitmask 0b00000100 -> position 2
+|  |     |     +-------- position 2: 0x1E light = on
+|  |     +-------------- position 1: 0x01 battery = 97 %
+|  +-------------------- position 0: 0x00 packet id = 9
++----------------------- device-information byte
+```
+
+Same device, same writable object, different bitmask — `0x04` rather than
+`0x02` — because the packet id occupies position 0. The write itself is
+unchanged (`1E 00`): §4.2 carries only the writable objects.
+
+### 8.4 Rotation
 
 A weather station advertising temperature and humidity in one payload and
 pressure and illuminance in another MAY rotate them freely, provided the payload

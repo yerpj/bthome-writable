@@ -13,7 +13,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 
-const codec = require("../codec.js");
+const bw = require("../BTHomeWritable.js");
 
 const DOCUMENT = JSON.parse(
   fs.readFileSync(
@@ -52,7 +52,7 @@ function layoutFor(fixture) {
 }
 
 test("the budget the codec enforces is the one the fixtures were built to", () => {
-  assert.equal(codec.SERVICE_DATA_BUDGET, DOCUMENT.budget.service_data_budget);
+  assert.equal(bw.SERVICE_DATA_BUDGET, DOCUMENT.budget.service_data_budget);
 });
 
 for (const fixture of FIXTURES) {
@@ -66,7 +66,7 @@ for (const fixture of FIXTURES) {
       ? fixture.declaration.writable_positions
       : null;
 
-    const built = codec.buildServiceData(
+    const built = bw.buildServiceData(
       parseInt(fixture.device_info_byte, 16),
       objects,
       fixture.declaration ? positions : null
@@ -76,7 +76,7 @@ for (const fixture of FIXTURES) {
 
   for (const entry of fixture.writes || []) {
     test(`${fixture.name} / ${entry.name}: the device accepts the write`, () => {
-      const parsed = codec.parseWrite(hexToBytes(entry.payload), layoutFor(fixture));
+      const parsed = bw.parseWrite(hexToBytes(entry.payload), layoutFor(fixture));
 
       // Every writable object came back, in order, with its ID intact.
       assert.equal(parsed.length, entry.objects.length);
@@ -91,7 +91,7 @@ for (const fixture of FIXTURES) {
 test("declaration-not-last is rejected when built through the codec", () => {
   /* The codec cannot produce it at all: it always appends the declaration.
    * This test states that as an invariant rather than leaving it implicit. */
-  const built = codec.buildServiceData(
+  const built = bw.buildServiceData(
     0x40,
     [
       { id: 0x01, value: [97] },
@@ -99,7 +99,7 @@ test("declaration-not-last is rejected when built through the codec", () => {
     ],
     [1]
   );
-  assert.equal(built[built.length - 2], codec.DECLARATION_OBJECT_ID);
+  assert.equal(built[built.length - 2], bw.DECLARATION_OBJECT_ID);
 });
 
 test("capacity-overflow is refused rather than truncated", () => {
@@ -110,14 +110,14 @@ test("capacity-overflow is refused rather than truncated", () => {
 
   assert.throws(
     () =>
-      codec.buildServiceData(0x40, objects, fixture.declaration.writable_positions),
+      bw.buildServiceData(0x40, objects, fixture.declaration.writable_positions),
     (error) => error.code === "capacity_exceeded"
   );
 });
 
 test("a bitmask addressing a missing object is refused at build time", () => {
   assert.throws(
-    () => codec.buildServiceData(0x40, [{ id: 0x01, value: [97] }], [5]),
+    () => bw.buildServiceData(0x40, [{ id: 0x01, value: [97] }], [5]),
     (error) => error.code === "position_addresses_missing_object"
   );
 });
@@ -134,7 +134,7 @@ test("a stale layout is caught by the object-ID check", () => {
   staleLayout[0] = { id: 0x53, variable: true };
 
   assert.throws(
-    () => codec.parseWrite(hexToBytes(entry.payload), staleLayout),
+    () => bw.parseWrite(hexToBytes(entry.payload), staleLayout),
     (error) => error.code === "objectid_mismatch"
   );
 });
@@ -145,7 +145,7 @@ test("a truncated write is rejected", () => {
   const truncated = hexToBytes(entry.payload).slice(0, -2);
 
   assert.throws(
-    () => codec.parseWrite(truncated, layoutFor(fixture)),
+    () => bw.parseWrite(truncated, layoutFor(fixture)),
     (error) => error.code === "truncated"
   );
 });
@@ -158,7 +158,7 @@ test("trailing bytes are rejected", () => {
   const extended = hexToBytes(entry.payload).concat([0xff, 0x02]);
 
   assert.throws(
-    () => codec.parseWrite(extended, layoutFor(fixture)),
+    () => bw.parseWrite(extended, layoutFor(fixture)),
     (error) => error.code === "trailing_bytes"
   );
 });
@@ -167,11 +167,11 @@ test("the length-0 no-op is recognised on a text object", () => {
   const fixture = FIXTURES.find((f) => f.name === "write-only-display");
   const noop = fixture.writes.find((w) => w.name === "display-noop");
   const layout = layoutFor(fixture);
-  const parsed = codec.parseWrite(hexToBytes(noop.payload), layout);
+  const parsed = bw.parseWrite(hexToBytes(noop.payload), layout);
 
-  assert.equal(codec.isNoOp(parsed[0], layout[0]), true);
+  assert.equal(bw.isNoOp(parsed[0], layout[0]), true);
 
   const real = fixture.writes.find((w) => w.name === "display-hello");
-  const parsedReal = codec.parseWrite(hexToBytes(real.payload), layout);
-  assert.equal(codec.isNoOp(parsedReal[0], layout[0]), false);
+  const parsedReal = bw.parseWrite(hexToBytes(real.payload), layout);
+  assert.equal(bw.isNoOp(parsedReal[0], layout[0]), false);
 });

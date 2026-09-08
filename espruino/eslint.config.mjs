@@ -3,7 +3,7 @@
 // no async. Tests run under Node, config files are ESM.
 export default [
   {
-    files: ["*.js"],
+    files: ["*.js", "examples/**/*.js"],
     languageOptions: {
       ecmaVersion: 2015,
       sourceType: "script",
@@ -20,6 +20,8 @@ export default [
         clearInterval: "readonly",
         setTimeout: "readonly",
         digitalWrite: "readonly",
+        LED1: "readonly",
+        g: "readonly",
       },
     },
     rules: {

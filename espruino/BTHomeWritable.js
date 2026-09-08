@@ -1,0 +1,564 @@
+/* bthome-writable — Espruino module.
+ *
+ * Declares some of a device's BTHome objects as writable, and accepts writes to
+ * them over one GATT characteristic. See spec/PROTOCOL.md.
+ *
+ *   var bw = require("bthome-writable");
+ *   bw.setup({
+ *     advertise: [
+ *       { type: "battery", get: () => E.getBattery() },
+ *       { type: "light",   get: () => light.on,
+ *                          set: v => { light.on = v; digitalWrite(D2, v); } },
+ *       { type: "text",    writeOnly: true, set: t => g.drawString(t, 0, 0) },
+ *     ],
+ *     interval: 2000
+ *   });
+ *
+ * An entry is writable iff it has a `set`. Everything else is derived.
+ *
+ * The file is in two halves, separated by a marked divider. Everything above it
+ * is pure JavaScript -- no NRF, no hardware, no I/O -- and runs unchanged under
+ * Node, which is how the protocol logic is unit-tested without a device.
+ * Everything below owns the radio.
+ *
+ * One file rather than two, because Espruino modules are distributed and
+ * required one file at a time.
+ */
+
+// Object ID carrying the writability declaration. MUST be the last element of
+// the service data -- see spec/PROTOCOL.md §2.2 and spec/decisions.md D-005.
+var DECLARATION_OBJECT_ID = 0xFF;
+
+// A one-byte bitmask addresses at most eight writable objects (§2.4).
+var MAX_WRITABLE = 8;
+
+// BTHome v2, unencrypted, not trigger-based. Encryption arrives in Phase 3.
+var DEVICE_INFO_PLAIN = 0x40;
+
+// Advertising budget arithmetic (§2.3). A legacy advertising payload is 31
+// bytes, but the Flags AD structure and the Service Data header come out of it
+// before any BTHome object does.
+var ADV_PAYLOAD_BYTES = 31;
+var AD_FLAGS_BYTES = 3;
+var AD_SERVICE_DATA_HEADER_BYTES = 4;
+var SERVICE_DATA_BUDGET =
+  ADV_PAYLOAD_BYTES - AD_FLAGS_BYTES - AD_SERVICE_DATA_HEADER_BYTES;
+
+/* Errors carry a `code` so callers can branch without matching on prose.
+ * The device rejects the whole write on any of them (§4.2). */
+function codecError(code, message) {
+  var error = new Error(message);
+  error.code = code;
+  return error;
+}
+
+/* Build the declaration element for a list of packet positions.
+ * Bit n = the n-th BTHome object of this same packet is writable, bit 0 being
+ * the first object. Returns [0xFF, bitmask]. */
+function encodeDeclaration(positions) {
+  var mask = 0;
+  for (var i = 0; i < positions.length; i++) {
+    var pos = positions[i];
+    if (pos < 0 || pos >= MAX_WRITABLE) {
+      throw codecError(
+        "position_out_of_range",
+        "writable position " + pos + " out of range (0.." + (MAX_WRITABLE - 1) + ")"
+      );
+    }
+    mask |= 1 << pos;
+  }
+  return [DECLARATION_OBJECT_ID, mask];
+}
+
+/* Inverse of encodeDeclaration: bitmask byte -> ascending packet positions. */
+function decodeDeclaration(bitmask) {
+  var positions = [];
+  for (var i = 0; i < MAX_WRITABLE; i++) {
+    if (bitmask & (1 << i)) positions.push(i);
+  }
+  return positions;
+}
+
+/* Assemble the BTHome service data for the declaration packet.
+ *
+ *   deviceInfo          the BTHome device-information byte (0x40 unencrypted)
+ *   objects             [{id: 0x01, value: [0x61]}, ...] in packet order
+ *   writablePositions   indices into `objects`, or null for no declaration
+ *
+ * Returns a plain byte array. Throws rather than truncate (§2.3): a device that
+ * silently drops an object would advertise a layout its own write parser does
+ * not expect. */
+function buildServiceData(deviceInfo, objects, writablePositions) {
+  var bytes = [deviceInfo];
+  var i;
+
+  for (i = 0; i < objects.length; i++) {
+    bytes.push(objects[i].id);
+    var value = objects[i].value;
+    for (var j = 0; j < value.length; j++) bytes.push(value[j]);
+  }
+
+  if (writablePositions) {
+    for (i = 0; i < writablePositions.length; i++) {
+      if (writablePositions[i] >= objects.length) {
+        throw codecError(
+          "position_addresses_missing_object",
+          "writable position " +
+            writablePositions[i] +
+            " addresses no object (packet holds " +
+            objects.length +
+            ")"
+        );
+      }
+    }
+    var declaration = encodeDeclaration(writablePositions);
+    bytes.push(declaration[0]);
+    bytes.push(declaration[1]);
+  }
+
+  if (bytes.length > SERVICE_DATA_BUDGET) {
+    throw codecError(
+      "capacity_exceeded",
+      "BTHome service data needs " +
+        bytes.length +
+        " bytes but only " +
+        SERVICE_DATA_BUDGET +
+        " are available in an advertising payload"
+    );
+  }
+  return bytes;
+}
+
+/* Parse a write payload against the layout this device advertised.
+ *
+ *   payload   plain byte array, the plaintext of §4.2
+ *   layout    [{id: 0x1E, length: 1}, {id: 0x53, variable: true}, ...] --
+ *             the writable objects, in packet order
+ *
+ * Returns [{id, value: [...]}] in the same order. Throws on any deviation: a
+ * write is a closed format, and strictness here is a safety property (§4.2). */
+function parseWrite(payload, layout) {
+  var values = [];
+  var offset = 0;
+
+  for (var i = 0; i < layout.length; i++) {
+    var expected = layout[i];
+
+    if (offset >= payload.length) {
+      throw codecError(
+        "truncated",
+        "write ended after " + i + " objects, expected " + layout.length
+      );
+    }
+
+    // The object ID is redundant given the position, and that redundancy is
+    // the point: it catches a receiver writing against a stale layout.
+    if (payload[offset] !== expected.id) {
+      throw codecError(
+        "objectid_mismatch",
+        "object ID 0x" +
+          payload[offset].toString(16) +
+          " at position " +
+          i +
+          ", expected 0x" +
+          expected.id.toString(16)
+      );
+    }
+    offset++;
+
+    var length;
+    if (expected.variable) {
+      if (offset >= payload.length) {
+        throw codecError(
+          "truncated",
+          "missing length byte for variable-length object at position " + i
+        );
+      }
+      length = payload[offset];
+      offset++;
+    } else {
+      length = expected.length;
+    }
+
+    if (offset + length > payload.length) {
+      throw codecError(
+        "truncated",
+        "object at position " + i + " needs " + length + " value bytes"
+      );
+    }
+
+    var value = [];
+    if (expected.variable) value.push(length);
+    for (var j = 0; j < length; j++) value.push(payload[offset + j]);
+    offset += length;
+
+    values.push({ id: expected.id, value: value });
+  }
+
+  if (offset !== payload.length) {
+    throw codecError(
+      "trailing_bytes",
+      payload.length - offset + " unexpected trailing bytes"
+    );
+  }
+  return values;
+}
+
+/* True when a parsed value is the "do not modify" no-op of §4.3.
+ * Variable-length objects use length 0; event-class objects use BTHome's own
+ * "none" event value, 0x00. */
+function isNoOp(entry, layoutEntry) {
+  if (layoutEntry.variable) return entry.value.length > 0 && entry.value[0] === 0;
+  if (layoutEntry.event) return entry.value.length > 0 && entry.value[0] === 0;
+  return false;
+}
+
+// BTHome's packet-id object. The upstream module emits it first and so do we:
+// without it, bthome-ble treats every advertisement as a duplicate of the last
+// and never sees a write take effect.
+var PACKET_ID_OBJECT_ID = 0x00;
+
+// The only variable-length object types in BTHome. Everything else has a fixed
+// width determined by its object ID.
+var VARIABLE_TYPES = { text: true, raw: true };
+
+/* Stable insertion sort by object ID.
+ *
+ * BTHome wants object IDs in ascending order, and `bthome-ble` warns loudly
+ * when they are not. But equal IDs are exactly the multi-instance case (§2.1),
+ * where the declared order IS the addressing scheme -- so the sort must be
+ * stable. Espruino's Array.prototype.sort makes no stability guarantee, hence
+ * this explicit one rather than a one-liner. */
+function stableSortByObjectId(items) {
+  var sorted = [];
+  for (var i = 0; i < items.length; i++) {
+    var j = sorted.length;
+    while (j > 0 && sorted[j - 1].id > items[i].id) {
+      sorted[j] = sorted[j - 1];
+      j--;
+    }
+    sorted[j] = items[i];
+  }
+  return sorted;
+}
+
+/* Work out the packet layout once, at setup.
+ *
+ *   entries    the user's declarative list: {type, get, set, writeOnly, ...}
+ *   encodeOne  function(entry, value) -> [objectId, ...valueBytes], supplied by
+ *              the Espruino glue, which wraps the upstream BTHome module so its
+ *              encoding tables stay the single source of truth.
+ *
+ * Returns the plan the module keeps for its lifetime: which object sits at
+ * which position, which positions are writable, and the layout that the write
+ * parser checks incoming payloads against.
+ *
+ * Throws at setup rather than at write time: a device that discovers its
+ * packet does not fit while advertising is a device in the field. */
+function planPacket(entries, encodeOne) {
+  var items = [];
+  var i;
+
+  for (i = 0; i < entries.length; i++) {
+    var entry = entries[i];
+    var writable = typeof entry.set === "function";
+
+    if (entry.writeOnly && !writable) {
+      throw codecError(
+        "write_only_without_set",
+        'entry ' + i + ' ("' + entry.type + '") is writeOnly but has no set()'
+      );
+    }
+    if (!writable && typeof entry.get !== "function") {
+      throw codecError(
+        "entry_without_accessor",
+        "entry " + i + ' ("' + entry.type + '") has neither get() nor set()'
+      );
+    }
+
+    // Write-only objects advertise an empty placeholder and never their value
+    // (§3), so their sample is the empty value.
+    var sample = entry.writeOnly ? placeholderFor(entry) : entry.get();
+    var encoded = encodeOne(entry, sample);
+
+    items.push({
+      id: encoded[0],
+      value: encoded.slice(1),
+      variable: VARIABLE_TYPES[entry.type] === true,
+      entryIndex: i,
+      writable: writable,
+      writeOnly: entry.writeOnly === true,
+    });
+  }
+
+  var ordered = stableSortByObjectId(items);
+
+  // Position 0 is the packet-id object, which we always emit first.
+  var writablePositions = [];
+  var layout = [];
+  for (i = 0; i < ordered.length; i++) {
+    if (!ordered[i].writable) continue;
+    writablePositions.push(i + 1);
+    layout.push(
+      ordered[i].variable
+        ? { id: ordered[i].id, variable: true, entryIndex: ordered[i].entryIndex }
+        : {
+            id: ordered[i].id,
+            length: ordered[i].value.length,
+            entryIndex: ordered[i].entryIndex,
+          }
+    );
+  }
+
+  if (writablePositions.length > MAX_WRITABLE) {
+    throw codecError(
+      "too_many_writable",
+      writablePositions.length +
+        " writable objects, but a one-byte bitmask addresses at most " +
+        MAX_WRITABLE
+    );
+  }
+
+  var plan = {
+    ordered: ordered,
+    writablePositions: writablePositions,
+    layout: layout,
+  };
+
+  // Render once with a placeholder packet id: this is what enforces §2.3, and
+  // it must happen at setup, not on the first advertisement.
+  plan.serviceDataLength = renderServiceData(plan, 0, null).length;
+  return plan;
+}
+
+/* The empty value a write-only object advertises (§3). */
+function placeholderFor(entry) {
+  return VARIABLE_TYPES[entry.type] ? "" : 0;
+}
+
+/* Build the service data for one advertisement.
+ *
+ *   plan       from planPacket
+ *   packetId   0..255, incremented on every refresh
+ *   encodeOne  as in planPacket, or null to reuse the values captured at plan
+ *              time (used by the capacity check, where no device state exists)
+ *   entries    the user's list, needed to call get() -- omitted with encodeOne
+ *              null */
+function renderServiceData(plan, packetId, encodeOne, entries) {
+  var objects = [{ id: PACKET_ID_OBJECT_ID, value: [packetId & 255] }];
+
+  for (var i = 0; i < plan.ordered.length; i++) {
+    var item = plan.ordered[i];
+    if (encodeOne === null || item.writeOnly) {
+      objects.push({ id: item.id, value: item.value });
+      continue;
+    }
+    var entry = entries[item.entryIndex];
+    var encoded = encodeOne(entry, entry.get());
+    if (encoded[0] !== item.id) {
+      // get() returned something that encodes to a different object -- the
+      // packet layout would shift under the receiver's feet.
+      throw codecError(
+        "layout_drift",
+        "entry " +
+          item.entryIndex +
+          " now encodes as object 0x" +
+          encoded[0].toString(16) +
+          ", was 0x" +
+          item.id.toString(16)
+      );
+    }
+    objects.push({ id: item.id, value: encoded.slice(1) });
+  }
+
+  return buildServiceData(
+    DEVICE_INFO_PLAIN,
+    objects,
+    plan.writablePositions.length ? plan.writablePositions : null
+  );
+}
+
+/* ==========================================================================
+ * Everything above this line is pure JavaScript: no NRF, no hardware, no I/O.
+ * It runs unchanged under Node for the unit tests. Everything below owns the
+ * radio.
+ * ========================================================================== */
+
+// PROTOCOL.md §4.1. Provisional until the first release (decisions.md D-001).
+var SERVICE_UUID = "2FAA47BC-3B0B-4B1A-9E2A-B4C2952E62F2";
+var WRITE_CHARACTERISTIC_UUID = "639333F3-F21F-4558-9D85-06FCAC3436C2";
+
+var state = null;
+
+/* Encode one object by delegating to the upstream BTHome module.
+ *
+ * Its encoding tables are local to getAdvertisement() and not exported, so the
+ * only way to reuse them -- rather than duplicate them, which would leave two
+ * tables to drift apart -- is to ask it to encode a one-object advertisement
+ * and take the object back out.
+ *
+ * getAdvertisement returns { 0xFCD2: [deviceInfo, 0x00, packetId, ...object] },
+ * so the object starts at index 3. It also bumps BTHome.packetId as a side
+ * effect, which we undo: this module owns the packet id, because it must
+ * increment on every refresh including the one that follows a write. */
+function encodeOne(entry, value) {
+  // Required lazily so this file loads under Node for the unit tests, where
+  // the upstream module does not exist and the pure half is all that runs.
+  var BTHome = require("BTHome");
+  var before = BTHome.packetId;
+  var advertisement = BTHome.getAdvertisement([{ type: entry.type, v: value }]);
+  BTHome.packetId = before;
+  return advertisement[0xfcd2].slice(3);
+}
+
+/* Rebuild and publish the advertising data. Called on a timer, and immediately
+ * after a write -- §6.2 requires the refresh not wait for the next interval,
+ * which is what lets the receiver confirm within one advertising period. */
+function refreshAdvertising() {
+  state.packetId = (state.packetId + 1) & 255;
+  var serviceData = renderServiceData(
+    state.plan,
+    state.packetId,
+    encodeOne,
+    state.entries
+  );
+
+  NRF.setAdvertising(
+    { 0xfcd2: serviceData },
+    {
+      interval: state.interval,
+      connectable: true,
+      discoverable: true,
+      // §7: a resolvable private address would break the receiver's device
+      // identity, so the static address the nRF52 uses by default is required.
+      // Nothing to set here -- this comment marks that it is deliberate.
+    }
+  );
+}
+
+/* Apply an incoming write (§4.2).
+ *
+ * Rejection is silent on the wire: there is no acknowledgement channel, by
+ * design. A rejected write simply leaves the advertising unchanged, and the
+ * receiver reverts when its confirmation window expires (§6). */
+function handleWrite(payload) {
+  var values;
+  try {
+    values = parseWrite(payload, state.plan.layout);
+  } catch (error) {
+    // A malformed or desynchronised write. Nothing is applied: §4.2 requires
+    // the whole write to be rejected, not the parseable prefix of it.
+    if (state.onError) state.onError(error);
+    return false;
+  }
+
+  // Two passes: decode everything before applying anything, so a set() that
+  // throws halfway cannot leave the device in a half-written state.
+  var pending = [];
+  var i;
+  for (i = 0; i < values.length; i++) {
+    var layoutEntry = state.plan.layout[i];
+    if (isNoOp(values[i], layoutEntry)) continue;
+    pending.push({
+      entry: state.entries[layoutEntry.entryIndex],
+      value: decodeValue(values[i], layoutEntry),
+    });
+  }
+
+  for (i = 0; i < pending.length; i++) {
+    pending[i].entry.set(pending[i].value);
+  }
+
+  refreshAdvertising();
+  return true;
+}
+
+/* Turn the raw bytes of one written object back into a JS value.
+ *
+ * The MVP covers the on/off and text cases (T1.1); the full object-to-type
+ * table arrives with T2.1, at which point this grows a lookup rather than a
+ * chain of ifs. */
+function decodeValue(parsed, layoutEntry) {
+  if (layoutEntry.variable) {
+    // value = [length, ...bytes]
+    var text = "";
+    for (var i = 1; i < parsed.value.length; i++) {
+      text += String.fromCharCode(parsed.value[i]);
+    }
+    return text;
+  }
+  if (parsed.value.length === 1) return parsed.value[0] !== 0;
+  return parsed.value;
+}
+
+/* Set up advertising and the write characteristic.
+ *
+ * Throws before touching the radio if the configuration cannot work -- an
+ * over-budget packet or more than eight writable objects is a programming
+ * error, and a device that discovers it while deployed is a device in the
+ * field (§2.3). */
+function setup(options) {
+  var entries = options.advertise;
+
+  var plan = planPacket(entries, encodeOne);
+
+  state = {
+    entries: entries,
+    plan: plan,
+    packetId: 0,
+    interval: options.interval || 2000,
+    onError: options.onError || null,
+  };
+
+  if (plan.writablePositions.length) {
+    var characteristics = {};
+    characteristics[WRITE_CHARACTERISTIC_UUID] = {
+      writable: true,
+      maxLen: SERVICE_DATA_BUDGET * 2,
+      onWrite: function (event) {
+        var payload = [];
+        for (var i = 0; i < event.data.length; i++) payload.push(event.data[i]);
+        handleWrite(payload);
+      },
+    };
+    var services = {};
+    services[SERVICE_UUID] = characteristics;
+    NRF.setServices(services, { advertise: [SERVICE_UUID] });
+  }
+
+  refreshAdvertising();
+  return exports;
+}
+
+/* Re-read every value and re-advertise. Call it when a sensor changes and you
+ * do not want to wait for the next interval. */
+function update() {
+  refreshAdvertising();
+}
+
+/* --- Exports ------------------------------------------------------------- */
+
+exports.setup = setup;
+exports.update = update;
+exports.SERVICE_UUID = SERVICE_UUID;
+exports.WRITE_CHARACTERISTIC_UUID = WRITE_CHARACTERISTIC_UUID;
+
+/* The pure half, exported so the unit tests can drive it under plain Node.
+ * Nothing here touches NRF; nothing above the divider does either. */
+exports.DECLARATION_OBJECT_ID = DECLARATION_OBJECT_ID;
+exports.PACKET_ID_OBJECT_ID = PACKET_ID_OBJECT_ID;
+exports.DEVICE_INFO_PLAIN = DEVICE_INFO_PLAIN;
+exports.MAX_WRITABLE = MAX_WRITABLE;
+exports.SERVICE_DATA_BUDGET = SERVICE_DATA_BUDGET;
+exports.encodeDeclaration = encodeDeclaration;
+exports.decodeDeclaration = decodeDeclaration;
+exports.buildServiceData = buildServiceData;
+exports.parseWrite = parseWrite;
+exports.isNoOp = isNoOp;
+exports.stableSortByObjectId = stableSortByObjectId;
+exports.planPacket = planPacket;
+exports.renderServiceData = renderServiceData;
+exports.handleWrite = handleWrite;
+exports.plan = function () {
+  return state && state.plan;
+};
