@@ -1,3 +1,12 @@
 # Home Assistant integration test harness.
-# Pin to a release matching the HA version we target; bump deliberately.
-pytest-homeassistant-custom-component>=0.13.200
+#
+# Pinned, because the harness pins Home Assistant, which pins habluetooth and
+# cryptography -- so an unpinned install resolves differently on every machine
+# and the suite stops being reproducible. This is the version the tests are
+# written against; the integration itself is verified on much newer Home
+# Assistant releases against real hardware (decisions.md D-010, D-011).
+pytest-homeassistant-custom-component==0.13.205
+
+# Runtime dependencies from the integration's manifest.
+bthome-ble>=3.22.1
+bleak-retry-connector>=3.5.0

@@ -31,3 +31,9 @@ combine-as-imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tools/tests"]
+# `tools` is a plain directory, not a package, so pytest puts `tools/` on
+# sys.path rather than the repo root -- and a bare `pytest` (unlike
+# `python -m pytest`) does not add the working directory either. Without this,
+# `from tools import ...` fails on any machine that invokes pytest directly,
+# which is exactly what CI does.
+pythonpath = ["."]

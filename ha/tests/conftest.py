@@ -44,17 +44,14 @@ if sys.platform == "win32":  # pragma: no cover - platform-specific
 
 @pytest.fixture(autouse=True, scope="session")
 def _no_dbus_history():
-    """Windows only: the harness pretends to be Linux, D-Bus is not there.
+    """Keep the suite off the host's D-Bus entirely.
 
-    `mock_bluetooth_adapters` patches the adapter list to a fake Linux adapter,
+    `mock_bluetooth_adapters` patches the adapter list to a fake Linux adapter
     but not the advertisement history, so setting up the `bluetooth` component
-    reaches a real D-Bus call and the whole dependency chain fails to set up.
-    Home Assistant's own suite does not hit this because it runs on Linux.
+    reaches a real D-Bus call — which fails outright on Windows, and depends on
+    what the machine happens to have running everywhere else. Neither is
+    something a unit test should be asking about.
     """
-    if sys.platform != "win32":
-        yield
-        return
-
     from bluetooth_adapters.systems.linux import LinuxAdapters
 
     with patch.object(

@@ -28,7 +28,7 @@ jobs:
       - name: Ruff (format)
         run: ruff format --check .
       - name: Pytest
-        run: pytest -q
+        run: python -m pytest -q
 
   homeassistant:
     name: Home Assistant integration
@@ -42,10 +42,10 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r ha/requirements-test.txt bthome-ble bleak-retry-connector
+          pip install -r ha/requirements-test.txt
       - name: Pytest
         working-directory: ha
-        run: pytest -q
+        run: python -m pytest -q
 
   javascript:
     name: Espruino module (lint + tests)
