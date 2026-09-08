@@ -87,11 +87,31 @@ every assigned ID. Measured behaviour and method are recorded in
 ### 2.3 Capacity
 
 The declaration and all writable objects MUST fit, together with the rest of the
-declaration packet, in a single 31-byte BLE advertising payload. Devices MUST
+declaration packet, in a single legacy BLE advertising payload. Devices MUST
 enforce this at configuration time and fail loudly rather than truncate.
 
+A legacy advertising payload is 31 bytes, but BTHome objects do not get all of
+them. The usable budget is:
+
+```
+31   advertising payload
+ -3  Flags AD structure (02 01 06), for connectable undirected advertising
+ -4  Service Data AD header: length byte, type 0x16, 16-bit UUID 0xFCD2
+ --
+ 24  BTHome service data
+ -1  device-information byte
+ --
+ 23  bytes available for objects, declaration included
+```
+
+Devices advertising anything else in the same payload — a complete local name,
+for instance — have correspondingly less. Implementations SHOULD put such
+elements in the scan response rather than spend the declaration packet on them.
+
 This is not a practical restriction: writable objects are actuators, and devices
-have few of them. It is stated explicitly so implementations agree on the limit.
+have few of them. Eight writable one-byte objects plus the declaration come to
+18 bytes. It is stated explicitly so implementations agree on the limit, and the
+arithmetic is spelled out because "31 bytes" alone is not actionable.
 
 ### 2.4 Extension headroom
 

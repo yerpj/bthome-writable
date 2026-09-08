@@ -1,0 +1,764 @@
+{
+  "spec_version": "1.0-draft.1",
+  "generated_by": "tools/gen_advertising_fixtures.py",
+  "description": "Advertising fixtures for bthome-writable, consumed by both test suites. Service data is the full BTHome v2 payload including the device-information byte; write payloads follow PROTOCOL.md \u00a74.2.",
+  "budget": {
+    "advertising_payload_bytes": 31,
+    "ad_flags_bytes": 3,
+    "ad_service_data_header_bytes": 4,
+    "service_data_budget": 24,
+    "object_budget": 23,
+    "note": "The 31 bytes of a legacy advertising payload are not all available to BTHome objects: the Flags AD structure and the Service Data header come out first, and the device-information byte after that. See PROTOCOL.md \u00a72.3."
+  },
+  "fixtures": [
+    {
+      "name": "single-light",
+      "description": "PROTOCOL.md \u00a78.1: battery plus one writable light.",
+      "valid": true,
+      "device_info_byte": "40",
+      "service_data": "4001611e01ff02",
+      "service_data_length": 7,
+      "objects": [
+        {
+          "object_id": "01",
+          "value": "61",
+          "name": "battery",
+          "position": 0
+        },
+        {
+          "object_id": "1e",
+          "value": "01",
+          "name": "light",
+          "position": 1
+        },
+        {
+          "object_id": "ff",
+          "value": "02",
+          "name": "declaration",
+          "position": 2
+        }
+      ],
+      "declaration": {
+        "bitmask": 2,
+        "bitmask_hex": "02",
+        "writable_positions": [
+          1
+        ],
+        "is_last_element": true
+      },
+      "expected_sensors": {
+        "battery": 97,
+        "light": true
+      },
+      "writes": [
+        {
+          "name": "light-off",
+          "description": "The only writable object, set to off.",
+          "objects": [
+            {
+              "object_id": "1e",
+              "value": "00",
+              "name": "light"
+            }
+          ],
+          "payload": "1e00"
+        },
+        {
+          "name": "light-on",
+          "description": "And back on.",
+          "objects": [
+            {
+              "object_id": "1e",
+              "value": "01",
+              "name": "light"
+            }
+          ],
+          "payload": "1e01"
+        }
+      ]
+    },
+    {
+      "name": "multi-instance-and-display",
+      "description": "PROTOCOL.md \u00a78.2: three light instances and a write-only display. Positions disambiguate the instances; no per-instance ID is needed.",
+      "valid": true,
+      "device_info_byte": "40",
+      "service_data": "4001611e011e001e015300ff1e",
+      "service_data_length": 13,
+      "objects": [
+        {
+          "object_id": "01",
+          "value": "61",
+          "name": "battery",
+          "position": 0
+        },
+        {
+          "object_id": "1e",
+          "value": "01",
+          "name": "light",
+          "position": 1
+        },
+        {
+          "object_id": "1e",
+          "value": "00",
+          "name": "light",
+          "position": 2
+        },
+        {
+          "object_id": "1e",
+          "value": "01",
+          "name": "light",
+          "position": 3
+        },
+        {
+          "object_id": "53",
+          "value": "00",
+          "name": "text",
+          "write_only": true,
+          "position": 4
+        },
+        {
+          "object_id": "ff",
+          "value": "1e",
+          "name": "declaration",
+          "position": 5
+        }
+      ],
+      "declaration": {
+        "bitmask": 30,
+        "bitmask_hex": "1e",
+        "writable_positions": [
+          1,
+          2,
+          3,
+          4
+        ],
+        "is_last_element": true
+      },
+      "expected_sensors": {
+        "battery": 97,
+        "light_1": true,
+        "light_2": false,
+        "light_3": true
+      },
+      "writes": [
+        {
+          "name": "second-light-off",
+          "description": "Change one instance. The other two are resent from the last advertisement, and the display carries the no-op.",
+          "objects": [
+            {
+              "object_id": "1e",
+              "value": "01",
+              "name": "light"
+            },
+            {
+              "object_id": "1e",
+              "value": "00",
+              "name": "light"
+            },
+            {
+              "object_id": "1e",
+              "value": "01",
+              "name": "light"
+            },
+            {
+              "object_id": "53",
+              "value": "00",
+              "name": "text",
+              "note": "length 0 = no-op (\u00a74.3)"
+            }
+          ],
+          "payload": "1e011e001e015300"
+        },
+        {
+          "name": "display-hello",
+          "description": "Write text without touching any light.",
+          "objects": [
+            {
+              "object_id": "1e",
+              "value": "01",
+              "name": "light"
+            },
+            {
+              "object_id": "1e",
+              "value": "00",
+              "name": "light"
+            },
+            {
+              "object_id": "1e",
+              "value": "01",
+              "name": "light"
+            },
+            {
+              "object_id": "53",
+              "value": "0568656c6c6f",
+              "name": "text"
+            }
+          ],
+          "payload": "1e011e001e01530568656c6c6f"
+        }
+      ]
+    },
+    {
+      "name": "write-only-display",
+      "description": "A device whose only writable object is a write-only text: it advertises the placeholder and never the written value (\u00a73).",
+      "valid": true,
+      "device_info_byte": "40",
+      "service_data": "4001585300ff02",
+      "service_data_length": 7,
+      "objects": [
+        {
+          "object_id": "01",
+          "value": "58",
+          "name": "battery",
+          "position": 0
+        },
+        {
+          "object_id": "53",
+          "value": "00",
+          "name": "text",
+          "write_only": true,
+          "position": 1
+        },
+        {
+          "object_id": "ff",
+          "value": "02",
+          "name": "declaration",
+          "position": 2
+        }
+      ],
+      "declaration": {
+        "bitmask": 2,
+        "bitmask_hex": "02",
+        "writable_positions": [
+          1
+        ],
+        "is_last_element": true
+      },
+      "expected_sensors": {
+        "battery": 88
+      },
+      "writes": [
+        {
+          "name": "display-hello",
+          "description": "Fire-and-forget: the advertising will not change.",
+          "objects": [
+            {
+              "object_id": "53",
+              "value": "0568656c6c6f",
+              "name": "text"
+            }
+          ],
+          "payload": "530568656c6c6f"
+        },
+        {
+          "name": "display-noop",
+          "description": "Length 0: do not modify the display.",
+          "objects": [
+            {
+              "object_id": "53",
+              "value": "00",
+              "name": "text",
+              "note": "length 0 = no-op (\u00a74.3)"
+            }
+          ],
+          "payload": "5300"
+        }
+      ]
+    },
+    {
+      "name": "rotation-declaration-packet",
+      "description": "A rotating device, packet 1 of 2. The same-packet rule (\u00a72.1) requires the declaration and every writable object to be here.",
+      "valid": true,
+      "device_info_byte": "40",
+      "service_data": "40014a1e00ff02",
+      "service_data_length": 7,
+      "objects": [
+        {
+          "object_id": "01",
+          "value": "4a",
+          "name": "battery",
+          "position": 0
+        },
+        {
+          "object_id": "1e",
+          "value": "00",
+          "name": "light",
+          "position": 1
+        },
+        {
+          "object_id": "ff",
+          "value": "02",
+          "name": "declaration",
+          "position": 2
+        }
+      ],
+      "declaration": {
+        "bitmask": 2,
+        "bitmask_hex": "02",
+        "writable_positions": [
+          1
+        ],
+        "is_last_element": true
+      },
+      "expected_sensors": {
+        "battery": 74,
+        "light": false
+      },
+      "writes": [
+        {
+          "name": "light-on",
+          "description": "Turn the relay on.",
+          "objects": [
+            {
+              "object_id": "1e",
+              "value": "01",
+              "name": "light"
+            }
+          ],
+          "payload": "1e01"
+        }
+      ]
+    },
+    {
+      "name": "rotation-sensor-packet",
+      "description": "The same device, packet 2 of 2: read-only sensors that rotate freely. No declaration, and a receiver must not infer one.",
+      "valid": true,
+      "device_info_byte": "40",
+      "service_data": "4002a208037c15",
+      "service_data_length": 7,
+      "objects": [
+        {
+          "object_id": "02",
+          "value": "a208",
+          "name": "temperature",
+          "position": 0
+        },
+        {
+          "object_id": "03",
+          "value": "7c15",
+          "name": "humidity",
+          "position": 1
+        }
+      ],
+      "expected_sensors": {
+        "temperature": 22.1,
+        "humidity": 55.0
+      }
+    },
+    {
+      "name": "plain-bthome-no-declaration",
+      "description": "An ordinary BTHome device. The integration MUST abort discovery with not_supported rather than offer it (\u00a75 of the design).",
+      "valid": true,
+      "device_info_byte": "40",
+      "service_data": "40013202d007",
+      "service_data_length": 6,
+      "objects": [
+        {
+          "object_id": "01",
+          "value": "32",
+          "name": "battery",
+          "position": 0
+        },
+        {
+          "object_id": "02",
+          "value": "d007",
+          "name": "temperature",
+          "position": 1
+        }
+      ],
+      "expected_sensors": {
+        "battery": 50,
+        "temperature": 20.0
+      }
+    },
+    {
+      "name": "empty-bitmask",
+      "description": "A declaration marking nothing writable. Legal, but a device SHOULD omit the declaration instead (\u00a72.2).",
+      "valid": true,
+      "device_info_byte": "40",
+      "service_data": "40013cff00",
+      "service_data_length": 5,
+      "objects": [
+        {
+          "object_id": "01",
+          "value": "3c",
+          "name": "battery",
+          "position": 0
+        },
+        {
+          "object_id": "ff",
+          "value": "00",
+          "name": "declaration",
+          "position": 1
+        }
+      ],
+      "declaration": {
+        "bitmask": 0,
+        "bitmask_hex": "00",
+        "writable_positions": [],
+        "is_last_element": true
+      },
+      "expected_sensors": {
+        "battery": 60
+      },
+      "writes": []
+    },
+    {
+      "name": "eight-writables-maximum",
+      "description": "The most a one-byte bitmask can address (\u00a72.4). Bit 7 is set, which catches an implementation using a signed byte.",
+      "valid": true,
+      "device_info_byte": "40",
+      "service_data": "401e001e011e001e011e001e011e001e01ffff",
+      "service_data_length": 19,
+      "objects": [
+        {
+          "object_id": "1e",
+          "value": "00",
+          "name": "light",
+          "position": 0
+        },
+        {
+          "object_id": "1e",
+          "value": "01",
+          "name": "light",
+          "position": 1
+        },
+        {
+          "object_id": "1e",
+          "value": "00",
+          "name": "light",
+          "position": 2
+        },
+        {
+          "object_id": "1e",
+          "value": "01",
+          "name": "light",
+          "position": 3
+        },
+        {
+          "object_id": "1e",
+          "value": "00",
+          "name": "light",
+          "position": 4
+        },
+        {
+          "object_id": "1e",
+          "value": "01",
+          "name": "light",
+          "position": 5
+        },
+        {
+          "object_id": "1e",
+          "value": "00",
+          "name": "light",
+          "position": 6
+        },
+        {
+          "object_id": "1e",
+          "value": "01",
+          "name": "light",
+          "position": 7
+        },
+        {
+          "object_id": "ff",
+          "value": "ff",
+          "name": "declaration",
+          "position": 8
+        }
+      ],
+      "declaration": {
+        "bitmask": 255,
+        "bitmask_hex": "ff",
+        "writable_positions": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "is_last_element": true
+      },
+      "expected_sensors": {
+        "light_1": false,
+        "light_2": true,
+        "light_3": false,
+        "light_4": true,
+        "light_5": false,
+        "light_6": true,
+        "light_7": false,
+        "light_8": true
+      },
+      "writes": [
+        {
+          "name": "all-off",
+          "description": "Every writable object at once.",
+          "objects": [
+            {
+              "object_id": "1e",
+              "value": "00",
+              "name": "light"
+            },
+            {
+              "object_id": "1e",
+              "value": "00",
+              "name": "light"
+            },
+            {
+              "object_id": "1e",
+              "value": "00",
+              "name": "light"
+            },
+            {
+              "object_id": "1e",
+              "value": "00",
+              "name": "light"
+            },
+            {
+              "object_id": "1e",
+              "value": "00",
+              "name": "light"
+            },
+            {
+              "object_id": "1e",
+              "value": "00",
+              "name": "light"
+            },
+            {
+              "object_id": "1e",
+              "value": "00",
+              "name": "light"
+            },
+            {
+              "object_id": "1e",
+              "value": "00",
+              "name": "light"
+            }
+          ],
+          "payload": "1e001e001e001e001e001e001e001e00"
+        }
+      ]
+    },
+    {
+      "name": "declaration-not-last",
+      "description": "The declaration placed first. Every object after it is silently dropped by existing BTHome receivers (D-005), so \u00a72.2 forbids it.",
+      "valid": false,
+      "device_info_byte": "40",
+      "service_data": "40ff0401611e01",
+      "service_data_length": 7,
+      "objects": [
+        {
+          "object_id": "ff",
+          "value": "04",
+          "name": "declaration",
+          "position": 0
+        },
+        {
+          "object_id": "01",
+          "value": "61",
+          "name": "battery",
+          "position": 1
+        },
+        {
+          "object_id": "1e",
+          "value": "01",
+          "name": "light",
+          "position": 2
+        }
+      ],
+      "declaration": {
+        "bitmask": 4,
+        "bitmask_hex": "04",
+        "writable_positions": [
+          2
+        ],
+        "is_last_element": false
+      },
+      "violates": "declaration_not_last",
+      "expected_sensors": {}
+    },
+    {
+      "name": "bitmask-beyond-object-count",
+      "description": "Bit 5 set, but the packet holds three objects. A receiver MUST ignore bits that address nothing rather than invent an entity.",
+      "valid": false,
+      "device_info_byte": "40",
+      "service_data": "4001611e01ff22",
+      "service_data_length": 7,
+      "objects": [
+        {
+          "object_id": "01",
+          "value": "61",
+          "name": "battery",
+          "position": 0
+        },
+        {
+          "object_id": "1e",
+          "value": "01",
+          "name": "light",
+          "position": 1
+        },
+        {
+          "object_id": "ff",
+          "value": "22",
+          "name": "declaration",
+          "position": 2
+        }
+      ],
+      "declaration": {
+        "bitmask": 34,
+        "bitmask_hex": "22",
+        "writable_positions": [],
+        "is_last_element": true
+      },
+      "violates": "bitmask_addresses_missing_object",
+      "expected_sensors": {
+        "battery": 97,
+        "light": true
+      }
+    },
+    {
+      "name": "declaration-marks-itself",
+      "description": "Bit 2 addresses the declaration object itself. Nonsensical; a receiver MUST ignore it.",
+      "valid": false,
+      "device_info_byte": "40",
+      "service_data": "4001611e01ff06",
+      "service_data_length": 7,
+      "objects": [
+        {
+          "object_id": "01",
+          "value": "61",
+          "name": "battery",
+          "position": 0
+        },
+        {
+          "object_id": "1e",
+          "value": "01",
+          "name": "light",
+          "position": 1
+        },
+        {
+          "object_id": "ff",
+          "value": "06",
+          "name": "declaration",
+          "position": 2
+        }
+      ],
+      "declaration": {
+        "bitmask": 6,
+        "bitmask_hex": "06",
+        "writable_positions": [],
+        "is_last_element": true
+      },
+      "violates": "bitmask_addresses_declaration",
+      "expected_sensors": {
+        "battery": 97,
+        "light": true
+      }
+    },
+    {
+      "name": "capacity-overflow",
+      "description": "Over the advertising budget of \u00a72.3. A device MUST refuse this configuration at setup rather than truncate.",
+      "valid": false,
+      "device_info_byte": "40",
+      "service_data": "4001611e011e011e011e011e011e011e011e011e011e011e01fffe",
+      "service_data_length": 27,
+      "objects": [
+        {
+          "object_id": "01",
+          "value": "61",
+          "name": "battery",
+          "position": 0
+        },
+        {
+          "object_id": "1e",
+          "value": "01",
+          "name": "light",
+          "position": 1
+        },
+        {
+          "object_id": "1e",
+          "value": "01",
+          "name": "light",
+          "position": 2
+        },
+        {
+          "object_id": "1e",
+          "value": "01",
+          "name": "light",
+          "position": 3
+        },
+        {
+          "object_id": "1e",
+          "value": "01",
+          "name": "light",
+          "position": 4
+        },
+        {
+          "object_id": "1e",
+          "value": "01",
+          "name": "light",
+          "position": 5
+        },
+        {
+          "object_id": "1e",
+          "value": "01",
+          "name": "light",
+          "position": 6
+        },
+        {
+          "object_id": "1e",
+          "value": "01",
+          "name": "light",
+          "position": 7
+        },
+        {
+          "object_id": "1e",
+          "value": "01",
+          "name": "light",
+          "position": 8
+        },
+        {
+          "object_id": "1e",
+          "value": "01",
+          "name": "light",
+          "position": 9
+        },
+        {
+          "object_id": "1e",
+          "value": "01",
+          "name": "light",
+          "position": 10
+        },
+        {
+          "object_id": "1e",
+          "value": "01",
+          "name": "light",
+          "position": 11
+        },
+        {
+          "object_id": "ff",
+          "value": "fe",
+          "name": "declaration",
+          "position": 12
+        }
+      ],
+      "declaration": {
+        "bitmask": 254,
+        "bitmask_hex": "fe",
+        "writable_positions": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "is_last_element": true
+      },
+      "violates": "capacity_exceeded"
+    }
+  ]
+}
