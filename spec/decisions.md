@@ -120,3 +120,22 @@ preserved: the option has a working default and is never required.
 **Status:** decided by the owner, 2026-09-08. **MIT**, both sides, one `LICENSE`
 at the repo root. Matches Espruino's own license and keeps friction lowest for
 an eventual merge into BTHome.
+
+---
+
+## D-007 — Confirmation timeout before revert  [DECISION, T0.2]
+
+**Status:** decided by the owner, 2026-09-08. **Adaptive:
+`max(5 s, 2 × observed advertising interval)`**, replacing the fixed 5 s default
+proposed in the working document.
+
+There is no acknowledgement in this protocol: after a write, HA shows the new
+value optimistically and waits for the device's next advertisement to confirm
+it. A fixed 5 s window produces false reverts on any device advertising more
+slowly than that — the actuator really did change, but the HA entity snaps back.
+HA already observes each device's advertising interval, so the window can be
+derived from it at no configuration cost: a 5 s floor for healthy devices,
+two intervals of grace for slow ones. Zero-config is preserved (§ rule 4).
+
+Applies to read-write entities only; write-only entities (§3.2) are stateless
+and never wait for confirmation.
