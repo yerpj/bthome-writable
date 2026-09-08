@@ -177,6 +177,12 @@ Service                2FAA47BC-3B0B-4B1A-9E2A-B4C2952E62F2
 The device MUST advertise connectably at all times, and MUST expose this service
 whether or not encryption is in use.
 
+**The service UUID MUST NOT be advertised.** A 128-bit UUID costs 18 of the 31
+bytes of an advertising payload, which together with the Flags structure and the
+BTHome service data does not fit (§2.3) — and it buys nothing: a receiver finds
+the device by its BTHome service data, connects by address, and discovers this
+service over GATT afterwards.
+
 There is no acknowledgement characteristic, no notification, and no readable
 state: the device's refreshed advertising is the sole confirmation channel (§6).
 
