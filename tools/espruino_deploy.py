@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import json
 from pathlib import Path
 import re
@@ -144,7 +145,7 @@ async def discover(address: str, timeout: float):
     async with BleakScanner(seen):
         try:
             return await asyncio.wait_for(asyncio.shield(found), timeout)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return None
 
 
@@ -179,10 +180,9 @@ async def connect(device, attempts: int = 6) -> BleakClient:
             last = error
             reason = error if str(error) else type(error).__name__
             print(f"  connection attempt {attempt}/{attempts} failed: {reason}")
-            try:
+            # Nothing to clean up if it never opened.
+            with contextlib.suppress(Exception):
                 await client.disconnect()
-            except Exception:
-                pass  # nothing to clean up if it never opened
             await asyncio.sleep(3)
     raise SystemExit(f"could not connect to the device: {last}")
 
@@ -265,10 +265,8 @@ async def run(address: str, app: Path, reboot: bool, scan_timeout: float) -> int
     finally:
         # A link left half-open keeps the device believing a central is still
         # attached, which blocks the next connection for a supervision timeout.
-        try:
+        with contextlib.suppress(Exception):
             await client.disconnect()
-        except Exception:
-            pass
 
     return 0
 

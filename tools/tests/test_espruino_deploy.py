@@ -24,7 +24,7 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 
 
 def test_requires_are_found_by_bare_name() -> None:
-    source = 'var a = require("BTHome");\nvar b = require( \'Storage\' );\n'
+    source = "var a = require(\"BTHome\");\nvar b = require( 'Storage' );\n"
     assert required_modules(source) == ["BTHome", "Storage"]
 
 
@@ -91,7 +91,7 @@ def test_written_chunks_reassemble_into_the_original(content: str) -> None:
 def test_the_first_write_allocates_and_the_rest_do_not() -> None:
     statements = write_statements("X", "a" * (CHUNK * 3))
     assert statements[0].startswith('require("Storage").erase(')
-    assert statements[1].endswith(f',0,{CHUNK * 3});')
+    assert statements[1].endswith(f",0,{CHUNK * 3});")
     for statement in statements[2:]:
         assert not statement.endswith(f",{CHUNK * 3});")
 

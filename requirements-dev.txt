@@ -4,5 +4,9 @@ pytest==8.4.2
 bthome-ble>=3.24.0
 cryptography>=44.0.0
 
+# The host-side tools talk to boards over BLE. Only their pure half is covered
+# by tests -- no test opens a radio -- but importing the module imports bleak.
+bleak>=0.22
+
 # For tools/md_to_pdf.py, which renders docs/*.md to PDF via a headless browser.
 markdown>=3.5
