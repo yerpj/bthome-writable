@@ -370,16 +370,29 @@ class BTHomeWritableCoordinator:
                 await client.disconnect()
         _LOGGER.debug("%s: cleared the cached GATT table", self.address)
 
-    async def _check_mtu(self, client: object, payload: bytes) -> None:
+    async def _check_mtu(self, client: Any, payload: bytes) -> None:
         """Warn if the MTU cannot carry this payload (§4.4).
 
-        Only asked when the payload needs more than the default MTU allows.
-        Reading `mtu_size` costs nothing on the wire, but every backend answers
-        it differently and some emit a warning of their own, so there is no
-        reason to ask on a two-byte write — which is what most writes are.
+        Only asked when the payload needs more than a default MTU allows, since
+        most writes are a couple of bytes and every backend answers differently.
+
+        Measured on hardware: a write larger than `MTU - 3` is refused outright
+        rather than split into a long write, so the MTU is a hard ceiling on a
+        write-all payload, not a performance hint (decisions.md D-017). Worth
+        knowing accurately, hence `_acquire_mtu()` — BlueZ reports the 23-byte
+        default until asked, which would have this warning firing on a link that
+        can in fact carry the payload.
         """
         if len(payload) <= DEFAULT_MTU_PAYLOAD:
             return
+
+        acquire = getattr(client, "_acquire_mtu", None)
+        if acquire is not None and getattr(client, "_mtu_size", None) is None:
+            try:
+                await acquire()
+            except Exception as error:  # best effort; the warning is advisory
+                _LOGGER.debug("%s: could not read the MTU: %s", self.address, error)
+
         mtu = getattr(client, "mtu_size", None)
         if mtu is not None and mtu < MIN_MTU:
             _LOGGER.debug(

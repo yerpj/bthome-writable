@@ -42,6 +42,8 @@ var exports = {};
  *                  100 ms by the BLE spec. Default 100.
  *   fastTimeout    ms to stay fast after a receiver disconnects. Default 30000.
  *   whenConnected  keep advertising during a connection. Default true.
+ *   maxWriteLength largest write-all payload accepted, in bytes. Costs that
+ *                  much device RAM. Default 128.
  *   onError        called with a rejected write's error
  *
  * The file is in two halves, separated by a marked divider. Everything above it
@@ -598,6 +600,7 @@ function setup(options) {
     fastInterval: Math.max(100, options.fastInterval || 100),
     // How long to stay fast after a receiver disconnects.
     fastTimeout: options.fastTimeout === undefined ? 30000 : options.fastTimeout,
+    maxWriteLength: options.maxWriteLength || 128,
     whenConnected: options.whenConnected !== false,
     onError: options.onError || null,
     timer: undefined,
@@ -609,7 +612,12 @@ function setup(options) {
     var characteristics = {};
     characteristics[WRITE_CHARACTERISTIC_UUID] = {
       writable: true,
-      maxLen: SERVICE_DATA_BUDGET * 2,
+      // Nothing to do with the advertising budget: a write carries only the
+      // writable objects and never has to fit in an advertising packet, so a
+      // text object can be far longer than anything the device could announce.
+      // This is the ceiling on a whole write-all payload, and it costs the
+      // device this many bytes of RAM, which is why it is an option.
+      maxLen: state.maxWriteLength,
       onWrite: function (event) {
         var payload = [];
         for (var i = 0; i < event.data.length; i++) payload.push(event.data[i]);

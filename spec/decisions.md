@@ -508,3 +508,49 @@ the failure of D-012 is gone, but it is the first clean run.
 which the connection is still the large majority. Further gains have to come
 from establishing connections faster, which on a single-adapter host is largely
 out of our hands.
+
+---
+
+## D-017 — How much data a write can actually carry  [VERIFY, T2.1]
+
+**Status:** measured 2026-09-09 against a Puck.js, from a Windows host
+(negotiated MTU 53). Prompted by the question of whether a Home Assistant sensor
+value can be pushed to a screen on an Espruino device.
+
+**The MTU is a hard ceiling, not a performance hint.** §4.4 says receivers
+SHOULD negotiate at least 64 and devices SHOULD support long writes. What
+actually happens is that a payload larger than `MTU - 3` is **refused outright**
+— `BleakGATTProtocolError`, no attempt at a prepared write:
+
+| Write payload | Text characters | Result |
+|---|---|---|
+| 6 – 50 bytes | 4 – 48 | arrived intact |
+| 52 bytes and up | 50 and up | refused by the stack |
+
+50 is exactly `53 - 3`. The device's characteristic was declared with room for
+128 bytes, so the limit is the transport, not the device.
+
+**So: budget a write-all payload against the MTU, and do not rely on long
+writes.** A text object costs two bytes of overhead (`0x53`, length) plus its
+characters, and shares the payload with every other writable object, since a
+write always carries all of them (§4.2).
+
+**What that means in practice.** At the 23-byte MTU that BLE guarantees, a whole
+write-all payload is 20 bytes — around **18 characters** of text once the object
+header is paid, less if the device has other writable objects. At a negotiated
+53, it is 48. Enough for `21.4 °C` or `Salon 21.4C 62%` in either case; not
+enough for a paragraph.
+
+**An unresolved caveat.** The Home Assistant side reported an MTU of 23, but
+that is bleak's placeholder until `_acquire_mtu()` is called on the BlueZ
+backend, so the real negotiated value there is **unknown and may be higher**.
+The receiver now asks properly before warning. Establishing the true figure on
+that path needs the `text` platform, which is T2.1.
+
+**And the reliability point, which matters more than the size.** A text object
+is write-only, so §6's confirmation model does not apply: the device never
+advertises what it was told, and nothing reports that a write landed. Combined
+with D-012 — a write can be reported as successful and do nothing — pushing a
+display value is currently **fire-and-forget with no way to detect a loss**.
+For a value refreshed on a timer that is tolerable, since the next write
+corrects it. For a one-shot command it is not, and §3 should probably say so.
