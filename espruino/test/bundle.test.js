@@ -272,36 +272,6 @@ test("a write keeps the device fast even without a connect event", () => {
   assert.ok(result.options[result.options.length - 1].interval < idle);
 });
 
-test("the sensor refresh and the radio interval are separate knobs", () => {
-  /* They were one option, which conflated two unrelated needs: how often a
-   * device reads its sensors, and how easy it is to connect to. A device may
-   * hold a reading for a minute and still want to answer a command quickly. */
-  const result = run(load("light-loop-standalone.js"));
-  result.options.length = 0;
-  result.timers.length = 0;
-
-  result.context.bw.setup({
-    advertise: [{ type: "battery", get: () => 90 }],
-    interval: 60000,
-    advertisingInterval: 300,
-  });
-
-  assert.equal(result.timers[0].ms, 60000, "sensors are read once a minute");
-  assert.equal(result.options[0].interval, 300, "but the radio talks every 300 ms");
-});
-
-test("advertisingInterval defaults to interval, so old configs are unchanged", () => {
-  const result = run(load("light-loop-standalone.js"));
-  result.options.length = 0;
-
-  result.context.bw.setup({
-    advertise: [{ type: "battery", get: () => 90 }],
-    interval: 1500,
-  });
-
-  assert.equal(result.options[0].interval, 1500);
-});
-
 test("an advertising interval the radio cannot honour is refused at setup", () => {
   /* The firmware clamps anything outside 20-10000 ms silently, which is the
    * kind of thing that costs an afternoon. */
@@ -312,7 +282,7 @@ test("an advertising interval the radio cannot honour is refused at setup", () =
       () =>
         result.context.bw.setup({
           advertise: [{ type: "battery", get: () => 90 }],
-          advertisingInterval: bad,
+          interval: bad,
         }),
       (error) => error.code === "interval_out_of_range",
       `${bad} ms should be refused`
@@ -320,12 +290,15 @@ test("an advertising interval the radio cannot honour is refused at setup", () =
   }
 });
 
-test("the idle interval can be changed without re-running setup", () => {
+test("the advertising interval can be changed without re-running setup", () => {
   /* This is the knob worth trying against a real receiver, and reflashing to
-   * try a number is a poor way to find out. */
+   * try a number is a poor way to find out. It moves the radio *and* the
+   * rebuild timer, since in BTHome terms they are the same thing. */
   const result = run(load("light-loop-standalone.js"));
   result.options.length = 0;
+  result.timers.length = 0;
 
   assert.equal(result.context.bw.setAdvertisingInterval(750), 750);
   assert.equal(result.options[result.options.length - 1].interval, 750);
+  assert.equal(result.timers[result.timers.length - 1].ms, 750);
 });

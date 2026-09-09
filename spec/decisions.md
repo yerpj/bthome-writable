@@ -557,38 +557,51 @@ corrects it. For a one-shot command it is not, and §3 should probably say so.
 
 ---
 
-## D-019 — The sensor refresh and the radio interval are separate options  [T1.1]
+## D-019 — `interval` is the advertising interval; each entry reads on its own  [T1.1]
 
-**Status:** implemented and measured, 2026-09-09, at the owner's request.
+**Status:** decided by the owner and implemented, 2026-09-09. Supersedes a first
+attempt that split the option the wrong way.
 
-`interval` did two unrelated jobs: how often the device re-read its sensors and
-rebuilt its packet, and how often the radio transmitted while idle. They answer
-different questions. A device may hold a reading for a minute — because the
-sensor is slow, or expensive, or the value simply does not move — and still want
-to be easy to connect to. Tying them meant choosing badly for one of them.
+**The model.**
 
-- `interval` — how often values are read and the packet rebuilt. Default 2000.
-- `advertisingInterval` — how often the radio transmits while nobody is
-  connected. 20 to 10000 ms. Defaults to `interval`, so existing configurations
-  are unchanged.
+- **`interval` is the BTHome advertising interval**, as BTHome and the upstream
+  Espruino module mean it: how often the radio transmits. It is therefore the
+  ceiling on how fresh a receiver's view can be — nothing can be perceived to
+  change faster than the device transmits.
+- **Each entry may carry its own `interval`**: how long its value may be reused
+  before `get()` is called again. A battery does not need re-measuring as often
+  as a light sensor, and on some devices a reading costs real power.
 
-**Why it is the interesting knob.** A central can only *begin* a connection when
-it catches a connectable advertising event, so this value sets the latency of
-the first command of a burst — and it is what the device spends its battery on
-while nothing is happening. Measured on the reference setup:
+An entry's interval can only make a value appear *less* often than the
+advertising interval, never more. The packet still goes out every advertising
+interval carrying the cached reading; what is skipped is the call to `get()`.
 
-| Idle advertising interval | First command of a burst | Steady state |
+**The first attempt was wrong.** It kept `interval` as the sensor refresh and
+added `advertisingInterval` for the radio — inverting which one is the familiar
+name, and still forcing every sensor onto one schedule. The right split is
+per-entry, and `interval` should mean what it means everywhere else in BTHome.
+`advertisingInterval` is gone.
+
+**Writable entries ignore their read interval** and are always read fresh.
+Otherwise a write could be confirmed with a value read before it, which from the
+outside looks exactly like the device refusing the write.
+
+**Why `interval` is the knob worth tuning.** It sets three things at once: how
+fresh the receiver's view is, how long the first command of a burst waits (a
+central can only begin a connection when it catches an advertising event), and
+what the device spends its battery on while nothing is happening. Measured on
+the reference setup:
+
+| `interval` | First command of a burst | Steady state |
 |---|---|---|
 | 2000 ms | 5 – 9 s | 1.7 s |
 | 500 ms | 4.2 s | 1.7 s |
 
-The steady state does not move, and should not: once a receiver is around the
-device is in fast mode (D-014) and this value no longer applies. What changes is
-the cold-start cost.
+The steady state does not move: once a receiver is around the device is in fast
+mode (D-014) and this no longer applies. What changes is the cold-start cost.
 
-Two supporting pieces. An interval outside 20–10000 ms is **refused at setup**
-rather than silently clamped by the firmware, which is the kind of thing that
-costs an afternoon. And `setAdvertisingInterval()` changes it at runtime —
-driven by `tools/set_adv_interval.py` — because choosing this number well means
-trying values against a real receiver, and reflashing to try a number is a poor
-way to find out.
+A value outside the 20–10000 ms the radio accepts is **refused at setup** rather
+than silently clamped by the firmware. `setAdvertisingInterval()` changes it at
+runtime — driven by `tools/set_adv_interval.py` — because choosing the number
+means trying it against a real receiver, and reflashing to try a number is a
+poor way to find out.

@@ -43,7 +43,10 @@ function illuminance() {
 
 bw.setup({
   advertise: [
-    { type: "battery", get: function () { return E.getBattery(); } },
+    // The battery does not move in a minute, and reading it is not free.
+    { type: "battery", interval: 300000, get: function () { return E.getBattery(); } },
+    // No interval: the light sensor is read for every packet, which is the
+    // point of this example -- the measurement has to follow the LED.
     { type: "raw", get: illuminance },
     {
       type: "light",
@@ -54,18 +57,18 @@ bw.setup({
       },
     },
   ],
-  // How often the sensors are read and the packet rebuilt.
-  interval: 2000,
-
-  // How often the radio transmits while nobody is connected. Separate from the
-  // above on purpose: this one decides how long a receiver waits before it can
-  // even begin a connection, so it sets the latency of the first command of a
-  // burst -- and it is what the device spends its battery on while doing
-  // nothing. 20 to 10000 ms.
+  // The BTHome advertising interval: how often the radio transmits, and so
+  // the fastest Home Assistant can see anything change. Each entry above may
+  // be read less often than this, never more.
+  //
+  // It also decides how long a receiver waits before it can begin a
+  // connection, so it sets the latency of the first command of a burst -- and
+  // it is what the device spends its battery on while nothing is happening.
+  // 20 to 10000 ms.
   //
   // Try other values live, without reflashing:
-  //   bw.setAdvertisingInterval(500)
-  advertisingInterval: 2000,
+  //   python -m tools.set_adv_interval --address <mac> --ms 500
+  interval: 2000,
   onError: function (error) {
     console.log("write rejected:", error.code, error.message);
   },

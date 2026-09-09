@@ -24,7 +24,7 @@ var exports = {};
  *   var bw = require("bthome-writable");
  *   bw.setup({
  *     advertise: [
- *       { type: "battery", get: () => E.getBattery() },
+ *       { type: "battery", get: () => E.getBattery(), interval: 300000 },
  *       { type: "light",   get: () => light.on,
  *                          set: v => { light.on = v; digitalWrite(D2, v); } },
  *       { type: "text",    writeOnly: true, set: t => g.drawString(t, 0, 0) },
@@ -34,17 +34,19 @@ var exports = {};
  *
  * An entry is writable iff it has a `set`. Everything else is derived.
  *
+ * An entry may carry its own `interval`: how long its value may be reused
+ * before get() is called again. A battery does not need re-measuring as often
+ * as a light sensor, and on some devices a reading costs real power. It cannot
+ * make a value appear *more* often than the advertising interval -- that is the
+ * ceiling. Writable entries ignore it and are always read fresh, so a write is
+ * never confirmed with a stale value.
+ *
  * Options:
  *   advertise      the declarative entry list above
- *   interval       ms between value refreshes -- how often sensors are read
- *                  and the packet rebuilt. Default 2000.
- *   advertisingInterval
- *                  ms between radio transmissions while nobody is connected,
- *                  20 to 10000. This is what a receiver waits on before it can
- *                  begin a connection, so it sets the idle latency of every
- *                  command, and the cost of doing nothing. Defaults to
- *                  `interval`. Changeable at runtime with
- *                  setAdvertisingInterval().
+ *   interval       the BTHome advertising interval in ms, 20 to 10000: how
+ *                  often the radio transmits, and so the fastest anything can
+ *                  be perceived to change. Default 2000. Changeable at runtime
+ *                  with setAdvertisingInterval().
  *   fastInterval   advertising interval while a receiver is around, floored at
  *                  100 ms by the BLE spec. Default 100.
  *   fastTimeout    ms to stay fast after a receiver disconnects. Default 30000.
@@ -335,6 +337,13 @@ function planPacket(entries, encodeOne) {
       entryIndex: i,
       writable: writable,
       writeOnly: entry.writeOnly === true,
+      // How long this entry's value may be reused before get() is called
+      // again. A battery does not need re-measuring as often as a light
+      // sensor, and on some devices a reading costs real power. Ignored for
+      // writable entries, which are always read fresh so that a write is
+      // never confirmed with a stale value.
+      readInterval: writable ? 0 : entry.interval || 0,
+      lastRead: 0,
     });
   }
 
@@ -391,12 +400,20 @@ function placeholderFor(entry) {
  *              time (used by the capacity check, where no device state exists)
  *   entries    the user's list, needed to call get() -- omitted with encodeOne
  *              null */
-function renderServiceData(plan, packetId, encodeOne, entries) {
+function renderServiceData(plan, packetId, encodeOne, entries, now) {
   var objects = [{ id: PACKET_ID_OBJECT_ID, value: [packetId & 255] }];
+  if (now === undefined) now = 0;
 
   for (var i = 0; i < plan.ordered.length; i++) {
     var item = plan.ordered[i];
     if (encodeOne === null || item.writeOnly) {
+      objects.push({ id: item.id, value: item.value });
+      continue;
+    }
+    // Reuse the last reading until this entry's own interval has elapsed. The
+    // packet still goes out every advertising interval; what this skips is the
+    // call to get(), which on some sensors is the expensive part.
+    if (item.readInterval && now - item.lastRead < item.readInterval) {
       objects.push({ id: item.id, value: item.value });
       continue;
     }
@@ -415,7 +432,9 @@ function renderServiceData(plan, packetId, encodeOne, entries) {
           item.id.toString(16)
       );
     }
-    objects.push({ id: item.id, value: encoded.slice(1) });
+    item.value = encoded.slice(1);
+    item.lastRead = now;
+    objects.push({ id: item.id, value: item.value });
   }
 
   return buildServiceData(
@@ -467,7 +486,8 @@ function refreshAdvertising() {
     state.plan,
     state.packetId,
     encodeOne,
-    state.entries
+    state.entries,
+    Date.now()
   );
 
   NRF.setAdvertising(
@@ -519,7 +539,7 @@ function goIdleAfterTimeout() {
   if (state.fastTimer !== undefined) clearTimeout(state.fastTimer);
   state.fastTimer = setTimeout(function () {
     state.fastTimer = undefined;
-    state.advInterval = state.advertisingInterval;
+    state.advInterval = state.interval;
     refreshAdvertising();
   }, state.fastTimeout);
 }
@@ -611,17 +631,11 @@ function setup(options) {
     entries: entries,
     plan: plan,
     packetId: 0,
-    // How often values are re-read and the packet rebuilt. Nothing to do with
-    // how often the radio transmits: a device may hold a sensor reading for a
-    // minute and still want to be easy to connect to.
-    interval: options.interval || 2000,
-    // How often the radio transmits while nobody is connected. This is what a
-    // receiver waits on before it can even begin a connection, so it is the
-    // idle latency of every command -- and the battery cost of doing nothing.
-    advertisingInterval: checkInterval(
-      "advertisingInterval",
-      options.advertisingInterval || options.interval || 2000
-    ),
+    // The BTHome advertising interval, as BTHome means it: how often the
+    // radio transmits, and therefore the fastest a receiver can see anything
+    // change. Each entry may re-read less often than this (see readInterval),
+    // but nothing can be perceived more often.
+    interval: checkInterval("interval", options.interval || 2000),
     // The advertising interval while a receiver is around. Not lower than
     // 100 ms: with `whenConnected` the stack advertises non-connectably during
     // a connection, and the BLE spec floors non-connectable advertising there.
@@ -633,7 +647,7 @@ function setup(options) {
     onError: options.onError || null,
     timer: undefined,
     fastTimer: undefined,
-    advInterval: options.advertisingInterval || options.interval || 2000,
+    advInterval: options.interval || 2000,
   };
 
   if (plan.writablePositions.length) {
@@ -688,22 +702,22 @@ function update() {
   refreshAdvertising();
 }
 
-/* Change the idle advertising interval without re-running setup().
+/* Change the advertising interval without re-running setup().
  *
  * Exists because this is the knob worth trying against a real receiver -- it
- * trades battery for how long the first command of a burst waits -- and
- * reflashing to try a number is a poor way to find out. Takes effect at once
- * if the device is currently idle, and otherwise when the burst ends. */
+ * trades battery against both how long the first command of a burst waits and
+ * how fresh a receiver's view can be -- and reflashing to try a number is a
+ * poor way to find out. */
 function setAdvertisingInterval(ms) {
-  state.advertisingInterval = checkInterval("advertisingInterval", ms);
+  state.interval = checkInterval("interval", ms);
+  if (state.timer !== undefined) clearInterval(state.timer);
+  state.timer = setInterval(refreshAdvertising, state.interval);
   if (state.fastTimer === undefined && state.advInterval !== state.fastInterval) {
-    state.advInterval = state.advertisingInterval;
+    state.advInterval = state.interval;
     refreshAdvertising();
   }
-  return state.advertisingInterval;
+  return state.interval;
 }
-
-/* --- Exports ------------------------------------------------------------- */
 
 exports.setup = setup;
 exports.update = update;
@@ -780,7 +794,10 @@ function illuminance() {
 
 bw.setup({
   advertise: [
-    { type: "battery", get: function () { return E.getBattery(); } },
+    // The battery does not move in a minute, and reading it is not free.
+    { type: "battery", interval: 300000, get: function () { return E.getBattery(); } },
+    // No interval: the light sensor is read for every packet, which is the
+    // point of this example -- the measurement has to follow the LED.
     { type: "raw", get: illuminance },
     {
       type: "light",
@@ -791,18 +808,18 @@ bw.setup({
       },
     },
   ],
-  // How often the sensors are read and the packet rebuilt.
-  interval: 2000,
-
-  // How often the radio transmits while nobody is connected. Separate from the
-  // above on purpose: this one decides how long a receiver waits before it can
-  // even begin a connection, so it sets the latency of the first command of a
-  // burst -- and it is what the device spends its battery on while doing
-  // nothing. 20 to 10000 ms.
+  // The BTHome advertising interval: how often the radio transmits, and so
+  // the fastest Home Assistant can see anything change. Each entry above may
+  // be read less often than this, never more.
+  //
+  // It also decides how long a receiver waits before it can begin a
+  // connection, so it sets the latency of the first command of a burst -- and
+  // it is what the device spends its battery on while nothing is happening.
+  // 20 to 10000 ms.
   //
   // Try other values live, without reflashing:
-  //   bw.setAdvertisingInterval(500)
-  advertisingInterval: 2000,
+  //   python -m tools.set_adv_interval --address <mac> --ms 500
+  interval: 2000,
   onError: function (error) {
     console.log("write rejected:", error.code, error.message);
   },

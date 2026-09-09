@@ -247,3 +247,86 @@ test("get() returning a value that changes the object ID is caught", () => {
     (error) => error.code === "layout_drift"
   );
 });
+
+test("each entry can be read on its own schedule", () => {
+  /* The advertising interval is the ceiling on how often anything can be
+   * perceived to change; a slow sensor need not be read that often. A battery
+   * does not need re-measuring as often as a light sensor, and on some devices
+   * a reading costs real power. */
+  const reads = { battery: 0, light: 0 };
+  const entries = [
+    {
+      type: "battery",
+      interval: 60000,
+      get: () => {
+        reads.battery += 1;
+        return 90;
+      },
+    },
+    {
+      type: "temperature",
+      get: () => {
+        reads.light += 1;
+        return 22.1;
+      },
+    },
+  ];
+  const plan = bw.planPacket(entries, fakeEncodeOne);
+  reads.battery = 0;
+  reads.light = 0;
+
+  // Six advertising intervals of 2 s each. planPacket already took one
+  // reading of each, so within the battery's minute nothing is re-read.
+  for (let t = 0; t <= 10000; t += 2000) {
+    bw.renderServiceData(plan, 1, fakeEncodeOne, entries, t);
+  }
+  assert.equal(reads.light, 6, "no interval means read on every packet");
+  assert.equal(reads.battery, 0, "still inside its interval");
+
+  bw.renderServiceData(plan, 1, fakeEncodeOne, entries, 60000);
+  assert.equal(reads.battery, 1, "and read again once the minute is up");
+});
+
+test("a cached reading still goes out in every packet", () => {
+  /* Skipping the read must not skip the object: a receiver has to keep seeing
+   * the value, just not a fresher one. */
+  const entries = [{ type: "battery", interval: 60000, get: () => 90 }];
+  const plan = bw.planPacket(entries, fakeEncodeOne);
+
+  const first = bw.renderServiceData(plan, 1, fakeEncodeOne, entries, 0);
+  const later = bw.renderServiceData(plan, 2, fakeEncodeOne, entries, 5000);
+
+  // Same battery object either side; only the packet id moves.
+  assert.equal(bytesToHex(first), "4000010" + "15a");
+  assert.equal(bytesToHex(later), "4000020" + "15a");
+});
+
+test("a writable entry ignores any read interval", () => {
+  /* Otherwise a write could be confirmed with a value read before it, which
+   * would look exactly like the device refusing the write. */
+  let reads = 0;
+  let on = false;
+  const entries = [
+    {
+      type: "light",
+      interval: 60000,
+      get: () => {
+        reads += 1;
+        return on;
+      },
+      set: (v) => {
+        on = v;
+      },
+    },
+  ];
+  const plan = bw.planPacket(entries, fakeEncodeOne);
+  reads = 0;
+
+  bw.renderServiceData(plan, 1, fakeEncodeOne, entries, 0);
+  on = true;
+  const after = bw.renderServiceData(plan, 2, fakeEncodeOne, entries, 10);
+
+  assert.equal(reads, 2, "read every time despite the interval");
+  assert.ok(bytesToHex(after).endsWith("ff02"), "declaration still last");
+  assert.ok(bytesToHex(after).includes("1e01"), "the new value is advertised");
+});
