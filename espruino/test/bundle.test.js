@@ -41,7 +41,7 @@ const EXPECTED = {
     // 40 | 00 01 | 01 5a | 05 a8 61 00 | 1e 00 | ff 08
     packet: "400001015a05a861001e00ff08",
     pin: "LED2",
-    interval: 200,
+    interval: 2000,
     afterWrite: "400002015a05a861001e01ff08",
   },
 };
@@ -54,7 +54,10 @@ function exampleOf(bundleName) {
  * what it would have put on the air and on its pins. */
 function run(source) {
   const advertised = [];
+  const options = [];
   const timers = [];
+  const timeouts = [];
+  const handlers = {};
   const pins = {};
   let characteristics = null;
 
@@ -67,9 +70,20 @@ function run(source) {
     clearInterval(handle) {
       if (handle !== undefined) timers.splice(handle - 1, 1);
     },
+    setTimeout(fn, ms) {
+      timeouts.push({ fn, ms });
+      return timeouts.length;
+    },
+    clearTimeout(handle) {
+      if (handle !== undefined) timeouts[handle - 1] = { cancelled: true };
+    },
     NRF: {
-      setAdvertising(data) {
+      on(event, fn) {
+        handlers[event] = fn;
+      },
+      setAdvertising(data, opts) {
         advertised.push(data[0xfcd2].slice());
+        options.push(opts);
       },
       setServices(services) {
         characteristics = services[Object.keys(services)[0]];
@@ -103,7 +117,7 @@ function run(source) {
   vm.createContext(context);
   vm.runInContext(source, context);
 
-  return { advertised, timers, pins, characteristics };
+  return { advertised, options, timers, timeouts, handlers, pins, characteristics };
 }
 
 function hex(bytes) {
@@ -197,4 +211,54 @@ test("light-loop reaches the illuminance object through the raw escape hatch", (
   const result = run(load("light-loop-standalone.js"));
   const packet = hex(result.advertised[0]);
   assert.match(packet, /05a86100/, "illuminance object 0x05, 25000 hundredths");
+});
+
+test("advertising continues while a receiver is connected", () => {
+  /* Without `whenConnected` the device goes silent exactly when a receiver most
+   * wants to hear it — during and just after the write it is sending. The stack
+   * switches the packets to non-connectable for the duration, which is what
+   * puts the 100 ms floor on the fast interval. */
+  const result = run(load("light-loop-standalone.js"));
+  assert.equal(result.options[0].whenConnected, true);
+});
+
+test("a connection switches to the fast advertising interval", () => {
+  /* A central can only begin a connection when it catches a connectable
+   * advertising event, so the idle interval taxes every write. Real use comes
+   * in bursts, so the device advertises fast from the moment a receiver
+   * connects (decisions.md D-013). */
+  const result = run(load("light-loop-standalone.js"));
+  const idle = result.options[0].interval;
+
+  result.handlers.connect("aa:bb:cc:dd:ee:ff");
+  const fast = result.options[result.options.length - 1].interval;
+
+  assert.ok(fast < idle, `${fast} should be faster than the idle ${idle}`);
+  assert.ok(fast >= 100, "the BLE spec floors non-connectable advertising at 100 ms");
+});
+
+test("it stays fast for a while after the receiver goes away, then relaxes", () => {
+  const result = run(load("light-loop-standalone.js"));
+  const idle = result.options[0].interval;
+
+  result.handlers.connect("aa:bb:cc:dd:ee:ff");
+  result.handlers.disconnect(19);
+
+  // Still fast: the disconnect only arms a timer.
+  assert.ok(result.options[result.options.length - 1].interval < idle);
+
+  const pending = result.timeouts.filter((t) => !t.cancelled);
+  assert.equal(pending.length, 1, "one pending return-to-idle");
+  pending[0].fn();
+
+  assert.equal(result.options[result.options.length - 1].interval, idle);
+});
+
+test("a write keeps the device fast even without a connect event", () => {
+  const result = run(load("light-loop-standalone.js"));
+  const idle = result.options[0].interval;
+  const uuid = Object.keys(result.characteristics)[0];
+
+  result.characteristics[uuid].onWrite({ data: [0x1e, 0x01] });
+  assert.ok(result.options[result.options.length - 1].interval < idle);
 });

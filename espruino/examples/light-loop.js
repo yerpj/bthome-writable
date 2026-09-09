@@ -54,13 +54,11 @@ bw.setup({
       },
     },
   ],
-  // 200 ms, not the 2000 ms a battery device would sensibly use. A central can
-  // only start a connection when it catches a connectable advertising event,
-  // so this interval gates how long a write waits before it can even begin.
-  // Measured on a Raspberry Pi 3: the whole write path took a median 10.7 s at
-  // 2000 ms and 3.0 s at 200 ms. This example exists to demonstrate the loop,
-  // so it takes the latency and pays the battery (decisions.md D-013).
-  interval: 200,
+  // A battery-sane idle rate. The module advertises much faster than this from
+  // the moment a receiver connects until a while after it leaves, so a burst of
+  // commands does not pay the idle interval more than once (decisions.md
+  // D-013, D-014).
+  interval: 2000,
   onError: function (error) {
     console.log("write rejected:", error.code, error.message);
   },

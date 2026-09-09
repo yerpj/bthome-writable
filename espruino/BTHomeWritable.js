@@ -16,6 +16,16 @@
  *
  * An entry is writable iff it has a `set`. Everything else is derived.
  *
+ * Options:
+ *   advertise      the declarative entry list above
+ *   interval       ms between value refreshes, and the advertising interval
+ *                  while nobody is interacting. Default 2000.
+ *   fastInterval   advertising interval while a receiver is around, floored at
+ *                  100 ms by the BLE spec. Default 100.
+ *   fastTimeout    ms to stay fast after a receiver disconnects. Default 30000.
+ *   whenConnected  keep advertising during a connection. Default true.
+ *   onError        called with a rejected write's error
+ *
  * The file is in two halves, separated by a marked divider. Everything above it
  * is pure JavaScript -- no NRF, no hardware, no I/O -- and runs unchanged under
  * Node, which is how the protocol logic is unit-tested without a device.
@@ -436,14 +446,55 @@ function refreshAdvertising() {
   NRF.setAdvertising(
     { 0xfcd2: serviceData },
     {
-      interval: state.interval,
+      interval: state.advInterval,
       connectable: true,
       discoverable: true,
+      // Keep advertising while a receiver is connected. The stack switches the
+      // packets to non-connectable for the duration, which is what forces the
+      // 100 ms floor on `fastInterval` below. Without this the device goes
+      // silent exactly when a receiver most wants to hear it -- during and just
+      // after the write it is being sent.
+      whenConnected: state.whenConnected,
       // §7: a resolvable private address would break the receiver's device
       // identity, so the static address the nRF52 uses by default is required.
       // Nothing to set here -- this comment marks that it is deliberate.
     }
   );
+}
+
+/* Advertise quickly, and keep doing so for a while.
+ *
+ * A central can only *begin* a connection when it catches a connectable
+ * advertising event, so the idle interval is a direct tax on every write: a
+ * device advertising every 2 s makes a receiver wait up to 2 s before it can
+ * even start, and pay that again on each retry. Measured on a Raspberry Pi 3,
+ * the whole write path took a median 10.7 s at 2000 ms and 3.0 s at 200 ms
+ * (spec/decisions.md D-013).
+ *
+ * Advertising fast all the time would fix that and flatten the battery, so the
+ * device does it only when someone is plainly interacting with it: from the
+ * moment a receiver connects until `fastTimeout` after it disconnects. Real use
+ * comes in bursts -- a receiver rarely writes once and never again -- so the
+ * first command of a burst pays the idle interval and the rest do not. */
+function goFast() {
+  if (state.fastTimer !== undefined) {
+    clearTimeout(state.fastTimer);
+    state.fastTimer = undefined;
+  }
+  if (state.advInterval !== state.fastInterval) {
+    state.advInterval = state.fastInterval;
+    refreshAdvertising();
+  }
+}
+
+/* Return to the idle interval once the burst is over. */
+function goIdleAfterTimeout() {
+  if (state.fastTimer !== undefined) clearTimeout(state.fastTimer);
+  state.fastTimer = setTimeout(function () {
+    state.fastTimer = undefined;
+    state.advInterval = state.interval;
+    refreshAdvertising();
+  }, state.fastTimeout);
 }
 
 /* Apply an incoming write (§4.2).
@@ -479,6 +530,10 @@ function handleWrite(payload) {
     pending[i].entry.set(pending[i].value);
   }
 
+  // A write is the clearest possible sign someone is interacting, so make sure
+  // the confirmation and whatever follows it go out at the fast interval. It is
+  // normally a no-op, since connecting already triggered it.
+  goFast();
   refreshAdvertising();
   return true;
 }
@@ -516,9 +571,20 @@ function setup(options) {
     entries: entries,
     plan: plan,
     packetId: 0,
+    // How often values are re-read and the packet rebuilt, and the advertising
+    // interval used when nobody is interacting with the device.
     interval: options.interval || 2000,
+    // The advertising interval while a receiver is around. Not lower than
+    // 100 ms: with `whenConnected` the stack advertises non-connectably during
+    // a connection, and the BLE spec floors non-connectable advertising there.
+    fastInterval: Math.max(100, options.fastInterval || 100),
+    // How long to stay fast after a receiver disconnects.
+    fastTimeout: options.fastTimeout === undefined ? 30000 : options.fastTimeout,
+    whenConnected: options.whenConnected !== false,
     onError: options.onError || null,
     timer: undefined,
+    fastTimer: undefined,
+    advInterval: options.interval || 2000,
   };
 
   if (plan.writablePositions.length) {
@@ -553,6 +619,11 @@ function setup(options) {
   // the battery reading never move.
   if (state.timer !== undefined) clearInterval(state.timer);
   state.timer = setInterval(refreshAdvertising, state.interval);
+
+  // Advertise fast for as long as a receiver is plainly interested: from the
+  // moment it connects until `fastTimeout` after it goes away. See goFast().
+  NRF.on("connect", goFast);
+  NRF.on("disconnect", goIdleAfterTimeout);
 
   return exports;
 }

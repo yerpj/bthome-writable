@@ -392,3 +392,48 @@ briefly, or letting an ESPHome proxy own it while the host keeps scanning).
 
 Note also that the MTU negotiated was 23 despite the receiver asking for 64, so
 §4.4's default-MTU worst case is the live case here, not a corner case.
+
+---
+
+## D-014 — Device-side latency: fast advertising while interacting  [T1.1]
+
+**Status:** implemented and measured on hardware, 2026-09-09. Follows D-013,
+which established that ~95 % of the round trip is establishing the connection.
+
+Three levers were considered on the device side. One turned out to be already
+pulled, and two are now in the module.
+
+**Connection interval — nothing to do.** Espruino already adjusts it
+automatically: "when connected it's as fast as possible (7.5 ms)", relaxing only
+after a minute idle. A short write burst never reaches that. Overriding it would
+have been a change with no upside.
+
+**Fast advertising while a receiver is around.** A central can only *begin* a
+connection when it catches a connectable advertising event, so the idle interval
+taxes every write, and again on every retry. Advertising fast all the time fixes
+that and flattens the battery, so the module does it only when someone is
+plainly interacting: from `NRF.on("connect")` until `fastTimeout` (default 30 s)
+after `NRF.on("disconnect")`. Real use comes in bursts, so the first command
+pays the idle interval and the rest do not.
+
+**`whenConnected: true`.** The nRF52 can keep advertising during a connection,
+switching to non-connectable packets for its duration — which is what floors
+`fastInterval` at 100 ms, since the BLE spec does not allow non-connectable
+advertising below that. Without it the device goes silent exactly when a
+receiver most wants to hear it: during and just after the write it is sending.
+
+**Measured**, same device, same receiver, six toggles each, `idle 2000 ms`:
+
+| Configuration | Median | Min | Failures |
+|---|---|---|---|
+| Baseline: no fast advertising, no `whenConnected` | 10.7 s | 8.7 s | — |
+| Fast advertising, `whenConnected: false` | 3.6 s | 3.2 s | 1/6 |
+| Fast advertising, `whenConnected: true` | **1.7 s** | 1.7 s | 1/6 |
+
+Steady state is **1.7 s**, from 8.7–13.8 s. The first command of a burst still
+pays the idle interval (5–7 s), which is the deliberate trade for battery.
+
+`whenConnected` halves the round trip on its own, and the failure rate is
+identical with and without it — so it is not implicated in the occasional write
+that does not take, which remains the cache-or-rejection question of D-012 and
+self-heals.
