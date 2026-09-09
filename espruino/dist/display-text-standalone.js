@@ -36,8 +36,15 @@ var exports = {};
  *
  * Options:
  *   advertise      the declarative entry list above
- *   interval       ms between value refreshes, and the advertising interval
- *                  while nobody is interacting. Default 2000.
+ *   interval       ms between value refreshes -- how often sensors are read
+ *                  and the packet rebuilt. Default 2000.
+ *   advertisingInterval
+ *                  ms between radio transmissions while nobody is connected,
+ *                  20 to 10000. This is what a receiver waits on before it can
+ *                  begin a connection, so it sets the idle latency of every
+ *                  command, and the cost of doing nothing. Defaults to
+ *                  `interval`. Changeable at runtime with
+ *                  setAdvertisingInterval().
  *   fastInterval   advertising interval while a receiver is around, floored at
  *                  100 ms by the BLE spec. Default 100.
  *   fastTimeout    ms to stay fast after a receiver disconnects. Default 30000.
@@ -512,7 +519,7 @@ function goIdleAfterTimeout() {
   if (state.fastTimer !== undefined) clearTimeout(state.fastTimer);
   state.fastTimer = setTimeout(function () {
     state.fastTimer = undefined;
-    state.advInterval = state.interval;
+    state.advInterval = state.advertisingInterval;
     refreshAdvertising();
   }, state.fastTimeout);
 }
@@ -576,6 +583,19 @@ function decodeValue(parsed, layoutEntry) {
   return parsed.value;
 }
 
+/* The firmware accepts advertising intervals between 20 and 10000 ms and
+ * clamps anything else. Clamping silently is the kind of thing that costs an
+ * afternoon, so refuse it here where the message can say which option. */
+function checkInterval(name, value) {
+  if (value < 20 || value > 10000) {
+    throw codecError(
+      "interval_out_of_range",
+      name + " is " + value + " ms; the radio accepts 20 to 10000"
+    );
+  }
+  return value;
+}
+
 /* Set up advertising and the write characteristic.
  *
  * Throws before touching the radio if the configuration cannot work -- an
@@ -591,13 +611,21 @@ function setup(options) {
     entries: entries,
     plan: plan,
     packetId: 0,
-    // How often values are re-read and the packet rebuilt, and the advertising
-    // interval used when nobody is interacting with the device.
+    // How often values are re-read and the packet rebuilt. Nothing to do with
+    // how often the radio transmits: a device may hold a sensor reading for a
+    // minute and still want to be easy to connect to.
     interval: options.interval || 2000,
+    // How often the radio transmits while nobody is connected. This is what a
+    // receiver waits on before it can even begin a connection, so it is the
+    // idle latency of every command -- and the battery cost of doing nothing.
+    advertisingInterval: checkInterval(
+      "advertisingInterval",
+      options.advertisingInterval || options.interval || 2000
+    ),
     // The advertising interval while a receiver is around. Not lower than
     // 100 ms: with `whenConnected` the stack advertises non-connectably during
     // a connection, and the BLE spec floors non-connectable advertising there.
-    fastInterval: Math.max(100, options.fastInterval || 100),
+    fastInterval: Math.max(100, checkInterval("fastInterval", options.fastInterval || 100)),
     // How long to stay fast after a receiver disconnects.
     fastTimeout: options.fastTimeout === undefined ? 30000 : options.fastTimeout,
     maxWriteLength: options.maxWriteLength || 128,
@@ -605,7 +633,7 @@ function setup(options) {
     onError: options.onError || null,
     timer: undefined,
     fastTimer: undefined,
-    advInterval: options.interval || 2000,
+    advInterval: options.advertisingInterval || options.interval || 2000,
   };
 
   if (plan.writablePositions.length) {
@@ -660,10 +688,26 @@ function update() {
   refreshAdvertising();
 }
 
+/* Change the idle advertising interval without re-running setup().
+ *
+ * Exists because this is the knob worth trying against a real receiver -- it
+ * trades battery for how long the first command of a burst waits -- and
+ * reflashing to try a number is a poor way to find out. Takes effect at once
+ * if the device is currently idle, and otherwise when the burst ends. */
+function setAdvertisingInterval(ms) {
+  state.advertisingInterval = checkInterval("advertisingInterval", ms);
+  if (state.fastTimer === undefined && state.advInterval !== state.fastInterval) {
+    state.advInterval = state.advertisingInterval;
+    refreshAdvertising();
+  }
+  return state.advertisingInterval;
+}
+
 /* --- Exports ------------------------------------------------------------- */
 
 exports.setup = setup;
 exports.update = update;
+exports.setAdvertisingInterval = setAdvertisingInterval;
 exports.SERVICE_UUID = SERVICE_UUID;
 exports.WRITE_CHARACTERISTIC_UUID = WRITE_CHARACTERISTIC_UUID;
 

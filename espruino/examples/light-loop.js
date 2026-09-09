@@ -54,11 +54,18 @@ bw.setup({
       },
     },
   ],
-  // A battery-sane idle rate. The module advertises much faster than this from
-  // the moment a receiver connects until a while after it leaves, so a burst of
-  // commands does not pay the idle interval more than once (decisions.md
-  // D-013, D-014).
+  // How often the sensors are read and the packet rebuilt.
   interval: 2000,
+
+  // How often the radio transmits while nobody is connected. Separate from the
+  // above on purpose: this one decides how long a receiver waits before it can
+  // even begin a connection, so it sets the latency of the first command of a
+  // burst -- and it is what the device spends its battery on while doing
+  // nothing. 20 to 10000 ms.
+  //
+  // Try other values live, without reflashing:
+  //   bw.setAdvertisingInterval(500)
+  advertisingInterval: 2000,
   onError: function (error) {
     console.log("write rejected:", error.code, error.message);
   },

@@ -554,3 +554,41 @@ with D-012 — a write can be reported as successful and do nothing — pushing 
 display value is currently **fire-and-forget with no way to detect a loss**.
 For a value refreshed on a timer that is tolerable, since the next write
 corrects it. For a one-shot command it is not, and §3 should probably say so.
+
+---
+
+## D-019 — The sensor refresh and the radio interval are separate options  [T1.1]
+
+**Status:** implemented and measured, 2026-09-09, at the owner's request.
+
+`interval` did two unrelated jobs: how often the device re-read its sensors and
+rebuilt its packet, and how often the radio transmitted while idle. They answer
+different questions. A device may hold a reading for a minute — because the
+sensor is slow, or expensive, or the value simply does not move — and still want
+to be easy to connect to. Tying them meant choosing badly for one of them.
+
+- `interval` — how often values are read and the packet rebuilt. Default 2000.
+- `advertisingInterval` — how often the radio transmits while nobody is
+  connected. 20 to 10000 ms. Defaults to `interval`, so existing configurations
+  are unchanged.
+
+**Why it is the interesting knob.** A central can only *begin* a connection when
+it catches a connectable advertising event, so this value sets the latency of
+the first command of a burst — and it is what the device spends its battery on
+while nothing is happening. Measured on the reference setup:
+
+| Idle advertising interval | First command of a burst | Steady state |
+|---|---|---|
+| 2000 ms | 5 – 9 s | 1.7 s |
+| 500 ms | 4.2 s | 1.7 s |
+
+The steady state does not move, and should not: once a receiver is around the
+device is in fast mode (D-014) and this value no longer applies. What changes is
+the cold-start cost.
+
+Two supporting pieces. An interval outside 20–10000 ms is **refused at setup**
+rather than silently clamped by the firmware, which is the kind of thing that
+costs an afternoon. And `setAdvertisingInterval()` changes it at runtime —
+driven by `tools/set_adv_interval.py` — because choosing this number well means
+trying values against a real receiver, and reflashing to try a number is a poor
+way to find out.
