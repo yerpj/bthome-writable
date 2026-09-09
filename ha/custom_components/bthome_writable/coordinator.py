@@ -286,21 +286,14 @@ class BTHomeWritableCoordinator:
         """
         characteristic = client.services.get_characteristic(WRITE_CHARACTERISTIC_UUID)
         if characteristic is None:
-            _LOGGER.debug(
-                "%s: the write characteristic is not in the cached GATT table; "
-                "rediscovering",
-                self.address,
-            )
+            # A table can only be rediscovered by reconnecting, so drop it and
+            # let the next write pick up a fresh one rather than reconnecting
+            # inside a write that has already spent its connection budget.
             await client.clear_cache()
-            await client.get_services()
-            characteristic = client.services.get_characteristic(
-                WRITE_CHARACTERISTIC_UUID
+            raise WriteFailed(
+                f"{self.address}: no write characteristic in the cached GATT "
+                "table; it has been dropped, so the next write will rediscover"
             )
-            if characteristic is None:
-                raise WriteFailed(
-                    f"{self.address}: no {WRITE_CHARACTERISTIC_UUID} characteristic — "
-                    "is the device still running a bthome-writable sketch?"
-                )
 
         await client.write_gatt_char(characteristic, payload, response=True)
 
