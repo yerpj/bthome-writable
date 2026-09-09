@@ -73,7 +73,10 @@ bw.setup({
   //
   // Try other values live, without reflashing:
   //   python -m tools.set_adv_interval --address <mac> --ms 500
-  interval: 2000,
+  //
+  // 5000 is deliberately slow for a device you interact with: it is here to
+  // make the cost of a long interval easy to feel rather than to argue about.
+  interval: 5000,
   onError: function (error) {
     console.log("write rejected:", error.code, error.message);
   },

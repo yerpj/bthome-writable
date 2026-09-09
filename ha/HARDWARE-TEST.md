@@ -23,8 +23,16 @@ offered for setup.
 1. Copy `ha/custom_components/bthome_writable/` into your Home Assistant
    `config/custom_components/`.
 2. Restart Home Assistant.
-3. Flash the board with `espruino/examples/single-light.js` and `save()` it, so
-   it advertises on boot.
+3. Install `espruino/examples/single-light.js` on the board so that it
+   advertises on boot:
+
+   ```
+   python -m tools.espruino_deploy --address <mac>        --app espruino/examples/single-light.js
+   ```
+
+   This writes the modules to Storage and the application to `.bootcde` (D-023).
+   `save()` would also survive a reset, but its memory image is restored
+   *instead of* `.bootcde`, which then silently masks every later install.
 
 ## Step 1 — discovery, and the abort that matters
 

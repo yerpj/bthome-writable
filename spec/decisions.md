@@ -683,7 +683,7 @@ interaction, a button that wakes it into fast advertising, or an accepted
 
 ## D-022 — A device can silently lose its program  [INCIDENT]
 
-**Status:** observed and recovered 2026-09-09; cause not established.
+**Status:** cause established 2026-09-09; fixed by D-023.
 
 Mid-session the Puck stopped advertising BTHome entirely, while still answering
 its console. `bw`, `BTHomeWritable` and `setup` were all undefined — no program
@@ -693,13 +693,112 @@ throws on an undefined `BTHomeWritable`, and leaves the device with nothing.
 
 Recovered by erasing `.bootcde` and `.varimg` and re-uploading with `save()`.
 
-**Who wrote `.bootcde` is not established.** This project's uploader does not:
-it sends the module and the example as one stream and calls `save()`, which
-writes `.varimg`. Candidates are the Espruino Home Assistant integration, which
-was installed and connected to this device at the time and offers both a JS text
-entity and a Web IDE panel, or a manual interaction with that IDE.
+**Cause: a half-finished install of the right shape.** The owner had written
+`.bootcde` by hand, which is exactly where application code belongs. What was
+missing is the other half of the convention: `require("X")` resolves from
+Storage under the bare name `X`, so the modules have to be there too, and they
+were not. The application booted, threw on an undefined `BTHomeWritable`, and
+left nothing running.
+
+The uploader in use at the time could not have produced that layout, and its
+`save()`/`.varimg` approach is what made the convention easy to get half-right:
+it inlined the module into one stream rather than installing it, so there was no
+step whose absence was visible. D-023 replaces it.
 
 **Worth knowing regardless of cause.** A device whose boot code references
 something its boot code does not define is bricked in a way that looks exactly
 like a flat battery: still connectable, advertising nothing. Anyone debugging a
 silent device should check `require("Storage").list()` early.
+
+---
+
+## D-023 — Install the way Espruino installs: modules in Storage, app in `.bootcde`
+
+**Status:** adopted 2026-09-09, verified on hardware.
+
+Until now the uploader inlined every `require`d module into one stream and
+called `save()`, which writes a `.varimg` memory image. That works, and it is
+the wrong shape for a device meant to be left running.
+
+The convention Espruino actually implements, confirmed in `jswrap_modules.c`
+("Has it been manually saved to Flash Storage?"), is that `require("X")` looks
+in Storage for a file named exactly `X` — no `.js`. The suffix is appended only
+on the network path, never on the Storage path. So:
+
+```
+Storage "BTHome"           the upstream module, by its bare name
+Storage "BTHomeWritable"   this project's module, likewise
+Storage ".bootcde"         the application, run at boot
+```
+
+`tools/espruino_deploy.py` writes that layout; `tools/espruino_upload.py` keeps
+its place for iterating, where pushing everything into RAM is the point.
+
+**Why it is better, not merely idiomatic.** The modules live in flash instead of
+RAM, on a board with 64 kB of it. The application keeps its ordinary `require()`
+calls, so the file that runs on the device is the file in the repository rather
+than a generated bundle. And boot no longer depends on a memory image, which is
+the fragile part: a `.varimg` is restored *instead of* running `.bootcde`, so
+one left behind silently masks every subsequent install — the deployer erases it
+for that reason.
+
+Verified end to end: deploy, then `E.reboot()`, then the device advertises
+`4000060164054d29001e00ff08` on its own. That is the check D-022 needed.
+
+### Three Windows-side findings, none of them about BTHome
+
+Worth writing down because each cost real time and each looks like a device
+fault:
+
+1. **`async with await connect(...)` connects twice.** `BleakClient.__aenter__`
+   calls `connect()` itself, so an already-connected client gets connected
+   again, and on WinRT the second call hangs — uncancellably, so even
+   `asyncio.wait_for` will not break it. Self-inflicted, and it presented as
+   "the device is unreachable".
+2. **Forcing uncached service discovery hangs on this host.** The integration
+   must keep doing it (D-012), because the layout it addresses changes. Tools
+   that only speak Nordic UART must not: that service is fixed, so the cache
+   cannot be wrong, and asking anyway wedges the adapter.
+3. **A connection attempt is a race against the advertising interval**, and one
+   attempt is not a fair test. At 5 s the host catches roughly one packet per
+   30 s and `BleakError: Unreachable` usually means "missed the window", not
+   "no device". Retrying is the honest reading — and it is the same cold-start
+   cliff D-021 describes, met from the tooling side.
+
+---
+
+## D-024 — At 5 s, the interval costs refresh rate, not interaction latency
+
+**Status:** measured 2026-09-09, through Home Assistant, on the flash install.
+
+The advertising interval was raised to 5000 ms — deliberately slow — to see what
+it breaks. Measured end to end, from a Home Assistant service call to the
+illuminance sensor reporting the LED's effect:
+
+```
+TURN ON    t+0.7s  lux 109.4      TURN OFF   t+0.7s  lux 592.7
+           t+1.7s  lux 585.0                 t+1.7s  lux 106.6
+           t+6.5s  lux 591.3                 t+5.6s  lux 107.2
+           t+11.4s lux 588.5                 t+11.4s lux 103.1
+```
+
+**The action and its confirmation land in 1.7 s at a 5 s interval**, and the
+readings that follow arrive about every 4.8–5 s. Those two numbers measure
+different things, and the distinction is the whole point:
+
+- 1.7 s is the *warm* path. The device is in fast advertising during and after
+  the connection (D-014), so the idle interval does not apply to it at all.
+- ~5 s is the idle refresh rate — how often a value the user did not ask about
+  gets updated. This is what the interval actually buys battery with.
+
+So the interval is not a latency dial for anything a user clicks. It is a
+latency dial for the *first* interaction after a quiet period (D-021, where the
+cliff lives) and a refresh-rate dial for everything else. A device can afford a
+long idle interval far more comfortably than the naive reading suggests —
+provided something covers the cold start.
+
+A caution about measuring this: an earlier run interleaved commands faster than
+the confirmation arrived, and read the previous command's confirmation as the
+current one's — a 590 lux "response" to turning the LED *off*. At a slow
+interval, a measurement loop has to wait out the confirmation or it will report
+the loop inverted.

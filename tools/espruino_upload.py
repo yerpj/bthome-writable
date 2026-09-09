@@ -14,6 +14,11 @@ What the IDE does that a naive "write the file to the UART" does not:
   the IDE injects each module with `Modules.addCached`, and so does this;
 * honours Espruino's XON/XOFF flow control, because the board's input buffer is
   a couple of hundred bytes and a BLE link will happily outrun it.
+
+This is the tool for *iterating*: everything lands in RAM and is gone at the
+next reset, which is what you want while changing a line and looking again. To
+*install* — modules in Storage under their bare names, application in
+`.bootcde`, surviving a power cut — use `tools/espruino_deploy.py` (D-023).
 """
 
 from __future__ import annotations

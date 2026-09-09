@@ -30,8 +30,14 @@ advertising reflects the new state within one advertising interval.
 2. Copy `BTHomeWritable.js` into the IDE's `modules/` folder (Settings →
    Project → Project Directory, then a `modules` subfolder), so
    `require("BTHomeWritable")` resolves locally.
-3. Open `examples/single-light.js` and send it to the board (RAM is fine for the
-   test; `save()` only once it works).
+3. Open `examples/single-light.js` and send it to the board. RAM is fine while
+   you are still changing things. To leave it installed, do not use `save()` —
+   put the modules in Storage under their bare names and the application in
+   `.bootcde`, which is what `tools/espruino_deploy.py` does (D-023):
+
+   ```
+   python -m tools.espruino_deploy --address <mac>        --app espruino/examples/single-light.js
+   ```
 
 On upload the console should print the board's MAC address and:
 
