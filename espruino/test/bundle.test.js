@@ -41,7 +41,7 @@ const EXPECTED = {
     // 40 | 00 01 | 01 5a | 05 a8 61 00 | 1e 00 | ff 08
     packet: "400001015a05a861001e00ff08",
     pin: "LED2",
-    interval: 2000,
+    interval: 200,
     afterWrite: "400002015a05a861001e01ff08",
   },
 };

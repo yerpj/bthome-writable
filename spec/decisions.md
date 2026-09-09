@@ -348,3 +348,47 @@ the only evidence of application; this is the same lesson one layer down.
 **Aside.** This is also why the earlier "the host's radio is flaky" diagnosis was
 only half right. The Windows adapter really does scan badly, and that did cause
 several false alarms — but it was masking this, which was real.
+
+---
+
+## D-013 — Where the latency actually is  [VERIFY, T1.2]
+
+**Status:** measured 2026-09-09, Home Assistant 2026.7.4 on a Raspberry Pi 3
+with its built-in adapter, no proxy.
+
+The round trip felt slow — eight to fourteen seconds from click to the device
+acting — and the obvious suspect was the confirmation model. It is not. Debug
+logging of the write path against entity transitions gives:
+
+| Phase | Time |
+|---|---|
+| Coalescing debounce | 250 ms |
+| **BLE connection, including discovery** | **5.4 – 10.4 s** |
+| MTU negotiation, write, disconnect | ~2.3 s |
+| Device applies, advertises, receiver parses | **~1.0 s** |
+
+**Confirmation costs one second.** Roughly 95 % of the latency is establishing
+the connection, and none of it is the protocol.
+
+**The advertising interval is a direct lever on it**, because a central can only
+begin a connection when it catches a connectable advertising event. Changing the
+example device from 2000 ms to 200 ms, everything else identical:
+
+| Advertising interval | Write path (connect + write + disconnect) | Median |
+|---|---|---|
+| 2000 ms | 7.7 · 12.7 · 12.7 · 8.7 s | ~10.7 s |
+| 200 ms | 3.0 · 25.3 · 3.0 · 3.3 s | ~3.0 s |
+
+A 3.5x improvement from one device-side parameter. The outliers in both rows are
+a connection attempt failing and being retried, which the slower interval makes
+both likelier and more expensive.
+
+**Consequences.** The remaining ~3 s is still connection setup, so that is where
+any further work belongs — not in the confirmation model, and not in the wire
+format. The two directions worth pursuing are making the device easier to
+connect to (advertising interval, connection parameters, staying fast for a
+while after an interaction) and not reconnecting at all (holding the connection
+briefly, or letting an ESPHome proxy own it while the host keeps scanning).
+
+Note also that the MTU negotiated was 23 despite the receiver asking for 64, so
+§4.4's default-MTU worst case is the live case here, not a corner case.
