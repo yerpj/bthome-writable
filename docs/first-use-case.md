@@ -114,6 +114,23 @@ and it does.
 This is what answers the question the software could not. Everything else in the
 project is satisfied by a device that stores what it was told; this is not.
 
+**Repeated the next day, entirely through Home Assistant** — commanded through
+this integration's `switch`, measured through the *core* BTHome integration's
+illuminance sensor reading the same packet, with the device shielded from
+ambient light:
+
+| LED | Illuminance |
+|---|---|
+| off | 125.92 · 127.51 · 127.20 |
+| **on** | **579.99 · 604.42** |
+| | mean 126.9 → 592.2, **4.7×** |
+
+Better evidence than the run above, which went through the author's own host
+tools: here nothing outside Home Assistant is in the loop, and the three dark
+readings agree to within 1.6. Ambient light matters — an unshielded device in a
+lit office gives a far smaller ratio, since the LED's contribution is unchanged
+but the baseline is not.
+
 ---
 
 ## 5. Timings
