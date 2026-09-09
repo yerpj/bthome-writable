@@ -650,3 +650,56 @@ failures.
 on evidence about the device, not on the receiver's memory of its own
 intentions. The advertised-state check passes that test; the last-payload check
 only does within a window where nothing can have changed underneath it.
+
+---
+
+## D-021 — The advertising interval hurts the cold start faster than linearly  [VERIFY]
+
+**Status:** measured 2026-09-09 on the reference setup, at the owner's request
+to see 5 s for himself.
+
+| `interval` | First command after idle | Warm |
+|---|---|---|
+| 500 ms | 4.2 s | 1.7 s |
+| 2000 ms | 5 – 9 s | 1.7 s |
+| **5000 ms** | **8.1 s, 36.9 s, and one outright failure** | 1.2 – 4.6 s |
+
+Two and a half times the interval does not cost two and a half times the wait.
+A central can only begin a connection when it catches an advertising event, so a
+missed or failed attempt costs a whole further interval plus the connector's own
+backoff — and at 5 s those compound into tens of seconds, or into giving up.
+
+The warm case is untouched, as ever: once a receiver is around the device is in
+fast mode (D-014) and this value no longer applies.
+
+**So the interval is not a smooth dial.** Somewhere between 2 s and 5 s the
+cold-start cost stops being an annoyance and becomes a failure mode. A device
+that wants a long idle interval for battery reasons needs something else to
+carry the first command — the `fastTimeout` window covering the likely next
+interaction, a button that wakes it into fast advertising, or an accepted
+"press twice" behaviour.
+
+---
+
+## D-022 — A device can silently lose its program  [INCIDENT]
+
+**Status:** observed and recovered 2026-09-09; cause not established.
+
+Mid-session the Puck stopped advertising BTHome entirely, while still answering
+its console. `bw`, `BTHomeWritable` and `setup` were all undefined — no program
+was running — and `Storage` held a `.bootcde` of **3511 bytes containing only
+the example source**, without the module it depends on. On boot that code runs,
+throws on an undefined `BTHomeWritable`, and leaves the device with nothing.
+
+Recovered by erasing `.bootcde` and `.varimg` and re-uploading with `save()`.
+
+**Who wrote `.bootcde` is not established.** This project's uploader does not:
+it sends the module and the example as one stream and calls `save()`, which
+writes `.varimg`. Candidates are the Espruino Home Assistant integration, which
+was installed and connected to this device at the time and offers both a JS text
+entity and a Web IDE panel, or a manual interaction with that IDE.
+
+**Worth knowing regardless of cause.** A device whose boot code references
+something its boot code does not define is bricked in a way that looks exactly
+like a flat battery: still connectable, advertising nothing. Anyone debugging a
+silent device should check `require("Storage").list()` early.
