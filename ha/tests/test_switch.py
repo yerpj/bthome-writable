@@ -458,3 +458,73 @@ async def test_a_heard_device_is_written_off_after_the_window_not_the_ceiling(
     assert hass.states.get("switch.espruino_light_light").state == STATE_ON
     assert "0 advertisement(s)" not in caplog.text
     assert "within 1.0 s" not in caplog.text, "should not have needed the ceiling"
+
+
+async def test_a_single_click_is_not_delayed_by_the_debounce(
+    hass: HomeAssistant, radio, mock_write
+) -> None:
+    """Leading edge, not trailing (D-015).
+
+    Deliberately does not shrink WRITE_DEBOUNCE: with a trailing debounce the
+    write would still be waiting here, which is exactly the quarter second
+    every single click used to pay to save a connection in the rare case of a
+    burst.
+    """
+    await setup_device(hass, radio, "espruino-single-light")
+
+    await hass.services.async_call(
+        "switch",
+        "turn_off",
+        {"entity_id": "switch.espruino_light_light"},
+        blocking=True,
+    )
+    await hass.async_block_till_done()
+
+    assert [payload.hex() for payload in mock_write] == ["1e00"]
+
+
+async def test_re_asserting_the_advertised_state_writes_nothing(
+    hass: HomeAssistant, radio, mock_write
+) -> None:
+    """The device already says it is on; telling it so costs a connection.
+
+    An automation re-asserting state on a schedule is a normal thing to write,
+    and on this transport each one is several seconds of radio.
+    """
+    await setup_device(hass, radio, "espruino-single-light")
+    assert hass.states.get("switch.espruino_light_light").state == STATE_ON
+
+    with patch(
+        "custom_components.bthome_writable.coordinator.WRITE_DEBOUNCE", FAST_DEBOUNCE
+    ):
+        await hass.services.async_call(
+            "switch",
+            "turn_on",
+            {"entity_id": "switch.espruino_light_light"},
+            blocking=True,
+        )
+        await settle(hass)
+
+    assert mock_write == []
+
+
+async def test_a_write_only_object_is_never_suppressed(
+    hass: HomeAssistant, radio, mock_write
+) -> None:
+    """A trigger has no advertised value, and firing it twice is the point."""
+    await setup_device(hass, radio, "multi-instance-and-display")
+
+    with patch(
+        "custom_components.bthome_writable.coordinator.WRITE_DEBOUNCE", FAST_DEBOUNCE
+    ):
+        for _ in range(2):
+            await hass.services.async_call(
+                "switch",
+                "turn_on",
+                {"entity_id": "switch.espruino_light_light_1"},
+                blocking=True,
+            )
+            await settle(hass)
+
+    # Both went out, even though neither changed anything the device advertises.
+    assert len(mock_write) == 2

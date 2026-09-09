@@ -437,3 +437,74 @@ pays the idle interval (5–7 s), which is the deliberate trade for battery.
 identical with and without it — so it is not implicated in the occasional write
 that does not take, which remains the cache-or-rejection question of D-012 and
 self-heals.
+
+---
+
+## D-015 — A Bluetooth proxy is not part of the design target  [DECISION, T1.2]
+
+**Status:** decided by the owner, 2026-09-09.
+
+An ESPHome Bluetooth proxy would help the latency a great deal: it establishes
+the connection while the host's own adapter keeps scanning, which removes the
+deafness that dominates every measurement here. It is also Home Assistant's
+recommended topology.
+
+It is nevertheless **excluded from the design target**. Nothing tells us a given
+user runs one, and nothing tells us their device is in range of it if they do.
+A protocol whose usability depends on optional extra hardware is a protocol that
+will disappoint most of the people who try it.
+
+**So the reference environment is the worst realistic one:** a host with a
+single Bluetooth adapter, which cannot scan while it is connected. Every
+latency figure in these notes is measured there, and every optimisation is
+judged there.
+
+This is what makes `whenConnected` (D-014) load-bearing rather than a nicety,
+and it is why the confirmation model counts advertisements rather than seconds
+(D-011): on a single-adapter host, the receiver is deaf precisely because it
+wrote.
+
+---
+
+## D-016 — Receiver-side latency work  [T1.2]
+
+**Status:** implemented and measured, 2026-09-09. Completes the latency work of
+D-013 and D-014 on the side this project controls.
+
+**Leading-edge coalescing.** The write queue used a trailing debounce: every
+change waited 250 ms before going out, so that a burst produced one write. But a
+single click — the overwhelmingly common case — paid that quarter second to
+save a connection in the rare case. The queue now fires immediately and
+coalesces *behind* the write in flight instead of in front of it. A burst still
+produces two writes rather than a dozen, because the connection takes seconds
+and everything queued during it merges into one follow-up.
+
+**Redundant writes are not sent at all.** A payload identical to the one just
+written, or one whose every value the device already advertises, achieves
+nothing and costs a multi-second connection. Both are now skipped. This matters
+more than it sounds: re-asserting state on a schedule is ordinary automation
+practice. A payload carrying a write-only object is never skipped — a trigger
+has no advertised value, and firing it again is the whole point.
+
+**The MTU is only asked about when it matters.** Every write used to read
+`mtu_size`, which each backend answers differently and some warn about. Now only
+payloads above the 20 bytes a default MTU carries ask.
+
+**Measured**, eight toggles, same device and receiver as D-014:
+
+| | Median | Min | Max | Failures |
+|---|---|---|---|---|
+| Baseline (D-013) | 10.7 s | 8.7 s | 13.8 s | — |
+| Device-side work (D-014) | 1.7 s | 1.7 s | 7.5 s | 1 in 6 |
+| ...plus receiver-side (this) | **1.7 s** | **1.2 s** | 7.1 s | **0 in 8** |
+
+The median does not move, and should not have: the round trip is connection-
+bound, and none of this makes a connection faster. What it does is take a fixed
+250 ms off every command, remove connections that never needed to happen, and —
+on this run — clear the intermittent failure. Eight for eight is not proof that
+the failure of D-012 is gone, but it is the first clean run.
+
+**Where the remaining time is.** Roughly 1.2 s of steady-state round trip, of
+which the connection is still the large majority. Further gains have to come
+from establishing connections faster, which on a single-adapter host is largely
+out of our hands.

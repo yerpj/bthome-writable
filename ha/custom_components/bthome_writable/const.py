@@ -53,6 +53,9 @@ DEFAULT_MAX_CONNECTIONS: Final = 2
 UART/Web-IDE session (decisions.md D-003)."""
 
 MIN_MTU: Final = 64
+DEFAULT_MTU_PAYLOAD: Final = 20
+"""What fits in a write at BLE's default 23-byte MTU. Most writes are a couple
+of bytes, so the MTU is only worth asking about above this."""
 WRITE_DEBOUNCE: Final = 0.25
 """Seconds to coalesce rapid changes -- a slider drag must produce one write,
 not one per pixel."""

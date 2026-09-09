@@ -139,17 +139,13 @@ def with_light(fixture_name: str, on: bool, **kwargs: Any) -> BluetoothServiceIn
 def mock_write():
     """Capture what the integration would send, without a radio.
 
-    Patches the coordinator's transport, not its composition: the payload the
-    test sees is the one PROTOCOL.md §4.2 describes, byte for byte.
+    Patches only the transport: the payload the test sees is the one the
+    coordinator composed, byte for byte, as PROTOCOL.md §4.2 describes it.
     """
     written: list[bytes] = []
 
-    async def _write_now(self, changes):
-        from custom_components.bthome_writable.protocol import compose_write
-
-        if self.declaration is None:
-            raise AssertionError("wrote before seeing a declaration")
-        written.append(compose_write(self.declaration, changes))
+    async def _write_now(self, payload):
+        written.append(payload)
 
     with patch(
         "custom_components.bthome_writable.coordinator."

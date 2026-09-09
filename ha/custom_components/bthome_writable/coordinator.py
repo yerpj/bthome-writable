@@ -24,6 +24,7 @@ from .const import (
     CONFIRM_WINDOW_FLOOR,
     CONFIRM_WINDOW_INTERVALS,
     DEFAULT_MAX_CONNECTIONS,
+    DEFAULT_MTU_PAYLOAD,
     MIN_MTU,
     SERVICE_UUID,
     WRITE_CHARACTERISTIC_UUID,
@@ -78,6 +79,7 @@ class BTHomeWritableCoordinator:
         self._pending_lock = asyncio.Lock()
         self._flush_task: asyncio.Task[None] | None = None
         self._semaphore = connection_semaphore(max_connections)
+        self._last_written: bytes | None = None
 
         # Advertising-interval estimate, for the adaptive confirmation window.
         self._last_seen: float | None = None
@@ -180,10 +182,12 @@ class BTHomeWritableCoordinator:
     # --- Write side ---------------------------------------------------------
 
     async def async_write(self, position: int, value: bytes) -> None:
-        """Queue a new value and flush after a short coalescing delay.
+        """Queue a new value; the flush starts immediately if none is running.
 
-        Coalescing is per position with last-value-wins: dragging a slider must
-        produce one write, not one per pixel.
+        Coalescing is per position with last-value-wins, and happens behind the
+        write in flight rather than in front of it: dragging a slider produces
+        one write for where it started and one for where it stopped, not one
+        per pixel and not one delayed by a debounce.
         """
         async with self._pending_lock:
             self._pending[position] = value
@@ -212,35 +216,80 @@ class BTHomeWritableCoordinator:
         return remove
 
     async def _flush_soon(self) -> None:
-        await asyncio.sleep(WRITE_DEBOUNCE)
-        async with self._pending_lock:
-            changes = dict(self._pending)
-            self._pending.clear()
-        if not changes:
-            return
+        """Write what is queued, then anything that arrived while writing.
 
-        error: Exception | None = None
-        try:
-            await self._write_now(changes)
-        except Exception as caught:  # broad on purpose: reported to every listener
-            error = caught
-            _LOGGER.warning("%s: write failed: %s", self.address, caught)
+        Leading edge, not trailing: the first change goes out immediately and
+        only what piles up behind it is coalesced. A trailing debounce added its
+        whole delay to every single click — the common case by far — to save a
+        connection in the rare one. Coalescing still happens, because the
+        connection takes seconds and everything queued behind it is merged into
+        one follow-up write.
+        """
+        while True:
+            async with self._pending_lock:
+                changes = dict(self._pending)
+                self._pending.clear()
+            if not changes:
+                return
 
-        for listener in list(self._write_listeners):
-            listener(set(changes), error)
+            error: Exception | None = None
+            try:
+                payload = self._compose(changes)
+                if self._is_redundant(payload):
+                    _LOGGER.debug(
+                        "%s: skipping %s, which would change nothing",
+                        self.address,
+                        payload.hex(),
+                    )
+                else:
+                    await self._write_now(payload)
+                    self._last_written = payload
+            except Exception as caught:  # broad on purpose: reported to listeners
+                error = caught
+                self._last_written = None
+                _LOGGER.warning("%s: write failed: %s", self.address, caught)
 
-    async def _write_now(self, changes: dict[int, bytes]) -> None:
-        """Compose one write-all payload and deliver it (§4.2)."""
+            for listener in list(self._write_listeners):
+                listener(set(changes), error)
+
+            # Anything queued during the write is merged into one more pass.
+            async with self._pending_lock:
+                if not self._pending:
+                    return
+            await asyncio.sleep(WRITE_DEBOUNCE)
+
+    def _compose(self, changes: dict[int, bytes]) -> bytes:
+        """Build the write-all payload from the *current* advertisement (§4.2).
+
+        Never from a layout cached at setup: a device reflashed with a different
+        object order must not receive a write against the old one.
+        """
         if self.declaration is None:
             raise WriteFailed(
                 f"{self.address}: no declaration seen yet, refusing to write"
             )
+        return compose_write(self.declaration, changes)
 
-        # §4.2's payload is composed from the *current* advertisement, never
-        # from a layout cached at setup: a device reflashed with a different
-        # object order must not receive a write against the old one.
-        payload = compose_write(self.declaration, changes)
+    def _is_redundant(self, payload: bytes) -> bool:
+        """Whether sending this payload would achieve nothing.
 
+        Two ways it can: the device already advertises every value in it, or it
+        is byte-identical to the write that just went out — which is what a
+        burst of toggles that ends where it started produces.
+
+        Never true when a write-only object is involved. Those have no advertised
+        value to compare against, and the whole point of a trigger is that
+        sending it again does something.
+        """
+        assert self.declaration is not None
+        if any(obj.write_only for obj in self.declaration.objects):
+            return False
+        if payload == self._last_written:
+            return True
+        return payload == compose_write(self.declaration, {})
+
+    async def _write_now(self, payload: bytes) -> None:
+        """Deliver one composed write-all payload over a short connection."""
         device = bluetooth.async_ble_device_from_address(
             self.hass, self.address, connectable=True
         )
@@ -256,7 +305,7 @@ class BTHomeWritableCoordinator:
                 max_attempts=2,
             )
             try:
-                await self._request_mtu(client)
+                await self._check_mtu(client, payload)
                 await self._write_characteristic(client, payload)
             finally:
                 await client.disconnect()
@@ -321,20 +370,24 @@ class BTHomeWritableCoordinator:
                 await client.disconnect()
         _LOGGER.debug("%s: cleared the cached GATT table", self.address)
 
-    async def _request_mtu(self, client: object) -> None:
-        """Ask for an MTU large enough for text writes (§4.4).
+    async def _check_mtu(self, client: object, payload: bytes) -> None:
+        """Warn if the MTU cannot carry this payload (§4.4).
 
-        Best effort: several backends negotiate the MTU themselves and expose no
-        way to ask, in which case the 20-byte default-MTU limit applies and is
-        documented rather than worked around.
+        Only asked when the payload needs more than the default MTU allows.
+        Reading `mtu_size` costs nothing on the wire, but every backend answers
+        it differently and some emit a warning of their own, so there is no
+        reason to ask on a two-byte write — which is what most writes are.
         """
+        if len(payload) <= DEFAULT_MTU_PAYLOAD:
+            return
         mtu = getattr(client, "mtu_size", None)
         if mtu is not None and mtu < MIN_MTU:
             _LOGGER.debug(
-                "%s: MTU is %s, below the %s this protocol asks for; long text "
-                "writes may not fit",
+                "%s: MTU is %s and this write is %d bytes; the protocol asks "
+                "for %s, so a long write may not fit",
                 self.address,
                 mtu,
+                len(payload),
                 MIN_MTU,
             )
 
