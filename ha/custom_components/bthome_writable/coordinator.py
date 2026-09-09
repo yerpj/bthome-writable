@@ -110,10 +110,31 @@ class BTHomeWritableCoordinator:
         if declaration is None:
             return
 
+        if self._layout_changed(declaration):
+            # The device is advertising a different set of objects than it was.
+            # For an Espruino device that almost always means new code, which
+            # means a rebuilt GATT table — and the host's cached copy is now
+            # wrong in the silent way of D-012: the next write would report
+            # success and do nothing. Drop it before that happens rather than
+            # after, which otherwise costs the user their first command.
+            _LOGGER.debug(
+                "%s: the advertised layout changed; dropping the cached GATT table",
+                self.address,
+            )
+            self.hass.async_create_task(self.async_clear_service_cache())
+
         self.declaration = declaration
         self.available = True
         self.advertisements += 1
         self._notify()
+
+    def _layout_changed(self, declaration: Declaration) -> bool:
+        """Whether this declaration describes a different device shape."""
+        if self.declaration is None:
+            return False
+        before = [(obj.position, obj.object_id) for obj in self.declaration.objects]
+        after = [(obj.position, obj.object_id) for obj in declaration.objects]
+        return before != after
 
     def _observe_interval(self, timestamp: float) -> None:
         """Track how often this device advertises.

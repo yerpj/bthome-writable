@@ -528,3 +528,37 @@ async def test_a_write_only_object_is_never_suppressed(
 
     # Both went out, even though neither changed anything the device advertises.
     assert len(mock_write) == 2
+
+
+async def test_a_changed_layout_drops_the_cached_gatt_table(
+    hass: HomeAssistant, radio
+) -> None:
+    """Reflashing a device rebuilds its GATT table (D-012, D-018).
+
+    The host's cached copy is then wrong in the silent way: the next write
+    reports success and does nothing. Noticing it from the advertising costs
+    nothing and saves the user their first command after an update.
+    """
+    entry = await setup_device(hass, radio, "espruino-single-light")
+    coordinator = entry.runtime_data
+
+    cleared: list[str] = []
+
+    async def _clear(self):
+        cleared.append(self.address)
+
+    with patch(
+        "custom_components.bthome_writable.coordinator."
+        "BTHomeWritableCoordinator.async_clear_service_cache",
+        _clear,
+    ):
+        # Same device, same layout: nothing to do.
+        radio.push(service_info("espruino-single-light", time=1.0))
+        await hass.async_block_till_done()
+        assert cleared == []
+
+        # Reflashed: a different set of objects, so a different GATT table.
+        radio.push(service_info("espruino-multi-instance", time=2.0))
+        await hass.async_block_till_done()
+
+    assert cleared == [coordinator.address]
