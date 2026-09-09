@@ -10,9 +10,9 @@
  * Puck.light() reads through the red LED, so the green one is the actuator and
  * the two never fight over the same part.
  *
- * See ../HARDWARE-TEST.md. Flash with:
- *   python -m tools.espruino_upload --address <mac> \
- *       espruino/dist/light-loop-standalone.min.js
+ * See ../HARDWARE-TEST.md. Install with:
+ *   python -m tools.espruino_deploy --address <mac> \
+ *       --app espruino/examples/light-loop.js
  */
 
 var bw = require("BTHomeWritable");
