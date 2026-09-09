@@ -11,8 +11,9 @@ import asyncio
 from collections.abc import Callable
 import logging
 import time
+from typing import Any
 
-from bleak_retry_connector import establish_connection
+from bleak_retry_connector import BleakClientWithServiceCache, establish_connection
 from habluetooth import BluetoothServiceInfoBleak
 from homeassistant.components import bluetooth
 from homeassistant.core import HomeAssistant, callback
@@ -249,16 +250,14 @@ class BTHomeWritableCoordinator:
         started = time.monotonic()
         async with self._semaphore:
             client = await establish_connection(
-                client_class=__import__("bleak", fromlist=["BleakClient"]).BleakClient,
+                client_class=BleakClientWithServiceCache,
                 device=device,
                 name=self.address,
                 max_attempts=2,
             )
             try:
                 await self._request_mtu(client)
-                await client.write_gatt_char(
-                    WRITE_CHARACTERISTIC_UUID, payload, response=True
-                )
+                await self._write_characteristic(client, payload)
             finally:
                 await client.disconnect()
 
@@ -268,6 +267,66 @@ class BTHomeWritableCoordinator:
             payload.hex(),
             (time.monotonic() - started) * 1000,
         )
+
+    async def _write_characteristic(self, client: Any, payload: bytes) -> None:
+        """Write, and retry once against a freshly discovered GATT table.
+
+        Every host caches a device's GATT table, and an Espruino device rebuilds
+        its table each time code is uploaded to it — so the cache goes stale in
+        normal use, not as a rare fault. A write resolved through a stale cache
+        lands on a handle that no longer means what it did, and the transport
+        reports success: nothing fails, the device simply does not act. That is
+        the worst failure this integration can have, because the receiver then
+        reverts the entity and blames the device.
+
+        So a write that leaves no trace gets exactly one more chance, against a
+        rediscovered table. The device rejecting a *delivered* write is the
+        other explanation for the same symptom, and the retry is cheap either
+        way.
+        """
+        characteristic = client.services.get_characteristic(WRITE_CHARACTERISTIC_UUID)
+        if characteristic is None:
+            _LOGGER.debug(
+                "%s: the write characteristic is not in the cached GATT table; "
+                "rediscovering",
+                self.address,
+            )
+            await client.clear_cache()
+            await client.get_services()
+            characteristic = client.services.get_characteristic(
+                WRITE_CHARACTERISTIC_UUID
+            )
+            if characteristic is None:
+                raise WriteFailed(
+                    f"{self.address}: no {WRITE_CHARACTERISTIC_UUID} characteristic — "
+                    "is the device still running a bthome-writable sketch?"
+                )
+
+        await client.write_gatt_char(characteristic, payload, response=True)
+
+    async def async_clear_service_cache(self) -> None:
+        """Forget the cached GATT table for this device.
+
+        Called when a write was delivered and the device did not act on it,
+        which is what a stale cache looks like from the outside.
+        """
+        device = bluetooth.async_ble_device_from_address(
+            self.hass, self.address, connectable=True
+        )
+        if device is None:
+            return
+        async with self._semaphore:
+            client = await establish_connection(
+                client_class=BleakClientWithServiceCache,
+                device=device,
+                name=self.address,
+                max_attempts=1,
+            )
+            try:
+                await client.clear_cache()
+            finally:
+                await client.disconnect()
+        _LOGGER.debug("%s: cleared the cached GATT table", self.address)
 
     async def _request_mtu(self, client: object) -> None:
         """Ask for an MTU large enough for text writes (§4.4).

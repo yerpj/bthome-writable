@@ -276,7 +276,33 @@ the fix is unmeasured. And the device ran from RAM: a power cycle wipes it.
 
 ---
 
-## 8. Reproducing this
+## 8. Postscript, 9 September
+
+A seventh defect, found the next day while installing Gordon's
+`homeassistant-espruino` integration alongside this one, and worth adding
+because it is the nastiest of the lot.
+
+Writes stopped taking effect with **no error anywhere**: the transport reported
+success, advertisements kept arriving, and the value never changed — so the
+receiver reverted the entity and, in effect, blamed the device. The cause is
+that BlueZ caches a device's GATT table and persists it across Home Assistant
+restarts, while **an Espruino device rebuilds its GATT table every time code is
+uploaded to it**. For this class of device a stale cache is routine, not
+exceptional, and a write resolved through one lands on a handle that no longer
+means what it did.
+
+Fixed by resolving the characteristic explicitly, and by dropping the cached
+table whenever a write was delivered and the device was heard from afterwards
+without acting — which is what a stale cache looks like from outside
+(`decisions.md` D-012). Six consecutive state changes since, all applied, no
+reverts.
+
+It also revises §5.4 above: the flaky Windows adapter was real and did cause
+false alarms, but it was masking this, which was not.
+
+---
+
+## 9. Reproducing this
 
 ```sh
 python -m tools.build_espruino_bundle

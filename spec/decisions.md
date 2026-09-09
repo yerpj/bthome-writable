@@ -303,3 +303,48 @@ advertisement arrives within its confirmation window" and leaves the window to
 the implementation, so nothing there needs changing. But the window being a
 duration is the obvious reading, and it is the wrong one — worth a sentence when
 §6 is next revised, so the next implementer does not rediscover this.
+
+---
+
+## D-012 — A stale GATT cache makes a write vanish silently  [VERIFY + fix, T1.2]
+
+**Status:** closed on hardware, 2026-09-09. Found while installing Gordon's
+`homeassistant-espruino` integration alongside this one.
+
+**Symptom.** Writes stopped taking effect, with no error anywhere. The transport
+reported success, the device kept advertising, two or three advertisements
+arrived after each write — and the value never changed. The receiver duly
+reverted the entity and, in effect, blamed the device.
+
+**Cause.** Every host caches a device's GATT table, and BlueZ persists that
+cache across restarts of Home Assistant. **An Espruino device rebuilds its GATT
+table every time code is uploaded to it**, so for this class of device the cache
+going stale is routine rather than exceptional. A write resolved through a stale
+cache lands on a handle that no longer means what it did, and reports success.
+
+This is the worst failure this integration can have: nothing errors, so nothing
+is retried, and the only visible effect is an entity that snaps back — which
+reads as a device fault.
+
+**The fix, in two parts.**
+
+- Connect with `BleakClientWithServiceCache` and resolve the characteristic
+  explicitly. If it is missing from the cached table, clear the cache,
+  rediscover, and try once more before giving up.
+- When a write *was* delivered and the device was heard from afterwards but
+  never acted (the D-011 condition), drop the cached table so the next write
+  rediscovers it. That is exactly what a stale cache looks like from outside,
+  and clearing it is harmless in the other case — a device that genuinely
+  rejected the write.
+
+**Result.** Six consecutive real state changes, all applied, no reverts logged.
+Before the fix, only the first write after a Home Assistant restart worked.
+
+**Note for the spec.** Nothing in §4 is wrong, but this is worth a sentence in
+the implementation notes: a receiver MUST NOT treat a successful GATT write as
+evidence the write arrived where it was meant to. §6 already says advertising is
+the only evidence of application; this is the same lesson one layer down.
+
+**Aside.** This is also why the earlier "the host's radio is flaky" diagnosis was
+only half right. The Windows adapter really does scan badly, and that did cause
+several false alarms — but it was masking this, which was real.

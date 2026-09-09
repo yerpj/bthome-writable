@@ -155,6 +155,16 @@ class BTHomeWritableEntity(Entity):
         )
         self._revert()
 
+        if heard >= self.coordinator.confirm_advertisements:
+            # The device was heard from and did not act. One explanation is that
+            # it rejected the write; the other is that the write never really
+            # reached the characteristic, because the host's cached GATT table
+            # is stale — which for an Espruino device is routine, since its
+            # table is rebuilt every time code is uploaded. A write through a
+            # stale cache reports success and does nothing, so it looks exactly
+            # like this. Forget the table so the next write rediscovers it.
+            self.hass.async_create_task(self.coordinator.async_clear_service_cache())
+
     @callback
     def _revert(self) -> None:
         self._optimistic = None
