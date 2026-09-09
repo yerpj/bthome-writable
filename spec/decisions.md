@@ -569,12 +569,25 @@ attempt that split the option the wrong way.
   ceiling on how fresh a receiver's view can be — nothing can be perceived to
   change faster than the device transmits.
 - **Each entry may carry its own `interval`**: how long its value may be reused
-  before `get()` is called again. A battery does not need re-measuring as often
-  as a light sensor, and on some devices a reading costs real power.
+  before `get()` is called again. Omitted, it **inherits the advertising
+  interval**, which is the fastest a change could be perceived anyway.
 
 An entry's interval can only make a value appear *less* often than the
 advertising interval, never more. The packet still goes out every advertising
 interval carrying the cached reading; what is skipped is the call to `get()`.
+
+**This is where the device's CPU budget is allocated, and only the person
+writing the sketch can decide it.** Reading a relay's GPIO is free; reading a
+CO2 sensor can take tens of seconds. Nothing in the module should assume either,
+which is why inheritance is the default rather than "read every time".
+
+Inheriting rather than always reading matters for one case in particular: the
+packet is rebuilt not only on the advertising timer but also immediately after a
+write, so that the confirmation goes out at once (§6.2). With "read every time",
+every write would drag every sensor into a fresh reading — including the slow
+one. `interval: 0` asks for exactly that behaviour where it is wanted, which is
+a value that must be fresh in the confirmation and is cheap enough to read
+there.
 
 **The first attempt was wrong.** It kept `interval` as the sensor refresh and
 added `advertisingInterval` for the radio — inverting which one is the familiar
@@ -605,3 +618,35 @@ than silently clamped by the firmware. `setAdvertisingInterval()` changes it at
 runtime — driven by `tools/set_adv_interval.py` — because choosing the number
 means trying it against a real receiver, and reflashing to try a number is a
 poor way to find out.
+
+---
+
+## D-020 — Suppressing a repeated write must not outlive the burst  [T1.2]
+
+**Status:** found and fixed on hardware, 2026-09-09, within an hour of being
+introduced.
+
+D-016 added two suppressions for writes that would achieve nothing. One
+compares the payload against what the device currently advertises — sound,
+because advertising is the source of truth (§6). The other compared it against
+the payload last sent, to drop the trailing write of a burst that ends where it
+started.
+
+**The second one was kept as instance state, and that was wrong.** It records
+what was *sent*, not what the device *did*, and a write can be delivered and do
+nothing (D-012). So after an unconfirmed write the receiver refused to send that
+value ever again: the entity reverted, the user asked once more, and the request
+was discarded as redundant. A transient failure became a permanent one.
+
+Observed as five consecutive toggles failing with nothing in the log but
+`skipping 1e01, which would change nothing` — the receiver quietly declining to
+do the only thing that could have recovered.
+
+The memory is now local to one flush loop, which is the only scope where it was
+ever meaningful. Six toggles after the fix: median 2.2 s, min 1.3 s, no
+failures.
+
+**The lesson worth keeping.** An optimisation that skips work has to be founded
+on evidence about the device, not on the receiver's memory of its own
+intentions. The advertised-state check passes that test; the last-payload check
+only does within a window where nothing can have changed underneath it.

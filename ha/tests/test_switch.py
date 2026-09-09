@@ -562,3 +562,41 @@ async def test_a_changed_layout_drops_the_cached_gatt_table(
         await hass.async_block_till_done()
 
     assert cleared == [coordinator.address]
+
+
+async def test_an_unconfirmed_write_can_be_sent_again(
+    hass: HomeAssistant, radio, mock_write
+) -> None:
+    """A write that was not confirmed must remain repeatable.
+
+    Suppressing a repeat of the last payload is right *within* a burst, and
+    wrong across one: it says what was sent, not what the device did, and a
+    write can be delivered and do nothing (D-012). Remembering it turned a
+    transient failure into a permanent one — the receiver kept refusing to
+    resend the value the device had never taken.
+    """
+    await setup_device(hass, radio, "espruino-single-light")
+
+    with patch(
+        "custom_components.bthome_writable.coordinator.WRITE_DEBOUNCE", FAST_DEBOUNCE
+    ):
+        # Ask for off; the device never confirms it, so it stays advertising on.
+        await hass.services.async_call(
+            "switch",
+            "turn_off",
+            {"entity_id": "switch.espruino_light_light"},
+            blocking=True,
+        )
+        await settle(hass, 0.3)
+        assert [p.hex() for p in mock_write] == ["1e00"]
+
+        # Asking again must send it again, not decide it was already done.
+        await hass.services.async_call(
+            "switch",
+            "turn_off",
+            {"entity_id": "switch.espruino_light_light"},
+            blocking=True,
+        )
+        await settle(hass, 0.3)
+
+    assert [p.hex() for p in mock_write] == ["1e00", "1e00"]

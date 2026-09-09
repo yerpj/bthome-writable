@@ -79,7 +79,6 @@ class BTHomeWritableCoordinator:
         self._pending_lock = asyncio.Lock()
         self._flush_task: asyncio.Task[None] | None = None
         self._semaphore = connection_semaphore(max_connections)
-        self._last_written: bytes | None = None
 
         # Advertising-interval estimate, for the adaptive confirmation window.
         self._last_seen: float | None = None
@@ -246,6 +245,14 @@ class BTHomeWritableCoordinator:
         connection takes seconds and everything queued behind it is merged into
         one follow-up write.
         """
+        # Scoped to this burst, never beyond it. It exists to drop the trailing
+        # write of a burst that ended where it started, and it is *not*
+        # evidence of what the device did -- only of what was sent. Keeping it
+        # across flushes turned an unconfirmed write into a permanently
+        # unrepeatable one: the value stayed queued as "already written" while
+        # the device sat in the other state.
+        last_written: bytes | None = None
+
         while True:
             async with self._pending_lock:
                 changes = dict(self._pending)
@@ -256,7 +263,7 @@ class BTHomeWritableCoordinator:
             error: Exception | None = None
             try:
                 payload = self._compose(changes)
-                if self._is_redundant(payload):
+                if self._is_redundant(payload, last_written):
                     _LOGGER.debug(
                         "%s: skipping %s, which would change nothing",
                         self.address,
@@ -264,10 +271,10 @@ class BTHomeWritableCoordinator:
                     )
                 else:
                     await self._write_now(payload)
-                    self._last_written = payload
+                    last_written = payload
             except Exception as caught:  # broad on purpose: reported to listeners
                 error = caught
-                self._last_written = None
+                last_written = None
                 _LOGGER.warning("%s: write failed: %s", self.address, caught)
 
             for listener in list(self._write_listeners):
@@ -291,21 +298,28 @@ class BTHomeWritableCoordinator:
             )
         return compose_write(self.declaration, changes)
 
-    def _is_redundant(self, payload: bytes) -> bool:
+    def _is_redundant(self, payload: bytes, last_written: bytes | None) -> bool:
         """Whether sending this payload would achieve nothing.
 
-        Two ways it can: the device already advertises every value in it, or it
-        is byte-identical to the write that just went out — which is what a
-        burst of toggles that ends where it started produces.
+        Two ways it can. The device already advertises every value in it —
+        which is evidence, since advertising is the source of truth (§6). Or it
+        repeats the write that just went out *in this same burst*, which is
+        what a run of toggles ending where it started produces.
 
-        Never true when a write-only object is involved. Those have no advertised
-        value to compare against, and the whole point of a trigger is that
-        sending it again does something.
+        `last_written` deliberately does not survive the burst. It says what was
+        sent, not what the device did, and a write can be delivered and do
+        nothing (D-012). Treating it as state made an unconfirmed write
+        unrepeatable: the receiver kept refusing to resend the value the device
+        had never taken.
+
+        Never true when a write-only object is involved. Those have no
+        advertised value to compare against, and the whole point of a trigger is
+        that sending it again does something.
         """
         assert self.declaration is not None
         if any(obj.write_only for obj in self.declaration.objects):
             return False
-        if payload == self._last_written:
+        if payload == last_written:
             return True
         return payload == compose_write(self.declaration, {})
 

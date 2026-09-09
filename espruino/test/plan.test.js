@@ -330,3 +330,71 @@ test("a writable entry ignores any read interval", () => {
   assert.ok(bytesToHex(after).endsWith("ff02"), "declaration still last");
   assert.ok(bytesToHex(after).includes("1e01"), "the new value is advertised");
 });
+
+test("an entry with no interval follows the advertising interval", () => {
+  /* The default is inheritance, not "read every time": a sensor should not be
+   * read more often than its value could possibly be perceived, and the extra
+   * packet build that follows a write must not drag a slow sensor with it. */
+  let reads = 0;
+  const entries = [
+    {
+      type: "battery",
+      get: () => {
+        reads += 1;
+        return 90;
+      },
+    },
+  ];
+  const plan = bw.planPacket(entries, fakeEncodeOne, 2000);
+  reads = 0;
+
+  // The extra build right after a write, well inside the interval.
+  bw.renderServiceData(plan, 1, fakeEncodeOne, entries, 100);
+  assert.equal(reads, 0, "a write must not trigger a sensor read");
+
+  bw.renderServiceData(plan, 2, fakeEncodeOne, entries, 2000);
+  assert.equal(reads, 1, "but the advertising interval does");
+});
+
+test("interval 0 means read on every build, including after a write", () => {
+  /* Worth it only for a value that must be fresh in the confirmation and is
+   * cheap enough to read there -- which is exactly the light-loop example. */
+  let reads = 0;
+  const entries = [
+    {
+      type: "battery",
+      interval: 0,
+      get: () => {
+        reads += 1;
+        return 90;
+      },
+    },
+  ];
+  const plan = bw.planPacket(entries, fakeEncodeOne, 2000);
+  reads = 0;
+
+  bw.renderServiceData(plan, 1, fakeEncodeOne, entries, 100);
+  bw.renderServiceData(plan, 2, fakeEncodeOne, entries, 150);
+  assert.equal(reads, 2);
+});
+
+test("a named interval is not overridden by the advertising interval", () => {
+  let reads = 0;
+  const entries = [
+    {
+      type: "battery",
+      interval: 60000,
+      get: () => {
+        reads += 1;
+        return 90;
+      },
+    },
+  ];
+  const plan = bw.planPacket(entries, fakeEncodeOne, 500);
+  reads = 0;
+
+  for (let t = 500; t <= 10000; t += 500) {
+    bw.renderServiceData(plan, 1, fakeEncodeOne, entries, t);
+  }
+  assert.equal(reads, 0, "a minute has not passed");
+});

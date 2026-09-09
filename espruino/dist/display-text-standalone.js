@@ -35,11 +35,21 @@ var exports = {};
  * An entry is writable iff it has a `set`. Everything else is derived.
  *
  * An entry may carry its own `interval`: how long its value may be reused
- * before get() is called again. A battery does not need re-measuring as often
- * as a light sensor, and on some devices a reading costs real power. It cannot
- * make a value appear *more* often than the advertising interval -- that is the
- * ceiling. Writable entries ignore it and are always read fresh, so a write is
- * never confirmed with a stale value.
+ * before get() is called again. Omitted, it follows the advertising interval,
+ * which is the fastest a change could be perceived anyway.
+ *
+ * This is where the device's CPU and power budget is allocated, and only the
+ * person writing the sketch can decide it. Reading a relay's GPIO is free;
+ * reading a CO2 sensor can take tens of seconds. Nothing here should assume
+ * either. An entry's interval can only make a value appear *less* often than
+ * the advertising interval, never more -- that is the ceiling.
+ *
+ * `interval: 0` means read on every packet build, including the extra one that
+ * follows a write. Worth it only for a value that must be fresh in the
+ * confirmation, and cheap enough to read there.
+ *
+ * Writable entries ignore all of this and are always read fresh, so a write is
+ * never confirmed with a value read before it.
  *
  * Options:
  *   advertise      the declarative entry list above
@@ -304,7 +314,8 @@ function stableSortByObjectId(items) {
  *
  * Throws at setup rather than at write time: a device that discovers its
  * packet does not fit while advertising is a device in the field. */
-function planPacket(entries, encodeOne) {
+function planPacket(entries, encodeOne, defaultReadInterval) {
+  if (defaultReadInterval === undefined) defaultReadInterval = 0;
   var items = [];
   var i;
 
@@ -338,11 +349,20 @@ function planPacket(entries, encodeOne) {
       writable: writable,
       writeOnly: entry.writeOnly === true,
       // How long this entry's value may be reused before get() is called
-      // again. A battery does not need re-measuring as often as a light
-      // sensor, and on some devices a reading costs real power. Ignored for
-      // writable entries, which are always read fresh so that a write is
-      // never confirmed with a stale value.
-      readInterval: writable ? 0 : entry.interval || 0,
+      // again. Omitted, it follows the advertising interval, which is the
+      // fastest a change could be perceived anyway. Set to 0 to read on every
+      // packet build, including the extra one that follows a write.
+      //
+      // Ignored for writable entries, which are always read fresh so that a
+      // write is never confirmed with a value read before it.
+      readInterval: writable
+        ? 0
+        : entry.interval === undefined
+          ? defaultReadInterval
+          : entry.interval,
+      // True when this entry follows the advertising interval, so that
+      // changing that at runtime carries it along.
+      inheritsInterval: !writable && entry.interval === undefined,
       lastRead: 0,
     });
   }
@@ -624,8 +644,11 @@ function checkInterval(name, value) {
  * field (§2.3). */
 function setup(options) {
   var entries = options.advertise;
+  var interval = checkInterval("interval", options.interval || 2000);
 
-  var plan = planPacket(entries, encodeOne);
+  // The advertising interval is also the default read interval, so a sensor
+  // is read no more often than its value can be perceived.
+  var plan = planPacket(entries, encodeOne, interval);
 
   state = {
     entries: entries,
@@ -635,7 +658,7 @@ function setup(options) {
     // radio transmits, and therefore the fastest a receiver can see anything
     // change. Each entry may re-read less often than this (see readInterval),
     // but nothing can be perceived more often.
-    interval: checkInterval("interval", options.interval || 2000),
+    interval: interval,
     // The advertising interval while a receiver is around. Not lower than
     // 100 ms: with `whenConnected` the stack advertises non-connectably during
     // a connection, and the BLE spec floors non-connectable advertising there.
@@ -647,7 +670,7 @@ function setup(options) {
     onError: options.onError || null,
     timer: undefined,
     fastTimer: undefined,
-    advInterval: options.interval || 2000,
+    advInterval: interval,
   };
 
   if (plan.writablePositions.length) {
@@ -710,6 +733,12 @@ function update() {
  * poor way to find out. */
 function setAdvertisingInterval(ms) {
   state.interval = checkInterval("interval", ms);
+  // Entries that did not name an interval follow this one.
+  for (var i = 0; i < state.plan.ordered.length; i++) {
+    if (state.plan.ordered[i].inheritsInterval) {
+      state.plan.ordered[i].readInterval = state.interval;
+    }
+  }
   if (state.timer !== undefined) clearInterval(state.timer);
   state.timer = setInterval(refreshAdvertising, state.interval);
   if (state.fastTimer === undefined && state.advInterval !== state.fastInterval) {

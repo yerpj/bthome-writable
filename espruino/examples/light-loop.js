@@ -45,9 +45,14 @@ bw.setup({
   advertise: [
     // The battery does not move in a minute, and reading it is not free.
     { type: "battery", interval: 300000, get: function () { return E.getBattery(); } },
-    // No interval: the light sensor is read for every packet, which is the
-    // point of this example -- the measurement has to follow the LED.
-    { type: "raw", get: illuminance },
+    // interval 0 -- read on every packet build, including the extra one that
+    // follows a write. That is a choice this example makes because its whole
+    // point is that the measurement follows the command, and Puck.light() is
+    // cheap. It is not a rule: omit the interval and the sensor follows the
+    // advertising interval instead, so a write's confirmation would carry the
+    // previous reading and the new one would arrive a packet later. A sensor
+    // that takes tens of seconds to read wants a long interval, not this.
+    { type: "raw", interval: 0, get: illuminance },
     {
       type: "light",
       get: function () { return lamp.on; },
