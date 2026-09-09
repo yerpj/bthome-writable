@@ -74,9 +74,12 @@ bw.setup({
   // Try other values live, without reflashing:
   //   python -m tools.set_adv_interval --address <mac> --ms 500
   //
-  // 5000 is deliberately slow for a device you interact with: it is here to
-  // make the cost of a long interval easy to feel rather than to argue about.
-  interval: 5000,
+  // 1000 for a device you interact with. Measuring this at 5000 (D-024) showed
+  // the interval does not tax the latency of a command -- the device is in fast
+  // advertising during and after the connection -- so what a shorter interval
+  // actually buys is the idle refresh rate and a cheaper first interaction
+  // after a quiet period, which is where the cliff is (D-021).
+  interval: 1000,
   onError: function (error) {
     console.log("write rejected:", error.code, error.message);
   },
