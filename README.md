@@ -26,6 +26,11 @@ MVPs) are done and green. Both MVPs are now waiting on hardware: see
 
 ## Reading order
 
+- [`docs/first-use-case.md`](docs/first-use-case.md) — the first working
+  end-to-end demonstration, with diagrams, timings and what broke. Start here
+  for what this actually does. Also as a
+  [PDF](docs/first-use-case.pdf), regenerated with
+  `python -m tools.md_to_pdf docs/first-use-case.md`.
 - `spec/PROTOCOL.md` — the protocol. Normative.
 - `spec/decisions.md` — every resolved question, with the measurement or the
   ruling that resolved it.
