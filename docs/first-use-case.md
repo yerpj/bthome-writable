@@ -328,7 +328,7 @@ python -m tools.closed_loop     --address <mac>      # §4
 python -m tools.reject_matrix   --address <mac>      # §3
 ```
 
-Home Assistant side: copy `ha/custom_components/bthome_writable/` into
+Home Assistant side: copy `custom_components/bthome_writable/` into
 `config/custom_components/`, restart, and add the device — it appears on its
 own, or under *Add integration → BTHome Writable*.
 

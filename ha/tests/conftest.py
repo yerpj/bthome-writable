@@ -12,9 +12,11 @@ from habluetooth import BluetoothServiceInfoBleak
 import pytest
 import pytest_socket
 
-# The integration lives under ha/custom_components/, which is where
-# pytest-homeassistant-custom-component expects to find it.
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+# `custom_components/` sits at the repository root so that HACS can install
+# straight from GitHub, which is what HACS expects to find there. That is one
+# level above `ha/`, where the tests live, so the root goes on sys.path for
+# pytest-homeassistant-custom-component to import the integration.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 FIXTURES_FILE = (
     Path(__file__).resolve().parents[2] / "spec" / "advertising-fixtures.json"

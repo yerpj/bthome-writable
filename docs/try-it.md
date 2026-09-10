@@ -33,8 +33,8 @@ Needs a Puck.js, Home Assistant with Bluetooth, and a host with Python +
 git clone https://github.com/yerpj/bthome-writable && cd bthome-writable
 pip install bleak
 
-# 1. Install the integration, then restart HA.
-cp -r ha/custom_components/bthome_writable <config>/custom_components/
+# 1. Install the integration, then restart HA. (Or add the repo to HACS.)
+cp -r custom_components/bthome_writable <config>/custom_components/
 
 # 2. Install the sketch on the Puck. Modules go to Storage under their bare
 #    names, the app to .bootcde, so it survives a power cut.

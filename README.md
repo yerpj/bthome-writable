@@ -11,7 +11,8 @@ refreshed advertising is the confirmation; there is no ack protocol.
 |-----------------|-----------------------------------------------------------------|
 | `spec/`         | `PROTOCOL.md` (normative), `decisions.md`, advertising fixtures  |
 | `espruino/`     | Espruino JS module (nRF52-class devices) + pure-JS unit tests    |
-| `ha/`           | Home Assistant custom integration (`bthome_writable`, HACS)      |
+| `custom_components/` | The Home Assistant integration itself — at the root so HACS can install straight from GitHub |
+| `ha/`           | Its test suite, harness and hardware-test procedure              |
 | `test-vectors/` | Crypto test vectors — the shared contract between both codebases |
 | `tools/`        | Generators and verification scripts                              |
 

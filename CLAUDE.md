@@ -27,7 +27,8 @@ The project owner (JP, @yerpj on GitHub) drives the discussion with Gordon; you 
 ```
 /spec           PROTOCOL.md, decisions.md, advertising fixtures
 /espruino       the JS module + pure-JS unit tests (parse/encode separated from NRF calls)
-/ha             the custom integration (custom_components/bthome_writable/)
+/custom_components  the HA integration -- at the repo root so HACS installs from GitHub
+/ha             its tests, harness and hardware-test procedure
 /test-vectors   crypto test vectors (shared contract)
 ```
 

@@ -20,7 +20,7 @@ offered for setup.
 
 ## Install
 
-1. Copy `ha/custom_components/bthome_writable/` into your Home Assistant
+1. Copy `custom_components/bthome_writable/` into your Home Assistant
    `config/custom_components/`.
 2. Restart Home Assistant.
 3. Install `espruino/examples/single-light.js` on the board so that it

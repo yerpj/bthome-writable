@@ -7,7 +7,7 @@ requires-python = ">=3.12"
 [tool.ruff]
 line-length = 88
 target-version = "py312"
-src = ["ha", "tools"]
+src = [".", "tools"]  # custom_components/ sits at the root, for HACS
 extend-exclude = [".venv", ".venv-ha", "node_modules"]
 
 [tool.ruff.lint]
