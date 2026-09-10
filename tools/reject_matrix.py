@@ -25,6 +25,7 @@ import sys
 from bleak import BleakClient, BleakScanner
 
 from tools.bthome_write import WRITE_CHARACTERISTIC, Watcher
+from tools.ha_protocol import parse_declaration
 
 UART_TX = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"
 
@@ -105,7 +106,7 @@ async def run(address: str) -> int:
         return 1
 
     # Compare the objects, not the packet id, which moves on every refresh.
-    if strip_packet_id(before) != strip_packet_id(after):
+    if writable_state(before) != writable_state(after):
         print("FAIL: a rejected write changed the advertised state", file=sys.stderr)
         failures += 1
     else:
@@ -114,11 +115,19 @@ async def run(address: str) -> int:
     return 1 if failures else 0
 
 
-def strip_packet_id(payload: bytes) -> bytes:
-    """Drop the device-info byte and the packet-id object (`00 <n>`)."""
-    if len(payload) >= 3 and payload[1] == 0x00:
-        return payload[3:]
-    return payload[1:]
+def writable_state(payload: bytes) -> dict[int, bytes] | None:
+    """The advertised value of every writable object, keyed by position.
+
+    Comparing whole payloads would be wrong, not merely strict: the packet id
+    changes by design, and any sensor read on every packet -- the light sensor
+    of `light-loop.js`, for one -- changes with the room. What "a rejected write
+    must not change the state" means is the *writable* objects, which is what
+    the declaration points at.
+    """
+    declaration = parse_declaration(payload[1:])  # minus the device-info byte
+    if declaration is None:
+        return None
+    return {obj.position: obj.value for obj in declaration.objects}
 
 
 def main() -> int:

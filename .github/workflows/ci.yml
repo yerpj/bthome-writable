@@ -29,6 +29,13 @@ jobs:
         run: ruff format --check .
       - name: Pytest
         run: python -m pytest -q
+      # espruino/dist/ is generated but committed, so it can silently fall
+      # behind the sources it is built from -- and the bundle tests read dist/,
+      # so they keep passing against the stale copy. This is what noticed.
+      - name: Bundles match their sources
+        run: |
+          python -m tools.build_espruino_bundle
+          git diff --exit-code espruino/dist
 
   homeassistant:
     name: Home Assistant integration
