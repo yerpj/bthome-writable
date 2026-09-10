@@ -17,8 +17,8 @@ DECLARATION_OBJECT_ID: Final = 0xFF
 
 # GATT service and characteristic (§4.1, decisions.md D-001). Provisional until
 # the first public release, frozen permanently after it.
-SERVICE_UUID: Final = "2faa47bc-3b0b-4b1a-9e2a-b4c2952e62f2"
-WRITE_CHARACTERISTIC_UUID: Final = "639333f3-f21f-4558-9d85-06fcac3436c2"
+SERVICE_UUID: Final = "2faa0001-3b0b-4b1a-9e2a-b4c2952e62f2"
+WRITE_CHARACTERISTIC_UUID: Final = "2faa0002-3b0b-4b1a-9e2a-b4c2952e62f2"
 
 # BTHome device-information byte used in the AES-CCM nonce (§5.1).
 # 0x41 is the advertising value; writes use 0xFF so a captured advertisement can

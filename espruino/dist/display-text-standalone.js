@@ -212,8 +212,8 @@ function renderServiceData(p, pid, enc, entries, now) {
 
 /* ===== DIVIDER: everything below owns the radio ========================== */
 
-const SERVICE_UUID = "2FAA47BC-3B0B-4B1A-9E2A-B4C2952E62F2"; // provisional (D-001)
-const WRITE_CHARACTERISTIC_UUID = "639333F3-F21F-4558-9D85-06FCAC3436C2";
+const SERVICE_UUID = "2FAA0001-3B0B-4B1A-9E2A-B4C2952E62F2"; // provisional (D-001)
+const WRITE_CHARACTERISTIC_UUID = "2FAA0002-3B0B-4B1A-9E2A-B4C2952E62F2";
 
 let st = null;
 

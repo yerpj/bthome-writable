@@ -73,19 +73,29 @@ BTHome service data. Rationale in D-005 points 3 and 4.
 
 ## D-001 — GATT service and characteristic UUIDs  [DECISION, T0.2]
 
-**Status:** decided by the owner, 2026-09-08. Randomly generated (UUID v4), as
-the values are arbitrary and only need to be collision-free.
+**Status:** revised 2026-09-10 on Gordon's advice, superseding the values chosen
+by the owner on 2026-09-08.
 
 ```
-Service:              2FAA47BC-3B0B-4B1A-9E2A-B4C2952E62F2
-Write characteristic: 639333F3-F21F-4558-9D85-06FCAC3436C2
+Service:              2FAA0001-3B0B-4B1A-9E2A-B4C2952E62F2
+Write characteristic: 2FAA0002-3B0B-4B1A-9E2A-B4C2952E62F2
 ```
 
 Properties on the characteristic: `write`, `write-no-response`.
 
-**Provisional until the first public release** — to be shown to Gordon in
-espruino#8013 first, in case the Espruino side has a convention. They freeze
-permanently at the first release (risk #11) and must never change after.
+The first choice was two independent UUID v4s — `2FAA47BC-…` and `639333F3-…` —
+on the reasoning that the values are arbitrary and need only be collision-free.
+That is true and still misses the convention: in Bluetooth one randomly assigns
+*one* 128-bit UUID and varies the second 16-bit group per characteristic. The
+device then stores one base instead of two unrelated UUIDs, which on a board
+with 64 kB is the whole point. The base here keeps the low 96 bits of the
+original service UUID, so only the discriminator is new.
+
+This was exactly the question §6 of `for-gordon.md` put to him, and it is the
+reason the values were held provisional rather than frozen early.
+
+**Still provisional until the first public release.** They freeze permanently
+there (risk #11) and must never change after.
 
 ---
 
@@ -802,3 +812,41 @@ the confirmation arrived, and read the previous command's confirmation as the
 current one's — a 590 lux "response" to turning the LED *off*. At a slow
 interval, a measurement loop has to wait out the confirmation or it will report
 the loop inverted.
+
+---
+
+## D-025 — Changing the UUIDs is invisible to discovery
+
+**Status:** measured 2026-09-10, migrating the reference device and its Home
+Assistant install to the D-001 revision.
+
+The change worried me more than it deserved. Because **the service UUID is never
+advertised** (§4.1), nothing a receiver uses to *find* a device depends on it:
+discovery keys on the BTHome service data `0xFCD2`, the config flow's device
+list is built from that, and the entity layout keys on positions. The UUID only
+matters after a connection is already open.
+
+So the migration is: deploy the device, put the new integration in place,
+restart, re-add. Verified end to end afterwards — 102 -> 583 lux on, 591 -> 110
+lux off, through Home Assistant, with the device merge (`bthome` and
+`bthome_writable` on one device) intact.
+
+The one hazard is the one already known: a receiver holding a cached GATT
+database would keep writing to a characteristic that no longer exists. Nothing
+new was needed for it — D-012's explicit characteristic resolution and
+cache-clear-on-unconfirmed is exactly this case.
+
+### Removing stale entities is not a registry operation
+
+Five sensors from an earlier firmware layout (temperature, humidity, pressure
+and two extra batteries) survived on the same MAC. Deleting them from the entity
+registry looked like it worked and it did not: Home Assistant's `bthome`
+integration restores its known sensor set from its config entry at startup, so
+they were all back after the next restart.
+
+What actually removes them is deleting the config entry and letting discovery
+re-create it. Worth knowing before reaching for the registry, and worth knowing
+that a device's entity list is owned by whichever integration created it — here
+the stock `bthome` integration owns every sensor, and this project's owns only
+the switch. That division is deliberate: we depend on `bthome-ble` for parsing
+rather than duplicating it.

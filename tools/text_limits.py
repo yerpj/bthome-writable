@@ -24,7 +24,7 @@ import sys
 
 from bleak import BleakClient, BleakScanner
 
-WRITE_CHARACTERISTIC = "639333f3-f21f-4558-9d85-06fcac3436c2"
+WRITE_CHARACTERISTIC = "2faa0002-3b0b-4b1a-9e2a-b4c2952e62f2"
 UART_RX = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"
 UART_TX = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"
 

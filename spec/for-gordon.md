@@ -98,16 +98,17 @@ that also advertises a complete local name has considerably less.
 
 ---
 
-## 6. Provisional UUIDs, if you have a convention
+## 6. Provisional UUIDs, if you have a convention — ANSWERED
 
 ```
-Service                2FAA47BC-3B0B-4B1A-9E2A-B4C2952E62F2
-Write characteristic   639333F3-F21F-4558-9D85-06FCAC3436C2   (write, write-no-response)
+Service                2FAA0001-3B0B-4B1A-9E2A-B4C2952E62F2
+Write characteristic   2FAA0002-3B0B-4B1A-9E2A-B4C2952E62F2   (write, write-no-response)
 ```
 
-Randomly generated, and easy to change until the first release — after which
-they freeze permanently. If Espruino has a convention for module-owned UUIDs,
-now is the moment.
+Answered on 2026-09-10: one randomly assigned 128-bit base, varying only the
+second 16-bit group per characteristic, rather than two independent UUIDs — the
+ordinary Bluetooth convention, and one base to store instead of two. Adopted
+(D-001). Still frozen only at the first release.
 
 ---
 

@@ -167,12 +167,16 @@ receivers (D-005).
 One primary service with one characteristic:
 
 ```
-Service                2FAA47BC-3B0B-4B1A-9E2A-B4C2952E62F2
-  Write characteristic 639333F3-F21F-4558-9D85-06FCAC3436C2   (write, write-no-response)
+Service                2FAA0001-3B0B-4B1A-9E2A-B4C2952E62F2
+  Write characteristic 2FAA0002-3B0B-4B1A-9E2A-B4C2952E62F2   (write, write-no-response)
 ```
 
-> **Provisional.** These UUIDs are randomly generated and freeze permanently at
-> the first public release. Until then they may still change (D-001).
+One randomly generated 128-bit base, with only the second 16-bit group varying
+per characteristic. This is the ordinary Bluetooth convention and it is cheaper
+on the device, which stores one base rather than two unrelated UUIDs.
+
+> **Provisional.** These UUIDs freeze permanently at the first public release.
+> Until then they may still change (D-001).
 
 The device MUST advertise connectably at all times, and MUST expose this service
 whether or not encryption is in use.

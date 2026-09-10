@@ -77,8 +77,8 @@ the IDE console.
 Connect to the board in nRF Connect. You should see a custom service:
 
 ```
-2FAA47BC-3B0B-4B1A-9E2A-B4C2952E62F2
-  └─ 639333F3-F21F-4558-9D85-06FCAC3436C2   (WRITE, WRITE NO RESPONSE)
+2FAA0001-3B0B-4B1A-9E2A-B4C2952E62F2
+  └─ 2FAA0002-3B0B-4B1A-9E2A-B4C2952E62F2   (WRITE, WRITE NO RESPONSE)
 ```
 
 ## Step 3 — a write toggles the GPIO

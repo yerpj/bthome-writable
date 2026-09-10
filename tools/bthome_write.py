@@ -31,7 +31,7 @@ import time
 from bleak import BleakClient, BleakScanner
 
 BTHOME_UUID_PREFIX = "0000fcd2"
-WRITE_CHARACTERISTIC = "639333f3-f21f-4558-9d85-06fcac3436c2"
+WRITE_CHARACTERISTIC = "2faa0002-3b0b-4b1a-9e2a-b4c2952e62f2"
 
 
 class Watcher:
