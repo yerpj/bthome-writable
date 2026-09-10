@@ -876,9 +876,13 @@ So a frame costs **two native calls plus some framing**. All four advertising
 vectors are reproduced byte-for-byte on the device, ciphertext and MIC.
 
 ```
-CCM frame     31.8 ms
+CCM frame     31.8 ms      (superseded: see D-028, now 75 ms)
 of which AES   4.5 ms
 ```
+
+> These numbers are from the first implementation, which asked the cipher for
+> the whole frame in two calls. That turned out to fail under memory pressure
+> (D-028); the version that works costs 75 ms.
 
 **Go.** And by a wider margin than the raw number suggests, because the cost is
 per *packet rebuild*, not per advertisement: `refreshAdvertising` runs on
@@ -936,3 +940,48 @@ espruino#8013 in `for-gordon.md`.
 
 For this project it is only an inconvenience: the ECB route above is unaffected,
 and costs one extra XOR loop that a working CTR would have absorbed.
+
+---
+
+## D-028 — `AES.encrypt` fails on large inputs long before memory runs out
+
+**Status:** measured 2026-09-10 on Puck.js 2v27, while making AESCCM.js pass the
+vectors on hardware.
+
+`AES.encrypt` allocates its result as one contiguous run of the variable heap.
+When no run that long is free it prints `ERROR: Not enough memory for result`
+and **returns `undefined`** — which the caller then hands to
+`new Uint8Array(...)`, producing `Unsupported first argument of type undefined`
+several frames away from the cause.
+
+The threshold is not a size limit. It moves with how full the heap is:
+
+```
+                        free blocks   16   32   48   64   128
+sketch running                 1494    ok   ok   ok  FAIL  FAIL
+fresh interpreter              2567    ok   ok   ok    ok    ok
+```
+
+and with a console session's own variables in the way, even 32 bytes failed.
+`process.memory().free` is no guide, because it counts free blocks rather than
+consecutive ones: a REPL `new Uint8Array(256)` succeeded in the same session
+where a 48-byte AES call did not.
+
+**What this changes.** AESCCM.js asks for at most 32 bytes per call and builds
+them in a buffer allocated once, at module load, while the heap is still clean.
+CBC chains across calls through its IV, so splitting the MAC costs only the
+extra call. With that, all 16 vectors pass on-device including the 30-byte one,
+which had failed.
+
+The cost is real: **75 ms per frame against 38 ms** for the version that did it
+in two big calls. Not, as I first assumed, from replacing `fill` with a loop —
+restoring the native `fill` changed nothing measurable. It is the extra
+JavaScript around the cipher: more function calls, more `subarray`, more
+per-block bookkeeping. On this interpreter that is what costs, and it is the
+same lesson as D-026 from the other side.
+
+At a 1 s advertising interval, 75 ms is about 7.5 % of one core. Still a go.
+
+**Worth reporting upstream.** An allocation failure that returns `undefined`
+rather than throwing turns a resource problem into a type error somewhere else,
+and the message names memory when memory is not what ran out.

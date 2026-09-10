@@ -10,6 +10,7 @@ export default [
       globals: {
         // Espruino globals used by the module.
         NRF: "readonly",
+        AES: "readonly",
         E: "readonly",
         Storage: "readonly",
         require: "readonly",

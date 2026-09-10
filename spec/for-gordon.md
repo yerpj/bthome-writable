@@ -211,8 +211,10 @@ Reproduce with `python -m tools.ccm_bench --address <mac>`.
 ## 10. CCM is affordable, and needs no JavaScript AES
 
 For the record, since it was an open question: BTHome's AES-CCM composes out of
-Espruino's native CBC and ECB, at **31.8 ms per frame on Puck.js 2v27, of which
-4.5 ms is AES**. All four advertising test vectors reproduce byte for byte.
+Espruino's native CBC and ECB. All sixteen test vectors reproduce byte for byte
+on a Puck.js 2v27, in **75 ms per frame** -- of which under 5 ms is the cipher.
+(A first version did it in two large calls at 31.8 ms, and broke on the point
+below; asking for 32 bytes at a time is what costs the difference.)
 
 `AES.ccmEncrypt` would be better still, but `USE_AES_CCM` is not set in the
 Puck.js build — if it is cheap to enable there, it would remove the framing
@@ -221,5 +223,38 @@ entirely.
 The remaining 27 ms is interpreted JavaScript, and the profile is worth knowing
 generally: **touching one typed-array element from JS costs about 0.7 ms on this
 board**, so an 8-byte XOR loop outweighs all of the AES.
+
+---
+
+---
+
+## 11. `AES.encrypt` returns `undefined` when it cannot allocate its result
+
+Related to the above, and the more annoying of the two to debug.
+
+`AES.encrypt` allocates its result as one contiguous run of the heap. When there
+is no run that long it prints `ERROR: Not enough memory for result` and returns
+`undefined` -- so the caller's `new Uint8Array(...)` then throws
+`Unsupported first argument of type undefined`, pointing at a line that has
+nothing wrong with it.
+
+The threshold moves with how full the heap is, which made it look like a size
+limit at first:
+
+```
+                        free blocks   16   32   48   64   128
+sketch running                 1494    ok   ok   ok  FAIL  FAIL
+fresh interpreter              2567    ok   ok   ok    ok    ok
+```
+
+`process.memory().free` does not predict it -- it counts free blocks, not
+consecutive ones. In the same session where a 48-byte AES call failed, a REPL
+`new Uint8Array(256)` succeeded.
+
+Two things would help anyone hitting this: throwing rather than returning
+`undefined`, and a message that says contiguous rather than "not enough memory"
+when there are 24 kB free. Working around it is easy once understood -- ask for
+32 bytes at a time, chain CBC through its IV -- but it costs about twice the
+time, and the way it presents gives no clue what to try.
 
 ---
