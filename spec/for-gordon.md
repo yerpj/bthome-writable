@@ -6,7 +6,11 @@ question. Ordered by how much it needs an answer.
 
 ---
 
-## 1. A bug in the upstream `BTHome` module
+## 1. A bug in the upstream `BTHome` module — FIXED
+
+Fixed in EspruinoDocs master on 2026-09-10 as
+`humidity : e => [0x2E, Math.round(e.v)]`. Not yet on espruino.com/modules,
+which is where the tooling fetches from, so devices still get the old one.
 
 `humidity` in `getAdvertisement`'s encoding table pushes the entry object where
 it means to push the value:
@@ -141,7 +145,12 @@ bitmask, so upstream entity naming and our addressing agree by construction.
 
 ---
 
-## 8. The `BTHome` module has no `illuminance` type
+## 8. The `BTHome` module has no `illuminance` type — FIXED
+
+Added in EspruinoDocs master on 2026-09-10 as
+`illuminance : e => b24(5, e, 100)`, which is exactly the encoding needed.
+Not yet published to espruino.com/modules, so this repo's example still
+goes through `raw` for now.
 
 BTHome object `0x05` (illuminance, uint24, 0.01 lux) is not in
 `getAdvertisement`'s table. It is a common enough sensor that its absence is
@@ -166,3 +175,51 @@ verbatim", which is *not* BTHome's raw object `0x54` (length-prefixed). Two
 different things sharing a name; worth a comment in the module, and something a
 wrapper has to be careful about — this repo's module briefly treated `raw` as
 length-prefixed and would have mis-parsed writes to one.
+
+---
+
+## 9. `AES.encrypt` in CTR mode ignores its `iv` — a security bug
+
+Found on Puck.js 2v27 while working out whether BTHome's AES-CCM is affordable
+on an nRF52. Two IVs with no byte in common give the same answer, and it is
+`E(0…0)`: the counter block is always zero.
+
+```
+iv 000102030405060708090a0b0c0d0e0f  ->  1838858c73da85d4885458a8e5dbda4f
+iv ffeeddccbbaa99887766554433221100  ->  1838858c73da85d4885458a8e5dbda4f
+AES-ECB of an all-zero block         =   1838858c73da85d4885458a8e5dbda4f
+```
+
+CBC and ECB are correct — both match a reference implementation byte for byte,
+which is how the vectors below pass. `OFB` returns `undefined` rather than a
+result, which may be the same root cause.
+
+**Why it is worth more than a bug report.** CTR over a nonce is the obvious way
+to build a stream cipher, and this one silently uses one keystream for every
+message under a key: two ciphertexts XOR to the two plaintexts XORed. It looks
+like it works. Anyone who reached for it has no confidentiality between
+messages, and nothing told them.
+
+It costs this project only an extra loop — the CCM keystream comes from one ECB
+call over the concatenated counter blocks instead — so there is no hurry on our
+account.
+
+Reproduce with `python -m tools.ccm_bench --address <mac>`.
+
+---
+
+## 10. CCM is affordable, and needs no JavaScript AES
+
+For the record, since it was an open question: BTHome's AES-CCM composes out of
+Espruino's native CBC and ECB, at **31.8 ms per frame on Puck.js 2v27, of which
+4.5 ms is AES**. All four advertising test vectors reproduce byte for byte.
+
+`AES.ccmEncrypt` would be better still, but `USE_AES_CCM` is not set in the
+Puck.js build — if it is cheap to enable there, it would remove the framing
+entirely.
+
+The remaining 27 ms is interpreted JavaScript, and the profile is worth knowing
+generally: **touching one typed-array element from JS costs about 0.7 ms on this
+board**, so an 8-byte XOR loop outweighs all of the AES.
+
+---

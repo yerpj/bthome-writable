@@ -850,3 +850,89 @@ that a device's entity list is owned by whichever integration created it — her
 the stock `bthome` integration owns every sensor, and this project's owns only
 the switch. That division is deliberate: we depend on `bthome-ble` for parsing
 rather than duplicating it.
+
+---
+
+## D-026 — T1.3: AES-CCM on the nRF52 is a go, and needs no JavaScript AES
+
+**Status:** measured 2026-09-10 on Puck.js 2v27 (nRF52832, 64 kB RAM), against
+the shared test vectors. Reproducible with `python -m tools.ccm_bench`.
+
+The task asked for ms/frame and a go/no-go on implementing CCM in JavaScript.
+The premise turned out to be wrong in a useful way: **no AES has to be written
+in JavaScript at all.**
+
+Puck.js has no `AES.ccmEncrypt` — the firmware guards CCM behind `USE_AES_CCM`
+and this build does not set it — but it does have native AES, and CCM is made
+entirely of parts it provides:
+
+- the tag is a **CBC-MAC**: CBC with a zero IV over `B0 || padded plaintext`,
+  taking the last ciphertext block;
+- the keystream is `E(A0) || E(A1) || …`, and since **ECB encrypts each block
+  independently**, one ECB call over the concatenated counter blocks yields all
+  of it at once, whatever the payload length.
+
+So a frame costs **two native calls plus some framing**. All four advertising
+vectors are reproduced byte-for-byte on the device, ciphertext and MIC.
+
+```
+CCM frame     31.8 ms
+of which AES   4.5 ms
+```
+
+**Go.** And by a wider margin than the raw number suggests, because the cost is
+per *packet rebuild*, not per advertisement: `refreshAdvertising` runs on
+`interval`, and the radio then repeats that payload for free. At a 1 s interval
+that is about 3 % of one core, on a device whose only other job is reading a
+sensor.
+
+### The interesting part is that AES is 14 % of it
+
+Profiling the rest, per call:
+
+```
+8-byte XOR loop        5.62 ms     <- the single largest item
+counter-block loop     3.40 ms
+ECB + wrap             3.20 ms
+CBC + wrap             2.53 ms
+Uint8Array.set(13)     0.88 ms
+```
+
+**Touching a typed array element from JavaScript costs about 0.7 ms** on this
+board. Eight of them outweigh the whole of AES. An attempt to optimise by
+hoisting the buffers out of the function and patching them in place made it
+marginally *worse* (28.4 ms), because `fill`, `subarray` and `set` are the same
+kind of interpreted work.
+
+The lever, if this ever needs to be faster, is removing per-byte JavaScript
+loops — not touching the crypto. Which is also the shape of the upstream defect
+below: a working CTR would delete the largest loop outright.
+
+---
+
+## D-027 — Espruino's AES CTR mode ignores its `iv`  [UPSTREAM DEFECT]
+
+**Status:** found 2026-09-10 on Puck.js 2v27 while implementing D-026.
+
+`AES.encrypt(data, key, {iv: …, mode: "CTR"})` returns the same bytes for any
+`iv`. Two IVs sharing no byte produce identical output, and that output is
+exactly `E(0…0)` — the counter block is always zero.
+
+```
+iv 000102…0e0f  ->  1838858c73da85d4885458a8e5dbda4f
+iv ffeeddcc…00  ->  1838858c73da85d4885458a8e5dbda4f
+E(zero block)   =   1838858c73da85d4885458a8e5dbda4f
+```
+
+CBC and ECB honour their parameters and match a reference implementation
+exactly; `OFB` returns `undefined` rather than a result.
+
+**This is worth reporting for its own sake, not only for ours.** Counter mode
+with a fixed counter block reuses one keystream for every message under a key,
+so two ciphertexts XOR to the two plaintexts XORed. Anyone reaching for CTR on
+Espruino — the natural choice for a stream cipher over a nonce — gets something
+that looks right and offers no confidentiality across messages. Written up for
+espruino#8013 in `for-gordon.md`.
+
+For this project it is only an inconvenience: the ECB route above is unaffected,
+and costs one extra XOR loop that a working CTR would have absorbed.
