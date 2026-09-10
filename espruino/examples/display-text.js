@@ -34,8 +34,9 @@ function show(text) {
 bw.setup({
   advertise: [
     { type: "battery", get: function () { return E.getBattery(); } },
-    // Write-only: advertised as a zero-length placeholder, never as content.
-    { type: "text", writeOnly: true, set: show },
+    // `set` and no `get`, so the module works out that this is write-only:
+    // advertised as a zero-length placeholder, never as content.
+    { type: "text", set: show },
   ],
   interval: 2000,
   onError: function (error) {

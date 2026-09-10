@@ -25,10 +25,20 @@ Source: https://www.espruino.com/modules/BTHome.js
 
 ---
 
-## 2. Write-only objects: §3 says something undetectable
+## 2. Write-only objects: §3 says something undetectable — PARTLY ANSWERED
 
-**Needs a decision.** The working document declares a write-only object by
-advertising it "with an empty/zero value".
+**Answered on the device side, 2026-09-10:** an entry with `set` and no `get` is
+write-only, and the module advertises it back at zero length without the sketch
+having to declare it. Implemented; `writeOnly: true` survives for the other
+case, a value the device *could* report but would rather not.
+
+**Still open on the receiver side.** "Advertise it back with zero length" has no
+representation for a *fixed-length* object — an object ID with no value bytes is
+not something a BTHome parser can walk — so the ambiguity below is unchanged for
+that class, and the proposed wording still needs your agreement.
+
+The working document declares a write-only object by advertising it "with an
+empty/zero value".
 
 For a variable-length object that is unambiguous — a length byte of 0 cannot
 arise any other way. For a **fixed-length** object it cannot be detected at all:

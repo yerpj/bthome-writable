@@ -33,7 +33,10 @@ https://github.com/yerpj/bthome-writable  (protocol: spec/PROTOCOL.md)
     interval : 1000
   });
 
-An entry is writable if it has `set`; everything else is derived. Options:
+An entry is writable if it has `set`, and write-only if it has `set` and no
+`get` - it then advertises a zero-length placeholder rather than a value, and
+gets no confirmation, because there is nothing to confirm it with. Everything
+else is derived. Options:
 
   advertise      the entry list above
   interval       BTHome advertising interval, 20..10000ms (default 2000) - how
@@ -154,16 +157,20 @@ function planPacket(entries, enc, defRead) {
   for (let i = 0; i < entries.length; i++) {
     const e = entries[i];
     const w = typeof e.set === "function";
+    // An entry that can be written but not read has nothing to advertise, so it
+    // is write-only without having to say so. `writeOnly:true` stays as a way
+    // to hide a value the device could report but would rather not.
+    const wo = e.writeOnly === true || (w && typeof e.get !== "function");
     if (e.writeOnly && !w) throw err("write_only_without_set", `entry ${i} ("${e.type}") is writeOnly but has no set()`);
     if (!w && typeof e.get !== "function") throw err("entry_without_accessor", `entry ${i} ("${e.type}") has neither get() nor set()`);
-    const b = enc(e, e.writeOnly ? blank(e) : e.get());
+    const b = enc(e, wo ? blank(e) : e.get());
     items.push({
       id : b[0],
       value : b.slice(1),
       variable : VARIABLE[e.type] === true,
       entryIndex : i,
       writable : w,
-      writeOnly : e.writeOnly === true,
+      writeOnly : wo,
       // 0 for writable entries: they are read fresh, so a write is never
       // confirmed with a value read before it.
       readInterval : w ? 0 : (e.interval === undefined ? defRead : e.interval),

@@ -181,6 +181,35 @@ test("an over-budget packet is refused at setup, not at write time", () => {
   );
 });
 
+test("set() without get() is write-only, without having to say so", () => {
+  /* Gordon's rule from espruino#8013: an entry that can be written but not read
+   * has nothing to advertise, so the module should not make the sketch declare
+   * what it can see. Before this, such an entry threw a TypeError on the
+   * missing get(). */
+  const entries = [{ type: "text", set: () => {} }];
+  const plan = bw.planPacket(entries, fakeEncodeOne);
+
+  assert.equal(plan.ordered[0].writeOnly, true);
+  // 40 | 00 01 | 53 00 | ff 02 -- a zero-length placeholder, not a value.
+  assert.equal(
+    bytesToHex(bw.renderServiceData(plan, 1, fakeEncodeOne, entries)),
+    "4000015300ff02"
+  );
+});
+
+test("an explicit writeOnly still hides a value the device could report", () => {
+  /* The derivation covers "cannot be read"; the flag stays for "could be read
+   * but should not be" -- a display whose contents are nobody else's business. */
+  const entries = [{ type: "text", writeOnly: true, get: () => "secret", set: () => {} }];
+  const plan = bw.planPacket(entries, fakeEncodeOne);
+
+  assert.equal(plan.ordered[0].writeOnly, true);
+  assert.equal(
+    bytesToHex(bw.renderServiceData(plan, 1, fakeEncodeOne, entries)),
+    "4000015300ff02"
+  );
+});
+
 test("writeOnly without set() is a configuration error", () => {
   assert.throws(
     () => bw.planPacket([{ type: "text", writeOnly: true }], fakeEncodeOne),
