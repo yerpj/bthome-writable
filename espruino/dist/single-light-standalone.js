@@ -48,6 +48,10 @@ else is derived. Options:
   fastTimeout    ms to stay fast after a disconnect (default 30000)
   whenConnected  keep advertising during a connection (default true)
   maxWriteLength largest accepted write, in bytes of device RAM (default 128)
+  bindkey        16-byte AES key, as 32 hex characters or an array. Given, the
+                 device advertises and accepts writes encrypted (BTHome v2
+                 AES-CCM, S5) - which costs 8 of the 24 service-data bytes for
+                 the counter and MIC, so there is less room for objects.
   onError        called with a rejected write's error
 
 Everything above the DIVIDER is pure JS - no NRF, no I/O - and runs under Node,
@@ -57,6 +61,10 @@ which is how the protocol logic is tested without a device.
 const DECL_ID = 0xFF; // declaration object, MUST be last in the packet (S2.2)
 const PKT_ID = 0x00; // BTHome packet id, always our first object
 const DEV_INFO = 0x40; // BTHome v2, unencrypted, not trigger-based
+const DEV_INFO_ENC = 0x41; // the same, encrypted
+const WRITE_INFO = 0xFF; // device-info byte of a *write* nonce only (S5.1)
+const MIC_LEN = 4; // BTHome v2's MIC
+const ENC_OVERHEAD = 4 + MIC_LEN; // counter u32 LE and MIC, on top of the ciphertext
 const MAX_WRITABLE = 8; // a one-byte bitmask addresses no more (S2.4)
 const BUDGET = 31 - 3 - 4; // adv payload - Flags AD - service data header (S2.3)
 const VARIABLE = { text:true }; // types encoded with a leading length byte
@@ -83,7 +91,8 @@ function decodeDeclaration(m) {
 
 /* Assemble the declaration packet. Throws rather than truncate (S2.3): a
    dropped object would advertise a layout our own write parser rejects. */
-function buildServiceData(info, objs, wpos) {
+function buildServiceData(info, objs, wpos, budget) {
+  if (budget === undefined) budget = BUDGET;
   const b = [info];
   for (let i = 0; i < objs.length; i++) {
     b.push(objs[i].id);
@@ -96,7 +105,7 @@ function buildServiceData(info, objs, wpos) {
     const d = encodeDeclaration(wpos);
     b.push(d[0], d[1]);
   }
-  if (b.length > BUDGET) throw err("capacity_exceeded", `service data needs ${b.length} bytes, ${BUDGET} available`);
+  if (b.length > budget) throw err("capacity_exceeded", `service data needs ${b.length} bytes, ${budget} available`);
   return b;
 }
 
@@ -151,7 +160,7 @@ function blank(e) { return VARIABLE[e.type] ? "" : 0; }
 
 /* Work out the packet layout once, at setup - not at write time: a device that
    discovers it does not fit while advertising is a device in the field. */
-function planPacket(entries, enc, defRead) {
+function planPacket(entries, enc, defRead, encrypted) {
   if (defRead === undefined) defRead = 0;
   const items = [];
   for (let i = 0; i < entries.length; i++) {
@@ -188,8 +197,17 @@ function planPacket(entries, enc, defRead) {
                          : { id:it.id, length:it.value.length, entryIndex:it.entryIndex });
   }
   if (wpos.length > MAX_WRITABLE) throw err("too_many_writable", `${wpos.length} writable objects, a one-byte bitmask addresses ${MAX_WRITABLE}`);
-  const p = { ordered:ord, writablePositions:wpos, layout:lay };
-  p.serviceDataLength = renderServiceData(p, 0, null).length; // enforces S2.3 now
+  const p = {
+    ordered : ord,
+    writablePositions : wpos,
+    layout : lay,
+    info : encrypted ? DEV_INFO_ENC : DEV_INFO,
+    // Encryption spends the counter and the MIC out of the same 24 bytes, so an
+    // encrypted device has 8 fewer for its objects. Checked here rather than at
+    // the first advertisement, as S2.3 requires.
+    budget : BUDGET - (encrypted ? ENC_OVERHEAD : 0)
+  };
+  p.serviceDataLength = renderServiceData(p, 0, null).length;
   return p;
 }
 
@@ -214,7 +232,7 @@ function renderServiceData(p, pid, enc, entries, now) {
     it.lastRead = now;
     objs.push({ id:it.id, value:it.value });
   }
-  return buildServiceData(DEV_INFO, objs, p.writablePositions.length ? p.writablePositions : null);
+  return buildServiceData(p.info, objs, p.writablePositions.length ? p.writablePositions : null, p.budget);
 }
 
 /* ===== DIVIDER: everything below owns the radio ========================== */
@@ -223,6 +241,94 @@ const SERVICE_UUID = "2FAA0001-3B0B-4B1A-9E2A-B4C2952E62F2"; // provisional (D-0
 const WRITE_CHARACTERISTIC_UUID = "2FAA0002-3B0B-4B1A-9E2A-B4C2952E62F2";
 
 let st = null;
+
+const CTR_FILE = ".bwctr"; // the persisted write-counter high-water mark
+const CTR_STRIDE = 64; // persist every this many accepted writes, not each one
+
+/* "aa:bb:.." -> the six bytes, in the order BTHome puts them in the nonce.
+   Natural order, as written: verified against bthome-ble, which is the
+   receiver that has to agree (tools/tests/test_bthome_ble_tolerance.py). */
+function macBytes() {
+  const hex = NRF.getAddress().split(" ")[0].split(":");
+  const b = new Uint8Array(6);
+  for (let i = 0; i < 6; i++) b[i] = parseInt(hex[i], 16);
+  return b;
+}
+
+/* nonce = mac || 0xD2 0xFC || device-info || counter u32 LE (S5.1).
+   `info` is 0x41 for advertising and 0xFF for a write -- which is the whole of
+   the direction separation: a captured advertisement cannot verify as a write,
+   with nothing extra on the wire. */
+function nonceFor(info, counter) {
+  const n = new Uint8Array(13);
+  n.set(st.mac, 0);
+  n[6] = 0xD2; n[7] = 0xFC; n[8] = info;
+  for (let i = 0; i < 4; i++) n[9 + i] = (counter >>> (8 * i)) & 255;
+  return n;
+}
+
+/* [0x41] || ciphertext || counter u32 LE || MIC (S5.3), from the plaintext
+   objects of an ordinary packet. */
+function sealAdvertising(sd) {
+  const ccm = require("AESCCM");
+  const pt = new Uint8Array(sd.length - 1);
+  for (let i = 1; i < sd.length; i++) pt[i - 1] = sd[i];
+  const counter = st.advCounter;
+  st.advCounter = (st.advCounter + 1) >>> 0;
+  const r = ccm.encrypt(pt, st.key, nonceFor(DEV_INFO_ENC, counter), MIC_LEN);
+  const out = [DEV_INFO_ENC];
+  for (let i = 0; i < r.data.length; i++) out.push(r.data[i]);
+  for (let i = 0; i < 4; i++) out.push((counter >>> (8 * i)) & 255);
+  for (let i = 0; i < MIC_LEN; i++) out.push(r.mic[i]);
+  return out;
+}
+
+/* The write counter, kept coarsely in flash. S5.2 asks for periodic persistence
+   rather than one write per write, and for resuming strictly above anything
+   that might have been accepted since the last save -- so what is stored is a
+   high-water mark ahead of the counter, and that mark is where we resume. */
+function loadWriteCounter() {
+  const v = require("Storage").readJSON(CTR_FILE, true);
+  return typeof v === "number" ? v : 0;
+}
+
+function noteWriteCounter(counter) {
+  st.writeCounter = counter;
+  if (counter >= st.writeMark) {
+    st.writeMark = counter + CTR_STRIDE;
+    require("Storage").writeJSON(CTR_FILE, st.writeMark);
+  }
+}
+
+/* Unseal a write, or return null having reported why. Rejection is silent on
+   the wire by design (S6): the advertising simply does not change. */
+function openWrite(pl) {
+  if (pl.length <= ENC_OVERHEAD) {
+    if (st.onError) st.onError(err("truncated", `encrypted write is ${pl.length} bytes, shorter than its own framing`));
+    return null;
+  }
+  const n = pl.length - ENC_OVERHEAD;
+  let counter = 0;
+  for (let i = 0; i < 4; i++) counter += pl[n + i] * Math.pow(256, i);
+  // Before the cipher: a replay costs nothing to reject, and doing it first
+  // means a flood of them cannot make the device spend 75ms each (D-028).
+  if (counter <= st.writeCounter) {
+    if (st.onError) st.onError(err("counter_not_increasing", `write counter ${counter} is not above ${st.writeCounter}`));
+    return null;
+  }
+  const ct = new Uint8Array(n), mic = new Uint8Array(MIC_LEN);
+  for (let i = 0; i < n; i++) ct[i] = pl[i];
+  for (let i = 0; i < MIC_LEN; i++) mic[i] = pl[n + 4 + i];
+  const pt = require("AESCCM").decrypt(ct, st.key, nonceFor(WRITE_INFO, counter), mic);
+  if (pt === null) {
+    if (st.onError) st.onError(err("mic_mismatch", "the write did not authenticate"));
+    return null;
+  }
+  noteWriteCounter(counter);
+  const out = [];
+  for (let i = 0; i < pt.length; i++) out.push(pt[i]);
+  return out;
+}
 
 /* Encode one object via the upstream BTHome module, whose tables are local to
    getAdvertisement() and not exported - so the only way to reuse them rather
@@ -241,11 +347,23 @@ function encodeOne(e, v) {
    what lets a receiver confirm within one advertising period (S6.2). */
 function refreshAdvertising() {
   st.packetId = (st.packetId + 1) & 255;
-  const sd = renderServiceData(st.plan, st.packetId, encodeOne, st.entries, Date.now());
+  let sd = renderServiceData(st.plan, st.packetId, encodeOne, st.entries, Date.now());
+  if (st.key) sd = sealAdvertising(sd);
   // whenConnected: without it the device goes silent exactly when a receiver
   // most wants to hear it. The stack advertises non-connectably meanwhile,
   // which is what floors fastInterval at 100ms.
-  NRF.setAdvertising({ 0xFCD2:sd }, { interval:st.advInterval, connectable:true, discoverable:true, whenConnected:st.whenConnected });
+  const opts = { interval:st.advInterval, connectable:true, discoverable:true, whenConnected:st.whenConnected };
+  try {
+    NRF.setAdvertising({ 0xFCD2:sd }, opts);
+  } catch (e) {
+    // The radio stops advertising to reconfigure, so a throw from here leaves
+    // the device silent -- and a silent device cannot be connected to, which
+    // means it cannot be fixed without the button (D-022, D-029). Fall back to
+    // the smallest valid BTHome packet, which keeps it findable and reachable,
+    // and report the real numbers.
+    NRF.setAdvertising({ 0xFCD2:[st.plan.info, PKT_ID, st.packetId & 255] }, opts);
+    throw err("advertising_rejected", `the radio refused ${sd.length} bytes of service data: ${e.message}`);
+  }
 }
 
 /* Advertise fast while someone is plainly interacting, from connect until
@@ -309,12 +427,34 @@ function checkInterval(name, v) {
   return v;
 }
 
+/* "231d.." or a 16-byte array -> the key. */
+function toKey(v) {
+  if (v === undefined || v === null) return null;
+  if (typeof v !== "string") return new Uint8Array(v);
+  if (v.length !== 32) throw err("bindkey_length", `bindkey is ${v.length} hex characters, expected 32`);
+  const k = new Uint8Array(16);
+  for (let i = 0; i < 16; i++) k[i] = parseInt(v.substr(i * 2, 2), 16);
+  return k;
+}
+
 function setup(opts) {
   const entries = opts.advertise;
   const iv = checkInterval("interval", opts.interval || 2000);
+  const key = toKey(opts.bindkey);
   st = {
     entries : entries,
-    plan : planPacket(entries, encodeOne, iv), // the adv interval is also the default read interval
+    key : key,
+    mac : key ? macBytes() : null,
+    // Starts at 0 every boot, which bthome-ble allows for: it exempts counters
+    // below 100 from its decreasing-counter check precisely so that a device
+    // that has restarted is not ignored. Verified against the library.
+    advCounter : 0,
+    // The write counter does not get that luxury -- the device is the verifier,
+    // and resuming low would accept a replay. It resumes from the high-water
+    // mark in flash (S5.2).
+    writeCounter : key ? loadWriteCounter() : 0,
+    writeMark : key ? loadWriteCounter() : 0,
+    plan : planPacket(entries, encodeOne, iv, key !== null), // the adv interval is also the default read interval
     packetId : 0,
     interval : iv,
     fastInterval : Math.max(100, checkInterval("fastInterval", opts.fastInterval || 100)),
@@ -335,9 +475,10 @@ function setup(opts) {
       // many bytes of device RAM, which is why it is an option.
       maxLen : st.maxWriteLength,
       onWrite : evt => {
-        const pl = [];
+        let pl = [];
         for (let i = 0; i < evt.data.length; i++) pl.push(evt.data[i]);
-        handleWrite(pl);
+        if (st.key) pl = openWrite(pl);
+        if (pl !== null) handleWrite(pl);
       }
     };
     svcs[SERVICE_UUID] = chars;
@@ -387,6 +528,7 @@ exports.plan = () => st && st.plan;
 exports.DECLARATION_OBJECT_ID = DECL_ID;
 exports.PACKET_ID_OBJECT_ID = PKT_ID;
 exports.DEVICE_INFO_PLAIN = DEV_INFO;
+exports.DEVICE_INFO_ENCRYPTED = DEV_INFO_ENC;
 exports.MAX_WRITABLE = MAX_WRITABLE;
 exports.SERVICE_DATA_BUDGET = BUDGET;
 exports.encodeDeclaration = encodeDeclaration;
