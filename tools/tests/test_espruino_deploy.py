@@ -14,7 +14,9 @@ import re
 import pytest
 
 from tools.espruino_deploy import (
+    BUILTIN_MODULES,
     CHUNK,
+    collect,
     prepare,
     required_modules,
     write_statements,
@@ -112,6 +114,21 @@ def test_the_real_module_and_example_survive_preparation() -> None:
     # The dependency chain the deployer has to discover, and the export style
     # a Storage module must use for require() to return anything.
     assert required_modules(example) == ["BTHomeWritable"]
-    assert required_modules(module) == ["BTHome"]
+    assert required_modules(module) == ["AESCCM", "BTHome", "Storage"]
     assert "exports.setup" in module
     assert _replay(write_statements("BTHomeWritable", module)) == module
+
+
+def test_a_builtin_is_not_chased_to_espruino_dot_com() -> None:
+    """`require("Storage")` resolves inside the firmware. Treating it as a
+    module to download gets a 404 in the middle of a deployment."""
+    assert "Storage" in BUILTIN_MODULES
+    assert collect('require("Storage");') == {}
+
+
+def test_the_encrypted_example_pulls_in_the_cipher() -> None:
+    module = prepare((ROOT / "espruino" / "AESCCM.js").read_text("utf-8"))
+    assert "exports.encrypt" in module
+    assert "exports.decrypt" in module
+    # It must not need anything of its own, or a device would need it too.
+    assert required_modules(module) == []
