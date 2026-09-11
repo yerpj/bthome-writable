@@ -427,3 +427,35 @@ test("a named interval is not overridden by the advertising interval", () => {
   }
   assert.equal(reads, 0, "a minute has not passed");
 });
+
+test("an encrypted plan advertises 0x41 and pays for it in budget", () => {
+  /* §5.3: the counter and MIC come out of the same 24 service-data bytes, so an
+   * encrypted device has 8 fewer for objects. Checked at setup rather than on
+   * the air, as §2.3 requires. */
+  const entries = [
+    { type: "battery", get: () => 97 },
+    { type: "light", get: () => true, set: () => {} },
+  ];
+  const plain = bw.planPacket(entries, fakeEncodeOne, 0, false);
+  const sealed = bw.planPacket(entries, fakeEncodeOne, 0, true);
+
+  assert.equal(plain.info, bw.DEVICE_INFO_PLAIN);
+  assert.equal(sealed.info, bw.DEVICE_INFO_ENCRYPTED);
+  assert.equal(plain.budget - sealed.budget, 8);
+});
+
+test("a packet that fits in the clear can be too big once encrypted", () => {
+  /* The failure this guards against is a device that works unencrypted, has a
+   * bindkey added, and starts truncating its own layout on the air. */
+  // 8 two-byte objects plus the packet id and the device-info byte: 19 bytes,
+  // comfortable in the clear and over the 16 an encrypted device has.
+  const entries = [];
+  for (let i = 0; i < 8; i++) {
+    entries.push({ type: "battery", get: () => 97 });
+  }
+  assert.doesNotThrow(() => bw.planPacket(entries, fakeEncodeOne, 0, false));
+  assert.throws(
+    () => bw.planPacket(entries, fakeEncodeOne, 0, true),
+    (error) => error.code === "capacity_exceeded"
+  );
+});

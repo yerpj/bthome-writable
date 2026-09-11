@@ -51,8 +51,26 @@ CHUNK = 384
 
 NOISE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]|[\r\x00-\x08\x0b-\x1f]")
 
+# Built into the firmware: `require()` resolves these without anything in
+# Storage, and asking espruino.com for them gets a 404. The board lists its own
+# set in `process.env.MODULES`; this is the subset a sketch is likely to name.
+BUILTIN_MODULES = {
+    "Storage",
+    "Flash",
+    "heatshrink",
+    "crypto",
+    "neopixel",
+    "fs",
+    "net",
+    "http",
+    "tls",
+}
+
 # Modules this project provides itself, rather than fetching from espruino.com.
-LOCAL_MODULES = {"BTHomeWritable": ROOT / "espruino" / "BTHomeWritable.js"}
+LOCAL_MODULES = {
+    "BTHomeWritable": ROOT / "espruino" / "BTHomeWritable.js",
+    "AESCCM": ROOT / "espruino" / "AESCCM.js",
+}
 
 
 def required_modules(source: str) -> list[str]:
@@ -66,7 +84,7 @@ def collect(app_code: str) -> dict[str, str]:
 
     while pending:
         name = pending.pop()
-        if name in modules:
+        if name in modules or name in BUILTIN_MODULES:
             continue
         if len(name) > MAX_STORAGE_NAME:
             raise SystemExit(f"module name {name!r} is too long for Storage")

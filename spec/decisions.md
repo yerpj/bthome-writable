@@ -985,3 +985,84 @@ At a 1 s advertising interval, 75 ms is about 7.5 % of one core. Still a go.
 **Worth reporting upstream.** An allocation failure that returns `undefined`
 rather than throwing turns a resource problem into a type error somewhere else,
 and the message names memory when memory is not what ran out.
+
+---
+
+## D-029 — A device can silence itself inside `setup()`  [INCIDENT]
+
+**Status:** caused, understood and guarded 2026-09-11. Recovery needs the
+button.
+
+Deploying the encrypted example left the Puck advertising nothing at all. The
+cause is a two-step failure, and the second step is the one that matters:
+
+1. `NRF.setAdvertising` refused the encrypted payload with
+   `ERR 0xc (DATA_SIZE)`. The module's capacity check had passed, because it
+   checks the plaintext against §2.3's arithmetic and the radio's real limit is
+   lower than that arithmetic says (D-030).
+2. **The radio stops advertising to reconfigure**, so the throw left it stopped.
+   `setup()` aborted, `.bootcde` reproduced the failure on every boot, and a
+   device that does not advertise cannot be connected to — so it cannot be
+   fixed over the air at all.
+
+That is D-022's silhouette again, from a different direction: a device that is
+alive, powered and completely unreachable. Only now the cause is ours.
+
+**The guard.** `refreshAdvertising` catches a rejected payload, falls back to
+the smallest valid BTHome packet — device-info and packet id, three bytes, which
+any radio will take — and only then throws, naming the size the radio refused.
+The device stays findable and connectable, so the next deployment fixes it.
+
+**The lesson is narrow and worth stating plainly:** on this platform, code that
+configures the radio must not fail after stopping it. Validating harder is not
+enough, because the limit that matters is the radio's and it was not the one in
+the specification.
+
+Recovery on a Puck.js is physical: hold the button through boot until all three
+LEDs light, then release — a self-test runs, the saved code is not loaded and
+not erased, and the device is connectable again.
+
+---
+
+## D-030 — §2.3's budget is optimistic: this radio takes less  [SPEC ISSUE — for the owner]
+
+**Status:** measured 2026-09-11 on Puck.js 2v27. **Not acted on in the
+specification**, per rule 2: §2.3 is co-designed and this needs Gordon.
+
+§2.3 works the budget out as `31 - 3 (Flags AD) - 4 (service data header) = 24`
+bytes of BTHome service data. Asked directly, with the options this module uses
+(`connectable`, `discoverable`, `whenConnected`), the radio accepts 13 bytes and
+refuses 20:
+
+```
+NRF.setAdvertising({0xFCD2: new Uint8Array(n)}, {interval, connectable,
+                    discoverable, whenConnected})
+  n = 13  ok
+  n = 20  ERR 0xc  (DATA_SIZE)
+  n = 24  ERR 0x9  (INVALID_LENGTH)
+```
+
+The exact ceiling between 14 and 19 is not yet known — the device silenced
+itself (D-029) before the bisection ran, and it needs measuring again with the
+several option combinations, since `whenConnected` is the likely culprit: it
+makes the stack keep a second form of the payload.
+
+**Why it matters more for encryption.** Plain, this project's example spends 13
+bytes and fits with nothing to spare. Encrypted, the counter and MIC add 8, so
+the same device asks for 21 — over the line. That is not an implementation
+detail to work around: it means **§2.3's stated capacity does not hold on the
+reference platform**, and an encrypted device has far less room than the
+specification promises.
+
+Options for the owner, none of them mine to pick:
+
+1. State the real budget in §2.3 and reduce it for encrypted devices
+   accordingly, which is honest but platform-specific.
+2. Keep §2.3's arithmetic as the protocol's limit and require implementations to
+   enforce whatever their radio actually accepts, which is what the module now
+   does defensively.
+3. Drop `whenConnected` for encrypted devices if that is what buys the bytes —
+   trading D-014's latency work against capacity.
+
+Until this is settled, an encrypted device on Espruino must keep its object
+list short, and a receiver cannot assume 23 bytes are available.
