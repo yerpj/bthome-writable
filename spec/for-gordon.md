@@ -258,3 +258,39 @@ when there are 24 kB free. Working around it is easy once understood -- ask for
 time, and the way it presents gives no clue what to try.
 
 ---
+
+---
+
+## 12. §4.3's event no-op does not exist for `0x3B command`
+
+§4.3 says a write leaves an event object alone by sending "BTHome's existing
+'none' event value, `0x00`". That holds for two of the three event objects and
+not for the third:
+
+| object | `0x00` means |
+|---|---|
+| `0x3A` button | none — nothing happened |
+| `0x3C` dimmer | none |
+| **`0x3B` command** | **`off`** |
+
+`bthome-ble`'s own vocabulary (`event.py`) has `COMMAND_EVENTS` starting at
+`0x00: "off"`, with no "none" at any value.
+
+**Why it matters.** A write carries *every* writable object (§4.2), so a device
+declaring a writable command alongside anything else cannot have that other
+thing written without also sending the command something. With the current
+wording that something is `off`. A user toggling a light would be switching
+something off as a side effect, silently, and the protocol would say the write
+was correct.
+
+Three ways out, none of them ours to pick:
+
+1. **Exclude `0x3B` from writability** — say a device MUST NOT declare it
+   writable. Simple, and loses a genuinely useful object.
+2. **Give it a no-op value** outside the current vocabulary, `0xFF` say. Costs a
+   value in a table that is BTHome's, not ours.
+3. **Let §4.3 say some objects have no no-op**, and require a device declaring
+   one to have it as its *only* writable object. Honest, and awkward to state.
+
+Until it is settled, this project does not offer a control for `0x3B` at all
+(spec/PLATFORMS.md), which is the conservative reading rather than a decision.

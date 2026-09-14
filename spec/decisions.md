@@ -1385,3 +1385,46 @@ revert test that timed out instead of reverting. Moved to `conftest.py`.
 Worth remembering generally: an autouse fixture in a test module is not a
 property of the suite, and the failure looks like the code being slow rather
 than the harness being scoped wrongly.
+
+---
+
+## D-038 — T2.1 complete: the button platform, and a hole in §4.3
+
+**Status:** implemented 2026-09-14. T2.1's four platforms are `switch`,
+`number`, `text`, `button`.
+
+A writable event object becomes **one button per value of its vocabulary**, read
+from `bthome-ble`: seven for a button object, two for a dimmer. The same
+reasoning as the switch platform's widening — the vocabulary is BTHome's, and
+picking a favourite from it would make the rest unreachable.
+
+Buttons never confirm. The entity base gained an explicit `_confirms` flag for
+it: write-only objects are detected from the payload, but an event object is
+fixed-length and looks ordinary, so nothing in the bytes says §6 cannot apply.
+Without the flag every press would have logged a revert warning a second later.
+
+### §4.3 promises a no-op that one object does not have
+
+§4.3 says an event object is left alone by sending its "none" value, `0x00`.
+Checked against `bthome-ble`'s own vocabulary:
+
+```
+0x3A button   0x00 = none
+0x3C dimmer   0x00 = none
+0x3B command  0x00 = off        <- a real command
+```
+
+Since a write carries *every* writable object (§4.2), a device declaring a
+writable command alongside anything else cannot have that other thing written
+without also sending the command something — and with the current wording that
+something is `off`. Toggling a light would switch something off as a side
+effect, silently, and the protocol would call the write correct.
+
+**Not fixed here.** §4.3 is co-designed, so this is written up as
+`for-gordon.md` §12 with three ways out. Meanwhile `0x3B` is not offered as a
+control and `no_op_value()` refuses it rather than guessing — declining is the
+conservative reading, not a decision.
+
+This is the second time the event class has turned out to be looser than the
+specification assumed; D-009 was the first. Both were found by implementing
+against a real vocabulary rather than against the prose.

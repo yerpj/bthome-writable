@@ -145,6 +145,9 @@ PACKET_ID = lambda n: obj(0x00, bytes([n]), "packet_id")  # noqa: E731
 MOISTURE = lambda pct: obj(  # noqa: E731
     0x14, round(pct * 100).to_bytes(2, "little"), "moisture"
 )
+# BTHome button event: one byte, 0x00 meaning "nothing happened". A writable
+# one is a device offering to have its button pressed remotely.
+BUTTON_NONE = obj(0x3A, bytes([0]), "button", write_only=True)
 TEXT_EMPTY = obj(0x53, bytes([0]), "text", write_only=True)
 TEXT_NOOP = obj(0x53, bytes([0]), "text", note="length 0 = no-op (§4.3)")
 
@@ -267,6 +270,26 @@ def build_fixtures() -> list[dict[str, Any]]:
                     "setpoint-to-60",
                     "6000 little-endian is 0x1770 = 6000, which is 60.00%.",
                     [MOISTURE(60.0)],
+                )
+            ],
+        )
+    )
+
+    fixtures.append(
+        fixture(
+            "writable-button",
+            "A writable event object. Its resting value is 'none', so it is "
+            "stateless by construction: there is nothing for §6 to confirm, "
+            "and a receiver offers one button per value of the vocabulary "
+            "(spec/PLATFORMS.md).",
+            [PACKET_ID(4), BATTERY(77), BUTTON_NONE],
+            writable_positions=[2],
+            expected_sensors={"packet_id": 4, "battery": 77},
+            writes=[
+                write(
+                    "long-press",
+                    "0x04 is long_press in BTHome's button vocabulary.",
+                    [obj(0x3A, bytes([4]), "button")],
                 )
             ],
         )

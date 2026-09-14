@@ -408,6 +408,67 @@
       ]
     },
     {
+      "name": "writable-button",
+      "description": "A writable event object. Its resting value is 'none', so it is stateless by construction: there is nothing for \u00a76 to confirm, and a receiver offers one button per value of the vocabulary (spec/PLATFORMS.md).",
+      "valid": true,
+      "device_info_byte": "40",
+      "service_data": "400004014d3a00ff04",
+      "service_data_length": 9,
+      "objects": [
+        {
+          "object_id": "00",
+          "value": "04",
+          "name": "packet_id",
+          "position": 0
+        },
+        {
+          "object_id": "01",
+          "value": "4d",
+          "name": "battery",
+          "position": 1
+        },
+        {
+          "object_id": "3a",
+          "value": "00",
+          "name": "button",
+          "write_only": true,
+          "position": 2
+        },
+        {
+          "object_id": "ff",
+          "value": "04",
+          "name": "declaration",
+          "position": 3
+        }
+      ],
+      "declaration": {
+        "bitmask": 4,
+        "bitmask_hex": "04",
+        "writable_positions": [
+          2
+        ],
+        "is_last_element": true
+      },
+      "expected_sensors": {
+        "packet_id": 4,
+        "battery": 77
+      },
+      "writes": [
+        {
+          "name": "long-press",
+          "description": "0x04 is long_press in BTHome's button vocabulary.",
+          "objects": [
+            {
+              "object_id": "3a",
+              "value": "04",
+              "name": "button"
+            }
+          ],
+          "payload": "3a04"
+        }
+      ]
+    },
+    {
       "name": "write-only-display",
       "description": "A device whose only writable object is a write-only text: it advertises the placeholder and never the written value (\u00a73).",
       "valid": true,

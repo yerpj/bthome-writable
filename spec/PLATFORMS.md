@@ -21,7 +21,8 @@ one this table uses:
 | binary sensor | 28 | `switch` |
 | numeric sensor | 59 | `number` |
 | string (`0x53`) | 1 | `text` |
-| event (`0x3A` button, `0x3B` command, `0x3C` dimmer) | 3 | `button` |
+| event (`0x3A` button, `0x3C` dimmer) | 2 | `button`, one per value |
+| event (`0x3B` command) | 1 | — not exposed, see below |
 | raw (`0x54`) | 1 | — not exposed |
 | metadata (`0xF0`–`0xF2`) | 3 | — not exposed |
 
@@ -109,13 +110,22 @@ A receiver should let the device refuse rather than guess a limit.
 ### `button` — event objects
 
 An event object's "none" value is a defined no-op (§4.3), which makes it the one
-object class that is naturally stateless: pressing the button writes the event,
-and the resting state is `none`. No confirmation applies, for the same reason as
-text.
+class that is naturally stateless: pressing writes the event, and the resting
+state is `none`. No confirmation applies, for the same reason as text — and
+unlike text there is nothing to display either.
 
-`0x3C dimmer` carries a direction and a step count in its two bytes, so it is
-not one button but a pair. `0x3B command` is a single byte with a vendor
-meaning and no agreed vocabulary.
+**One button per value of the vocabulary**, read from `bthome-ble`: a writable
+button object becomes seven buttons (press, double press, … hold press), a
+dimmer becomes two (rotate left, rotate right). Picking a favourite would make
+the rest unreachable, which is the mistake the switch platform used to make.
+
+A dimmer's second byte is a step count; a press sends one step.
+
+**`0x3B command` is not offered**, because §4.3's no-op does not exist for it:
+its `0x00` is `off`, a real command. A write touching any other object on the
+same device would have to send it one. That is a gap in the specification rather
+than in the platform — written up in `for-gordon.md` §12 — and until it is
+settled, declining is the conservative reading rather than a decision.
 
 ## Open: how a brightness finds its light  [DECISION — owner and Gordon]
 

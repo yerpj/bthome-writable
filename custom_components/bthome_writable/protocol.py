@@ -129,6 +129,24 @@ class ObjectKind:
         return (2**bits - 1) * self.factor
 
 
+# Event objects whose vocabulary defines 0x00 as "nothing happened", and which
+# therefore have the no-op §4.3 assumes every event object has. `0x3B command`
+# is deliberately absent: its 0x00 means `off`, a real command.
+EVENT_NO_OP: Final = frozenset({0x3A, 0x3C})
+
+
+def event_values(object_id: int) -> dict[int, str] | None:
+    """The event vocabulary for an object id, from `bthome-ble`'s own table."""
+    from bthome_ble.event import BUTTON_EVENTS, COMMAND_EVENTS, DIMMER_EVENTS
+
+    table = {0x3A: BUTTON_EVENTS, 0x3B: COMMAND_EVENTS, 0x3C: DIMMER_EVENTS}.get(
+        object_id
+    )
+    if table is None:
+        return None
+    return {code: name for code, name in table.items() if name is not None}
+
+
 def describe(object_id: int) -> ObjectKind | None:
     """Classify one object id, or None if `bthome-ble` does not know it."""
     from bthome_ble.const import MEAS_TYPES
@@ -342,16 +360,23 @@ def compose_write(
 def no_op_value(obj: WritableObject) -> bytes:
     """The "do not modify" encoding for an object (§4.3).
 
-    Variable-length objects use a length of 0. Event-class objects use BTHome's
-    own "none" event value, which is also 0x00 but for an unrelated reason; they
-    arrive with T2.1.
+    Variable-length objects use a length of 0. Event objects use their "none"
+    value, which is all-zero — but only the ones that have a "none" at all.
+    `0x3B command` does not: its 0x00 is `off`, a real command, so there is no
+    way to leave it alone in a write that touches something else. That is a gap
+    in §4.3 rather than in this function; see spec/for-gordon.md.
 
-    A fixed-length, non-event object has no no-op: the way to leave it alone is
-    to resend its last advertised value, which `compose_write` does. Reaching
-    here with one is a bug, not a payload to guess at.
+    A fixed-length, non-event object has no no-op either: the way to leave it
+    alone is to resend its last advertised value, which `compose_write` does.
+    Reaching here with one is a bug, not a payload to guess at.
     """
     if obj.is_variable_length:
         return b"\x00"
+    if obj.object_id in EVENT_NO_OP:
+        # All-zero however wide: a dimmer's second byte is a step count, and
+        # zero steps is nothing happening.
+        kind = describe(obj.object_id)
+        return bytes(kind.length if kind else 1)
     raise ProtocolError(
         f"object 0x{obj.object_id:02X} ({obj.data_format}) has no no-op value; "
         "resend its last advertised value instead"

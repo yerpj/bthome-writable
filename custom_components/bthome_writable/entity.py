@@ -28,6 +28,14 @@ class BTHomeWritableEntity(Entity):
     _attr_should_poll = False
     _attr_has_entity_name = True
 
+    _confirms = True
+    """Whether §6's confirm/revert applies to this entity.
+
+    False for controls whose object cannot report back what was written — a
+    button's resting advertisement is "none" whatever was pressed. Write-only
+    objects are detected from the payload instead and do not need to set this.
+    """
+
     def __init__(
         self, coordinator: BTHomeWritableCoordinator, obj: WritableObject
     ) -> None:
@@ -120,7 +128,7 @@ class BTHomeWritableEntity(Entity):
             return
 
         self._cancel_confirmation()
-        if self._write_only:
+        if self._write_only or not self._confirms:
             # Delivered is as much as will ever be known (§3). The optimistic
             # value stays, because it is the only account of what was sent.
             return
