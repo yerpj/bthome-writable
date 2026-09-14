@@ -1244,3 +1244,43 @@ modules and before running the sketch.
 The general lesson matches D-031's: on this platform, a device that answers
 every question correctly can still be broken, because the thing that is wrong is
 only read later. Ask it to *run* something, not just to describe itself.
+
+---
+
+## D-035 — The screen works, and the write ceiling is not always the MTU
+
+**Status:** measured 2026-09-14 on a nice!nano (2v29.105) with an SSD1306.
+
+The use case the project was started for now runs: a Home Assistant sensor value
+on a BLE screen, the device polling nothing and configured by nobody.
+
+```
+python -m tools.push_text --address CD:F5:77:3A:B2:16 \
+    --entity sensor.bureau_mobilesensf7b9_illuminance
+-> writes 5314496c6c756d696e616e6365203130332e30336c78
+-> device is showing: "Illuminance 103.03lx"
+```
+
+The device advertises `40 0010 02 220b 5300 ff04` — die temperature, then the
+text object at **length zero**, then a bitmask pointing at it. That is §3's
+write-only placeholder on real hardware: the screen's contents never leave the
+device, and there is no confirmation to be had. `push_text.py` reads the sketch's
+own variable back instead, which is a debugging aid and not a protocol feature —
+worth remembering when reading its output as if it were proof.
+
+**D-017 needs qualifying.** It concluded the ceiling is MTU−3, from 48
+characters at MTU 53 on a Puck.js. On this board `tools/text_limits.py` gets
+**126 characters** through, and stops there because 128 is the module's
+`maxWriteLength` default — `0x53`, a length byte, and 126 bytes of text. So the
+MTU binds on some stacks and the device's own RAM budget on others, and a
+receiver cannot assume either. Both are worth probing before deciding what a
+device can be sent.
+
+### Two things this board cannot do
+
+- **No crypto at all.** `AES` is undefined and `process.env.MODULES` lists only
+  `timer,Flash,Storage,heatshrink,neopixel`, so AESCCM has nothing to build on
+  and an encrypted sketch cannot run here. Encryption is a per-firmware
+  capability, not a per-project one.
+- **No `E.getBattery()`** — that is a Puck.js function. The example reports the
+  nRF52 die temperature instead.
