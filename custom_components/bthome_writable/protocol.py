@@ -17,7 +17,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Final
 
-from .const import DECLARATION_OBJECT_ID, PACKET_ID_OBJECT_ID
+from .const import (
+    DECLARATION_OBJECT_ID,
+    DEVICE_INFO_BYTE_ADVERTISING,
+    DEVICE_INFO_BYTE_WRITE,
+    PACKET_ID_OBJECT_ID,
+)
 
 # Objects whose value is preceded by a length byte. Every other object has a
 # width fixed by its ID, which `bthome-ble`'s table knows and we look up rather
@@ -400,3 +405,89 @@ def no_op_value(obj: WritableObject) -> bytes:
         f"object 0x{obj.object_id:02X} ({obj.data_format}) has no no-op value; "
         "resend its last advertised value instead"
     )
+
+
+# --- Encryption (§5) ---------------------------------------------------------
+#
+# BTHome v2's AES-CCM, unchanged, with one delta: a write's nonce carries 0xFF
+# as its device-information byte where advertising carries 0x41. That single
+# substitution is the whole of the direction separation — a captured
+# advertisement cannot verify as a write, and vice versa, with nothing extra on
+# the wire (§5.1).
+
+MIC_LENGTH: Final = 4
+COUNTER_LENGTH: Final = 4
+SEAL_OVERHEAD: Final = COUNTER_LENGTH + MIC_LENGTH
+
+
+def mac_bytes(address: str) -> bytes:
+    """The six address bytes in the order BTHome puts them in the nonce.
+
+    Natural order, as written. Verified against `bthome-ble`, which is the
+    library that has to agree for an encrypted device to be readable at all.
+    """
+    return bytes.fromhex(address.replace(":", "").replace("-", ""))
+
+
+def nonce(address: str, device_info: int, counter: int) -> bytes:
+    """mac || 0xD2 0xFC || device-info || counter u32 LE (§5.1)."""
+    return (
+        mac_bytes(address)
+        + bytes([0xD2, 0xFC, device_info])
+        + counter.to_bytes(COUNTER_LENGTH, "little")
+    )
+
+
+def is_encrypted(payload: bytes) -> bool:
+    """Whether BTHome service data announces itself as encrypted."""
+    return bool(payload) and payload[0] == DEVICE_INFO_BYTE_ADVERTISING
+
+
+def split_sealed(payload: bytes) -> tuple[bytes, int, bytes]:
+    """(ciphertext, counter, mic) out of `ciphertext || counter || mic` (§5.3).
+
+    Both directions share this framing; advertising merely carries a leading
+    device-information byte, which the caller strips.
+    """
+    if len(payload) <= SEAL_OVERHEAD:
+        raise ProtocolError(
+            f"{len(payload)} bytes is shorter than the framing it must contain"
+        )
+    body = payload[:-SEAL_OVERHEAD]
+    counter = int.from_bytes(payload[-SEAL_OVERHEAD:-MIC_LENGTH], "little")
+    return body, counter, payload[-MIC_LENGTH:]
+
+
+def decrypt_advertising(payload: bytes, bindkey: bytes, address: str) -> bytes | None:
+    """The object stream inside encrypted service data, or None if it will not
+    authenticate.
+
+    None rather than an exception: a wrong key is an expected condition — the
+    user mistyped it, or the device is not the one we think — not a programming
+    error.
+    """
+    from cryptography.exceptions import InvalidTag
+    from cryptography.hazmat.primitives.ciphers.aead import AESCCM
+
+    if not is_encrypted(payload):
+        raise ProtocolError("this payload does not announce itself as encrypted")
+
+    ciphertext, counter, mic = split_sealed(payload[1:])
+    cipher = AESCCM(bindkey, tag_length=MIC_LENGTH)
+    try:
+        seal = nonce(address, DEVICE_INFO_BYTE_ADVERTISING, counter)
+        return cipher.decrypt(seal, ciphertext + mic, None)
+    except InvalidTag:
+        return None
+
+
+def seal_write(plaintext: bytes, bindkey: bytes, address: str, counter: int) -> bytes:
+    """A write sealed as §5.3 frames it, with §5.1's write nonce."""
+    from cryptography.hazmat.primitives.ciphers.aead import AESCCM
+
+    cipher = AESCCM(bindkey, tag_length=MIC_LENGTH)
+    sealed = cipher.encrypt(
+        nonce(address, DEVICE_INFO_BYTE_WRITE, counter), plaintext, None
+    )
+    body, mic = sealed[:-MIC_LENGTH], sealed[-MIC_LENGTH:]
+    return body + counter.to_bytes(COUNTER_LENGTH, "little") + mic

@@ -23,14 +23,25 @@ from .const import (
     CONFIRM_WINDOW_CEILING,
     CONFIRM_WINDOW_FLOOR,
     CONFIRM_WINDOW_INTERVALS,
+    COUNTER_STRIDE,
     DEFAULT_MAX_CONNECTIONS,
     DEFAULT_MTU_PAYLOAD,
     MIN_MTU,
+    RESYNC_AFTER,
+    RESYNC_JUMP,
     SERVICE_UUID,
     WRITE_CHARACTERISTIC_UUID,
     WRITE_DEBOUNCE,
 )
-from .protocol import Declaration, ProtocolError, compose_write, parse_declaration
+from .protocol import (
+    Declaration,
+    ProtocolError,
+    compose_write,
+    decrypt_advertising,
+    is_encrypted,
+    parse_declaration,
+    seal_write,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -61,9 +72,19 @@ class BTHomeWritableCoordinator:
         *,
         name: str | None = None,
         max_connections: int = DEFAULT_MAX_CONNECTIONS,
+        bindkey: bytes | None = None,
+        write_counter: int = 0,
+        on_counter: Callable[[int], None] | None = None,
     ) -> None:
         self.hass = hass
         self.address = address
+        self.bindkey = bindkey
+        """The device's BTHome key, or None for a plain device (section 5)."""
+
+        self._counter = write_counter
+        self._counter_mark = write_counter
+        self._on_counter = on_counter
+        self._unconfirmed = 0
         self.name = name or address
         self.declaration: Declaration | None = None
         self.available = False
@@ -97,9 +118,12 @@ class BTHomeWritableCoordinator:
         if not payload:
             return
 
+        objects = self._plaintext(payload)
+        if objects is None:
+            return
+
         try:
-            # The device-information byte is not part of the object stream.
-            declaration = parse_declaration(payload[1:])
+            declaration = parse_declaration(objects)
         except ProtocolError as error:
             _LOGGER.debug(
                 "%s: malformed declaration, ignoring: %s", self.address, error
@@ -126,6 +150,103 @@ class BTHomeWritableCoordinator:
         self.available = True
         self.advertisements += 1
         self._notify()
+
+    def _plaintext(self, payload: bytes) -> bytes | None:
+        """The object stream, decrypting first if the device is encrypted.
+
+        The device-information byte is never part of it. For an encrypted device
+        it is also the only thing readable without the key -- everything else in
+        the service data is ciphertext, which is why the config flow has to ask
+        for a bindkey before it can see a declaration at all.
+        """
+        if not is_encrypted(payload):
+            return payload[1:]
+
+        if self.bindkey is None:
+            _LOGGER.debug(
+                "%s: advertising is encrypted and no bindkey is configured",
+                self.address,
+            )
+            return None
+
+        objects = decrypt_advertising(payload, self.bindkey, self.address)
+        if objects is None:
+            _LOGGER.warning(
+                "%s: an advertisement did not authenticate; the bindkey may be "
+                "wrong, or another device may be using this address",
+                self.address,
+            )
+        return objects
+
+    def next_write_counter(self) -> int:
+        """The counter for the next write, persisted coarsely (section 5.2).
+
+        A receiver MUST persist this across restarts: a restarted Home Assistant
+        that resumed from zero would send counters the device has already
+        accepted, and every write would be refused as a replay. Saved as a
+        high-water mark ahead of the counter rather than on every write, and
+        resumed *from the mark*, so the values between the last save and a crash
+        are given up rather than reused.
+        """
+        self._counter += 1
+        if self._counter >= self._counter_mark:
+            self._counter_mark = self._counter + COUNTER_STRIDE
+            if self._on_counter is not None:
+                self._on_counter(self._counter_mark)
+        return self._counter
+
+    @callback
+    def note_confirmed(self) -> None:
+        """A write was confirmed: whatever the counter is, it is being accepted."""
+        self._unconfirmed = 0
+
+    @callback
+    def note_unconfirmed(self) -> None:
+        """A write was delivered, the device was heard, and nothing changed.
+
+        On a plain device that is a stale GATT table or a device that simply
+        refused. On an encrypted one it is most likely a counter this receiver
+        has fallen behind on -- a device restored from a backup, or written to
+        by something else, remembers a higher one and reads every write as a
+        replay. A refused write is silent by design (§6), so nothing will ever
+        say so, and a user sees a control that does nothing at all.
+
+        Resynchronising after a couple of these is §5.2's answer. It costs
+        nothing if the diagnosis is wrong: the counter space is 32 bits and a
+        device must accept a forward jump.
+        """
+        if self.bindkey is None:
+            return
+        self._unconfirmed += 1
+        if self._unconfirmed < RESYNC_AFTER:
+            return
+        _LOGGER.warning(
+            "%s: %d writes in a row went unconfirmed; resynchronising the write "
+            "counter, which a device that has seen higher ones would refuse "
+            "silently (PROTOCOL.md section 5.2)",
+            self.address,
+            self._unconfirmed,
+        )
+        self._unconfirmed = 0
+        self.resynchronise()
+
+    def resynchronise(self) -> int:
+        """Jump the counter well forward, for a device that has seen higher.
+
+        Section 5.2 asks a receiver to offer this. A device restored from a
+        backup, or a Home Assistant whose stored counter was lost, sends
+        counters the device has already accepted -- and since a refused write is
+        silent, the symptom is a control that simply stops working. Jumping is
+        safe because the device MUST accept forward jumps.
+        """
+        self._counter += RESYNC_JUMP
+        self._counter_mark = self._counter + COUNTER_STRIDE
+        if self._on_counter is not None:
+            self._on_counter(self._counter_mark)
+        _LOGGER.info(
+            "%s: write counter resynchronised to %d", self.address, self._counter
+        )
+        return self._counter
 
     def _layout_changed(self, declaration: Declaration) -> bool:
         """Whether this declaration describes a different device shape."""
@@ -324,7 +445,18 @@ class BTHomeWritableCoordinator:
         return payload == compose_write(self.declaration, {})
 
     async def _write_now(self, payload: bytes) -> None:
-        """Deliver one composed write-all payload over a short connection."""
+        """Deliver one composed write-all payload over a short connection.
+
+        Sealing happens here rather than in `_compose`, so that everything
+        upstream -- the redundancy check especially -- still compares plaintext.
+        Two identical commands seal to different bytes, because their counters
+        differ, and a sealed comparison would never find a repeat.
+        """
+        if self.bindkey is not None:
+            payload = seal_write(
+                payload, self.bindkey, self.address, self.next_write_counter()
+            )
+
         device = bluetooth.async_ble_device_from_address(
             self.hass, self.address, connectable=True
         )

@@ -92,6 +92,7 @@ class BTHomeWritableEntity(Entity):
         if self._optimistic is not None and self._advertised_value == self._optimistic:
             self._optimistic = None
             self._cancel_confirmation()
+            self.coordinator.note_confirmed()
         self.async_write_ha_state()
 
     async def async_apply(self, value: bytes) -> None:
@@ -181,6 +182,15 @@ class BTHomeWritableEntity(Entity):
             # stale cache reports success and does nothing, so it looks exactly
             # like this. Forget the table so the next write rediscovers it.
             self.hass.async_create_task(self.coordinator.async_clear_service_cache())
+
+            # On an encrypted device there is a third explanation, and it is the
+            # likeliest: the device has accepted a higher counter than this
+            # receiver knows about, so every write reads as a replay and is
+            # refused -- silently, because §6 gives a device no way to complain.
+            # From here it is indistinguishable from the other two, which is
+            # exactly why §5.2 asks a receiver to resynchronise rather than wait
+            # for a diagnosis that will never arrive.
+            self.coordinator.note_unconfirmed()
 
     @callback
     def _revert(self) -> None:

@@ -1517,3 +1517,67 @@ half.
 For a device meant to run unattended, `--to-flash` puts the sketch in
 `.bootcde` and a power cut becomes a reboot instead. The bench wants the
 opposite, which is why it is not the default.
+
+---
+
+## D-041 — T3.2: the receiver half of §5, and the failure that has no symptom
+
+**Status:** implemented and verified on the Puck 2026-09-14. Phase 3 complete.
+
+Home Assistant now speaks §5: it reads encrypted advertising, seals its writes
+with §5.1's write nonce, persists the counter §5.2 requires, and resynchronises
+when it has fallen behind. All 16 test vectors reproduce through the
+integration's own code.
+
+### Encryption changes what discovery can see
+
+For a plain device the declaration is in the advertising. For an encrypted one
+**the only readable byte is the device-information byte** — everything else,
+including whether the device has anything writable at all, is inside the
+ciphertext. So the flow asks for the bindkey first and decides afterwards, and
+the key is proved by decrypting an advertisement the device has already sent
+rather than accepted on trust:
+
+```
+offered:      Puck.js f7b9 (C8:80:32:AD:F7:B9)
+wrong key  -> step bindkey, error wrong_bindkey
+right key  -> step confirm -> entry created
+```
+
+This also fixed a gap the plain path had hidden: `async_step_user` filtered
+candidates by their declaration, so an encrypted device could be *discovered*
+and never added by hand.
+
+### The counter failure is invisible from both ends
+
+The bench device had a persisted write counter of 73238 from earlier hardware
+tests. A freshly configured Home Assistant starts at 1, so every write was
+refused as a replay — and §6 gives a device no way to say so. From the user's
+side: a switch that flicks on and returns to off, for ever.
+
+That is what `note_unconfirmed()` is for. Two consecutive writes that are
+delivered, followed by advertisements that do not change, and the counter jumps
+forward by 100 000. Verified end to end:
+
+```
+stored counter 130 -> two unconfirmed writes -> stored counter 100133
+next write accepted; the device's own counter advanced to 100135
+```
+
+Forward is the only safe direction, and it costs nothing: a device MUST accept a
+jump, MUST refuse a repeat, and 32 bits is a century of writes.
+
+### I misread my own test, twice
+
+Worth recording because the mistake is built into the thing being tested.
+
+The first run of four toggles "succeeded" — each command was followed 12 seconds
+later by the state I had asked for. It had not succeeded: the entity was still
+showing its optimistic value, because the confirmation ceiling is 60 s and I had
+looked before it expired. Decrypting the advertising directly said `light:
+False` throughout.
+
+**An optimistic entity looks exactly like a working one.** Every test of this
+protocol has to read the device rather than the receiver, and I have now written
+that down twice (D-039 said the same about positional addressing) after failing
+to apply it.

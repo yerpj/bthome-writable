@@ -65,3 +65,27 @@ WRITE_DEBOUNCE: Final = 0.25
 not one per pixel."""
 
 CONF_BINDKEY: Final = "bindkey"
+CONF_WRITE_COUNTER: Final = "write_counter"
+
+COUNTER_STRIDE: Final = 64
+"""How far ahead of the write counter the persisted mark sits (section 5.2).
+
+Saving on every write would mean a config-entry update per command. Saving a
+mark ahead of it and resuming *from the mark* gives up the values in between
+rather than reusing them, which is the requirement: never send a counter the
+device may already have accepted."""
+
+RESYNC_AFTER: Final = 2
+"""Consecutive unconfirmed writes before resynchronising the counter.
+
+Two rather than one, because a single unconfirmed write has ordinary
+explanations -- a device out of range for a moment, a stale GATT table. Two in a
+row on an encrypted device is the shape of a counter the receiver has fallen
+behind on, and that one never recovers on its own."""
+
+RESYNC_JUMP: Final = 100_000
+"""How far a resynchronisation moves the counter.
+
+Far enough to clear any plausible drift in one step, and nothing compared with a
+32-bit counter: at one write a second it would take a century to exhaust even
+with a jump on every restart."""

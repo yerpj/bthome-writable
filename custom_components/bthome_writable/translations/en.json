@@ -12,6 +12,13 @@
         "data": {
           "address": "Device"
         }
+      },
+      "bindkey": {
+        "title": "Encryption key",
+        "description": "{name} ({address}) advertises encrypted, so its key is needed before Home Assistant can see what it offers. It is the same 32-character BTHome bindkey the device was given.",
+        "data": {
+          "bindkey": "Bindkey"
+        }
       }
     },
     "abort": {
@@ -19,6 +26,10 @@
       "not_supported": "This is an ordinary BTHome device: it does not declare any of its objects as writable, so there is nothing for this integration to do. Its sensors are handled by the BTHome integration.",
       "nothing_writable": "This device carries a writability declaration, but it marks no usable object.",
       "no_devices_found": "No writable BTHome device is currently within range. These devices announce themselves, so if yours is powered and nearby it will appear on its own — check that it is in range of a Bluetooth adapter or proxy."
+    },
+    "error": {
+      "invalid_bindkey": "A bindkey is 32 hexadecimal characters.",
+      "wrong_bindkey": "That key does not decrypt this device's advertising."
     }
   }
 }
