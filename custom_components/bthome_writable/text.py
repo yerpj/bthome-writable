@@ -26,7 +26,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from . import BTHomeWritableConfigEntry
 from .coordinator import BTHomeWritableCoordinator
 from .entity import BTHomeWritableEntity
-from .protocol import WritableObject
+from .protocol import WritableObject, controllable
 
 # `bthome-ble`'s format name for a length-prefixed string, which is what BTHome
 # object 0x53 decodes to. `raw` is variable-length too but carries bytes rather
@@ -43,7 +43,7 @@ MAX_LENGTH = 255
 
 
 def writable_text(obj: WritableObject) -> bool:
-    return obj.data_format == TEXT_FORMAT
+    return controllable(obj) and obj.data_format == TEXT_FORMAT
 
 
 async def async_setup_entry(

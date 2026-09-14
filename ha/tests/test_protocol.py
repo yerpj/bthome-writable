@@ -12,7 +12,9 @@ import pytest
 
 from custom_components.bthome_writable.protocol import (
     ProtocolError,
+    WritableObject,
     compose_write,
+    controllable,
     no_op_value,
     parse_declaration,
     split_objects,
@@ -185,3 +187,23 @@ def test_no_op_is_refused_for_objects_that_have_none() -> None:
 
     with pytest.raises(ProtocolError, match="no no-op value"):
         no_op_value(declaration.objects[0])
+
+
+def test_the_protocols_own_fields_never_become_controls() -> None:
+    """A malformed declaration is not hypothetical: a bitmask bit addressing the
+    packet id parses into a perfectly ordinary object, and the number platform
+    happily built a slider labelled "packet id" from one. Every platform passes
+    through this gate now (spec/PLATFORMS.md)."""
+    packet_id = WritableObject(
+        position=0, object_id=0x00, value=b"\x09", data_format="unsigned_integer"
+    )
+    declaration = WritableObject(
+        position=4, object_id=0xFF, value=b"\x04", data_format="unsigned_integer"
+    )
+    light = WritableObject(
+        position=2, object_id=0x1E, value=b"\x01", data_format="unsigned_integer"
+    )
+
+    assert not controllable(packet_id)
+    assert not controllable(declaration)
+    assert controllable(light)

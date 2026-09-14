@@ -32,7 +32,13 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from . import BTHomeWritableConfigEntry
 from .coordinator import BTHomeWritableCoordinator
 from .entity import BTHomeWritableEntity
-from .protocol import EVENT_NO_OP, WritableObject, describe, event_values
+from .protocol import (
+    EVENT_NO_OP,
+    WritableObject,
+    controllable,
+    describe,
+    event_values,
+)
 
 # A dimmer's second byte is how many steps it turned. A button press is one
 # step; a device wanting more can be driven by pressing again.
@@ -41,6 +47,8 @@ DIMMER_STEPS = 1
 
 def pressable(obj: WritableObject) -> bool:
     """Event objects that have a "none" value, and so can be left alone."""
+    if not controllable(obj):
+        return False
     kind = describe(obj.object_id)
     return kind is not None and kind.kind == "event" and obj.object_id in EVENT_NO_OP
 

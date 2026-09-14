@@ -19,10 +19,12 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from . import BTHomeWritableConfigEntry
 from .coordinator import BTHomeWritableCoordinator
 from .entity import BTHomeWritableEntity
-from .protocol import WritableObject, describe
+from .protocol import WritableObject, controllable, describe
 
 
 def switchable(obj: WritableObject) -> bool:
+    if not controllable(obj):
+        return False
     kind = describe(obj.object_id)
     return kind is not None and kind.kind == "binary"
 

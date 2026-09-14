@@ -1428,3 +1428,52 @@ conservative reading, not a decision.
 This is the second time the event class has turned out to be looser than the
 specification assumed; D-009 was the first. Both were found by implementing
 against a real vocabulary rather than against the prose.
+
+---
+
+## D-039 — T2.2 on hardware: position really is the address
+
+**Status:** verified 2026-09-14 on the Puck with three writable lights.
+
+`espruino/examples/three-lights.js` advertises three `light` objects sharing one
+object ID, and `tools/multi_instance.py` checks the claim §2.1 rests on. Both
+sides count independently — a host reading a bitmask, a device that has sorted
+its own objects — where every previous test had them counting the same way by
+construction against a fixture.
+
+```
+declared writable: 3 objects at positions (2, 3, 4)
+position 0: [0,0,0] -> [1,0,0]  (1e011e001e00)   ok, advertised [1,0,0]
+position 1: [1,0,0] -> [1,1,0]  (1e011e011e00)   ok, advertised [1,1,0]
+position 2: [1,1,0] -> [1,1,1]  (1e011e011e01)   ok, advertised [1,1,1]
+desynchronised write (0f001e011e01)              ok, refused, unchanged
+```
+
+The last line is risk #8 on hardware: an object ID that does not match the
+layout loses the whole write rather than the part the device understood.
+
+What makes this worth running rather than only unit-testing is the shape of the
+failure it looks for. Positional addressing does not fail with an error — it
+switches the wrong light and reports success.
+
+### And it found a real defect, which fixtures could not
+
+With three lights on the air, Home Assistant showed a
+`number.bureau_mobilesensf7b9_packet_id` — a slider for BTHome's packet counter.
+Its unique id was `…-4`, the same position as one of the lights.
+
+The live parsing is correct; the entity is debris from some earlier moment. But
+the mechanism it proves is the point: **a declaration bit addressing the packet
+id parses into a perfectly ordinary object**, and the number platform will
+happily build a control from it. `PLATFORMS.md` had already written down that
+the protocol's own fields are never controls; nothing enforced it.
+
+Now one gate does, `protocol.controllable()`, which every platform passes
+through — so the rule lives once rather than four times, and a fifth platform
+inherits it.
+
+The `bitmask-beyond-object-count` and `declaration-marks-itself` fixtures
+covered the *malformed* cases. This was the case where the declaration is
+well-formed and points somewhere it should not, which no fixture described
+because no fixture was written for a device that is merely wrong rather than
+broken.

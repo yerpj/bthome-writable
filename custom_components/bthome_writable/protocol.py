@@ -17,7 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Final
 
-from .const import DECLARATION_OBJECT_ID
+from .const import DECLARATION_OBJECT_ID, PACKET_ID_OBJECT_ID
 
 # Objects whose value is preceded by a length byte. Every other object has a
 # width fixed by its ID, which `bthome-ble`'s table knows and we look up rather
@@ -133,6 +133,25 @@ class ObjectKind:
 # therefore have the no-op §4.3 assumes every event object has. `0x3B command`
 # is deliberately absent: its 0x00 means `off`, a real command.
 EVENT_NO_OP: Final = frozenset({0x3A, 0x3C})
+
+
+#: The protocol's own fields. A declaration naming one of these is malformed
+#: rather than a device offering a control, and no platform may build an entity
+#: for it: a packet counter presented as a slider is nonsense, and a writable
+#: declaration would let a user rewrite the layout the write parser checks
+#: against. See spec/PLATFORMS.md.
+NEVER_CONTROLS: Final = frozenset({PACKET_ID_OBJECT_ID, DECLARATION_OBJECT_ID})
+
+
+def controllable(obj: WritableObject) -> bool:
+    """Whether a platform may offer an entity for this object at all.
+
+    The one gate every platform passes through, so the rule lives once. It
+    exists because a malformed declaration is not hypothetical: a bitmask bit
+    that addresses the packet id produces a perfectly parseable object, and
+    without this the number platform builds a slider labelled "packet id".
+    """
+    return obj.object_id not in NEVER_CONTROLS
 
 
 def event_values(object_id: int) -> dict[int, str] | None:

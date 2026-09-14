@@ -15,6 +15,10 @@ BTHOME_SERVICE_UUID: Final = "0000fcd2-0000-1000-8000-00805f9b34fb"
 # Object ID carrying the writability declaration inside the BTHome service data.
 DECLARATION_OBJECT_ID: Final = 0xFF
 
+#: BTHome's packet counter. Like the declaration it is the protocol's own
+#: bookkeeping rather than anything a user should be offered control of.
+PACKET_ID_OBJECT_ID: Final = 0x00
+
 # GATT service and characteristic (§4.1, decisions.md D-001). Provisional until
 # the first public release, frozen permanently after it.
 SERVICE_UUID: Final = "2faa0001-3b0b-4b1a-9e2a-b4c2952e62f2"
