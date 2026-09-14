@@ -1284,3 +1284,49 @@ device can be sent.
   capability, not a per-project one.
 - **No `E.getBattery()`** — that is a Puck.js function. The example reports the
   nRF52 die temperature instead.
+
+---
+
+## D-036 — The text platform, using what Home Assistant already has
+
+**Status:** implemented and verified on hardware 2026-09-14. First half of T2.1.
+
+Home Assistant already has the entity for this — `text`, with its
+`text.set_value` service — so nothing was invented. A writable BTHome text
+object becomes a `text` entity, and setting it sends one write of §4.2.
+
+Verified end to end on the nice!nano with its SSD1306:
+
+```
+text.set_value "Salut JP depuis HA"   -> service returns in 0.34s
+the entity reads back "Salut JP depuis HA"
+the device's own variable reads "Salut JP depuis HA"
+```
+
+### The state is what was sent, and says so
+
+§3 forbids applying the confirm/revert model to a write-only object, and this is
+the first platform where that bites. Three consequences, each deliberate:
+
+- **The entity's value is read out of the base class's optimistic value**, not
+  kept in a field of its own. The first version did keep a separate copy, and a
+  test caught what that costs: a write that never reached the device left the
+  entity still displaying the text, because `_revert()` clears the optimistic
+  value and knew nothing about the copy. One source of truth, and a failed write
+  takes the text down with it.
+- **`_write_finished` no longer opens a confirmation window for a write-only
+  object.** It would have expired every time — the device advertises a
+  zero-length placeholder for ever — and the entity would have dropped back a
+  second after each write.
+- **The state is unknown until something is sent, including after a restart.**
+  No `RestoreEntity`: restoring a remembered value would assert something Home
+  Assistant cannot check, and this entity's whole character is that it cannot
+  check.
+
+### What is not enforced, and why
+
+`native_max` is 255, which is the BTHome length byte's limit rather than the
+link's. The real ceiling is the smaller of the negotiated MTU minus framing and
+the device's own `maxWriteLength` — 48 characters on one board, 126 on another
+(D-017, D-035). Neither is knowable from the platform, so an over-long write
+fails and is reported rather than being prevented by a guess.

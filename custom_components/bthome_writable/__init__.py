@@ -19,7 +19,7 @@ from .coordinator import BTHomeWritableCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[Platform] = [Platform.SWITCH]
+PLATFORMS: list[Platform] = [Platform.SWITCH, Platform.TEXT]
 
 type BTHomeWritableConfigEntry = ConfigEntry[BTHomeWritableCoordinator]
 

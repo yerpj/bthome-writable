@@ -34,6 +34,11 @@ class BTHomeWritableEntity(Entity):
         self.coordinator = coordinator
         self._position = obj.position
         self._object_id = obj.object_id
+        # A write-only object never advertises what it was told, so the
+        # confirm/revert model has nothing to work with. Section 3 does not
+        # merely permit skipping it, it forbids applying it: the window would
+        # always expire and the entity would drop back to the placeholder.
+        self._write_only = obj.write_only
 
         self._attr_unique_id = f"{coordinator.address}-{obj.position}"
         self._attr_device_info = DeviceInfo(
@@ -115,6 +120,10 @@ class BTHomeWritableEntity(Entity):
             return
 
         self._cancel_confirmation()
+        if self._write_only:
+            # Delivered is as much as will ever be known (§3). The optimistic
+            # value stays, because it is the only account of what was sent.
+            return
         self._confirm_task = self.hass.async_create_task(self._await_confirmation())
 
     async def _await_confirmation(self) -> None:
