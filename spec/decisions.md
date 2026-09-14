@@ -1477,3 +1477,43 @@ covered the *malformed* cases. This was the case where the declaration is
 well-formed and points somewhere it should not, which no fixture described
 because no fixture was written for a device that is merely wrong rather than
 broken.
+
+---
+
+## D-040 — T2.3: availability, measured by cutting the power
+
+**Status:** verified 2026-09-14, with the rail under program control (D-032).
+
+The half of T2.3 that had never been run, because until this week it needed
+someone to pull a battery.
+
+```
+ooty off
+  t+  1s   switch.…_light  off
+  t+214s   switch.…_light  unavailable
+ooty on, sketch redeployed
+  t+  1s   switch.…_light  off
+```
+
+**Unavailable after 3 min 34 s**, and available again on the first advertisement
+after it comes back. The delay is Home Assistant's own Bluetooth tracker, not
+ours: `async_track_unavailable` decides when a device has gone quiet, and this
+integration only listens. Worth knowing as a number rather than a promise —
+nothing here makes a device disappear faster than that, and a user watching a
+switch after unplugging something will wait a few minutes for it to grey out.
+
+The device-merge half of T2.3 was already verified (D-025): one device card,
+`bthome`'s sensors and this integration's switch on it.
+
+### A consequence of the RAM deployment worth stating
+
+The device came back on the rail and stayed unavailable, because there was
+nothing to come back to: with the application in RAM and `.bootcde` erased
+(D-032), a power cut wipes the program. That is the protection working as
+intended — a sketch that breaks the radio is undone by a power cut — and it is
+also why "unavailable on power-off" needed a redeployment to test its other
+half.
+
+For a device meant to run unattended, `--to-flash` puts the sketch in
+`.bootcde` and a power cut becomes a reboot instead. The bench wants the
+opposite, which is why it is not the default.
