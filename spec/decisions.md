@@ -1026,8 +1026,31 @@ not erased, and the device is connectable again.
 
 ## D-030 — §2.3's budget is optimistic: this radio takes less  [SPEC ISSUE — for the owner]
 
-**Status:** measured 2026-09-11 on Puck.js 2v27. **Not acted on in the
-specification**, per rule 2: §2.3 is co-designed and this needs Gordon.
+**Status:** measured 2026-09-14 on Puck.js 2v27 with `tools/adv_budget.py`.
+**Not acted on in the specification**, per rule 2: §2.3 is co-designed and this
+needs Gordon.
+
+```
+advertising options                     max service data
+module defaults                                       17
+without whenConnected                                 17
+without discoverable                                  17
+showName:false                                        20
+```
+
+So the answer is **17, not 24**, and `showName:false` buys three of the missing
+seven. Neither `whenConnected` nor `discoverable` costs anything, which rules
+out the trade D-014 would have made painful. Where the remaining four go is not
+established; the radio simply refuses.
+
+Plain, this project's example spends 13 bytes and now has four to spare rather
+than eleven. Encrypted it needs 21, which is why it was refused: with
+`showName:false` an encrypted device has **11 bytes for objects**, and the
+example had to drop its battery reading to fit in 10.
+
+The module gained two options rather than guessing: `showName`, and
+`maxServiceData` for a sketch to declare what its radio really takes. The
+default stays at §2.3's 24, so nothing changes for anyone who has not measured.
 
 §2.3 works the budget out as `31 - 3 (Flags AD) - 4 (service data header) = 24`
 bytes of BTHome service data. Asked directly, with the options this module uses
@@ -1141,3 +1164,32 @@ refuse.
 The OOTY's own protocol client is imported from its repository rather than
 reimplemented here; `OOTY_PATH` points at the checkout. `VM` is not a check on
 this rail — it watches the switched VBUS input, a different one.
+
+---
+
+## D-033 — T3.1 is done: encryption works on hardware, both directions
+
+**Status:** verified 2026-09-14 on Puck.js 2v27, application running from RAM.
+
+**Advertising.** The device seals its packets as BTHome v2 does, and the library
+that will have to read them agrees: `bthome-ble` reports `bindkey_verified=True`
+and decodes `{packet_id: 17, illuminance: 110.32, light: False}` out of
+`41089f7e2ffbbedc298d8510000000368e105d`.
+
+**Writes.** A sealed write with device-info `0xFF` in its nonce (§5.1) is
+accepted and applied, and the proof is physical rather than an echo — the same
+closed loop as ever, through the cipher:
+
+```
+write light on   (counter 73174)  ->  illuminance 599.64, light True
+write light off  (counter 73175)  ->  illuminance 110.29, light False
+replay of the first write         ->  counter_not_increasing, state unchanged
+```
+
+That last line is §5.2 doing its job: a byte-perfect replay whose MIC verifies
+is still refused, because its counter does not advance. Reproduced twice.
+
+One honest gap: the first attempt, immediately after deployment, silently
+changed nothing — no error reached `onError`, and it has not recurred in the
+runs since. Not explained, and not reproduced. Worth remembering if writes are
+ever seen to be dropped right after an upload.

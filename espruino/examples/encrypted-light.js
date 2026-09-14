@@ -7,10 +7,12 @@
  *
  * Two consequences worth knowing before copying this:
  *
- * **There is less room.** The counter and the MIC come out of the same 24
- * service-data bytes, so an encrypted device has 15 for its objects where a
- * plain one has 23. The module checks this at setup and refuses to start rather
- * than truncate a layout its own write parser would then reject.
+ * **There is much less room than the arithmetic suggests.** PROTOCOL.md §2.3
+ * computes 24 bytes of service data; a Puck.js measured with tools/adv_budget.py
+ * accepts 17, or 20 with `showName:false` (decisions.md D-030). Encryption then
+ * spends 8 of those on the counter and MIC, leaving 11 for objects. That is why
+ * this example drops the battery reading that light-loop.js carries: with it,
+ * the packet is one byte over and the radio refuses it.
  *
  * **The key is the device's identity.** A receiver that does not have it sees
  * an undecodable BTHome device, not a plain one. The bindkey below is the one
@@ -42,7 +44,8 @@ function illuminance() {
 
 bw.setup({
   advertise: [
-    { type: "battery", interval: 300000, get: function () { return E.getBattery(); } },
+    // No battery object here: 11 bytes is what an encrypted packet has, and
+    // packet id (2) + illuminance (4) + light (2) + declaration (2) is 10.
     { type: "raw", interval: 0, get: illuminance },
     {
       type: "light",
@@ -54,6 +57,9 @@ bw.setup({
     },
   ],
   interval: 1000,
+  // Measured on this board, not assumed: see the header.
+  maxServiceData: 20,
+  showName: false,
   // From test-vectors.json, and therefore public. Change it.
   bindkey: "231d39c1d7cc1ab1aee224cd096db932",
   onError: function (error) {

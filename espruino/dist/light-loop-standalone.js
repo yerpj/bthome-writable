@@ -50,8 +50,15 @@ else is derived. Options:
   maxWriteLength largest accepted write, in bytes of device RAM (default 128)
   bindkey        16-byte AES key, as 32 hex characters or an array. Given, the
                  device advertises and accepts writes encrypted (BTHome v2
-                 AES-CCM, S5) - which costs 8 of the 24 service-data bytes for
-                 the counter and MIC, so there is less room for objects.
+                 AES-CCM, S5) - which costs 8 service-data bytes for the counter
+                 and MIC, so there is much less room for objects.
+  showName       put the device name in the advertising packet (default true).
+                 False buys 3 bytes of service data on an nRF52, which an
+                 encrypted device is likely to want (D-030).
+  maxServiceData what the radio will really accept, in bytes. S2.3's arithmetic
+                 says 24; a measured Puck.js takes 17, or 20 with showName
+                 false, and refusing the packet is how you find out. Set this to
+                 your radio's number and the packet is checked at setup instead.
   onError        called with a rejected write's error
 
 Everything above the DIVIDER is pure JS - no NRF, no I/O - and runs under Node,
@@ -160,8 +167,9 @@ function blank(e) { return VARIABLE[e.type] ? "" : 0; }
 
 /* Work out the packet layout once, at setup - not at write time: a device that
    discovers it does not fit while advertising is a device in the field. */
-function planPacket(entries, enc, defRead, encrypted) {
+function planPacket(entries, enc, defRead, encrypted, limit) {
   if (defRead === undefined) defRead = 0;
+  if (limit === undefined) limit = BUDGET;
   const items = [];
   for (let i = 0; i < entries.length; i++) {
     const e = entries[i];
@@ -205,7 +213,7 @@ function planPacket(entries, enc, defRead, encrypted) {
     // Encryption spends the counter and the MIC out of the same 24 bytes, so an
     // encrypted device has 8 fewer for its objects. Checked here rather than at
     // the first advertisement, as S2.3 requires.
-    budget : BUDGET - (encrypted ? ENC_OVERHEAD : 0)
+    budget : limit - (encrypted ? ENC_OVERHEAD : 0)
   };
   p.serviceDataLength = renderServiceData(p, 0, null).length;
   return p;
@@ -352,7 +360,7 @@ function refreshAdvertising() {
   // whenConnected: without it the device goes silent exactly when a receiver
   // most wants to hear it. The stack advertises non-connectably meanwhile,
   // which is what floors fastInterval at 100ms.
-  const opts = { interval:st.advInterval, connectable:true, discoverable:true, whenConnected:st.whenConnected };
+  const opts = { interval:st.advInterval, connectable:true, discoverable:true, whenConnected:st.whenConnected, showName:st.showName };
   try {
     NRF.setAdvertising({ 0xFCD2:sd }, opts);
   } catch (e) {
@@ -454,7 +462,9 @@ function setup(opts) {
     // mark in flash (S5.2).
     writeCounter : key ? loadWriteCounter() : 0,
     writeMark : key ? loadWriteCounter() : 0,
-    plan : planPacket(entries, encodeOne, iv, key !== null), // the adv interval is also the default read interval
+    // The adv interval is also the default read interval.
+    plan : planPacket(entries, encodeOne, iv, key !== null, opts.maxServiceData),
+    showName : opts.showName !== false,
     packetId : 0,
     interval : iv,
     fastInterval : Math.max(100, checkInterval("fastInterval", opts.fastInterval || 100)),
