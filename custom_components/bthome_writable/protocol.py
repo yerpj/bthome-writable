@@ -89,6 +89,94 @@ def _object_table() -> dict[int, tuple[str, int]]:
     }
 
 
+@dataclass(frozen=True)
+class ObjectKind:
+    """What a BTHome object is, as far as choosing a control goes.
+
+    Everything here is read from `bthome-ble` rather than declared: object ids,
+    widths, factors and units are BTHome's to define, and a copy would drift the
+    first time it assigns a new one. See spec/PLATFORMS.md.
+    """
+
+    kind: str
+    """binary | numeric | string | event | raw | meta"""
+
+    length: int
+    signed: bool
+    factor: float
+    unit: str | None
+    device_class: str | None
+
+    @property
+    def step(self) -> float:
+        return self.factor
+
+    @property
+    def minimum(self) -> float:
+        """The smallest value the encoding can carry, not what a device accepts.
+
+        BTHome gives a device no way to narrow its own range, so a dimmer that
+        stops at 100 still advertises an object that can hold 655.35. A receiver
+        cannot know better; the device is entitled to reject the write (§4.2).
+        """
+        if not self.signed:
+            return 0.0
+        return -(2 ** (8 * self.length - 1)) * self.factor
+
+    @property
+    def maximum(self) -> float:
+        bits = 8 * self.length - (1 if self.signed else 0)
+        return (2**bits - 1) * self.factor
+
+
+def describe(object_id: int) -> ObjectKind | None:
+    """Classify one object id, or None if `bthome-ble` does not know it."""
+    from bthome_ble.const import MEAS_TYPES
+
+    meas = MEAS_TYPES.get(object_id)
+    if meas is None:
+        return None
+
+    shape = getattr(meas, "meas_format", None)
+    name = type(shape).__name__
+    # The width tests come first. `bthome-ble` gives text and raw an ordinary
+    # sensor description, so classifying by description type alone calls them
+    # numeric -- and a text box would then be offered as a slider.
+    if meas.data_format in VARIABLE_LENGTH_FORMATS:
+        kind = "raw" if meas.data_format == "raw" else "string"
+    elif name == "BaseBinarySensorDescription":
+        kind = "binary"
+    elif name == "EventDeviceKeys":
+        kind = "event"
+    elif name == "BaseSensorDescription":
+        kind = "numeric"
+    else:
+        # Device type and firmware version: readable facts about the device,
+        # never something to offer a user as a control.
+        kind = "meta"
+
+    unit = getattr(shape, "native_unit_of_measurement", None)
+    device_class = getattr(shape, "device_class", None)
+    return ObjectKind(
+        kind=kind,
+        length=meas.data_length,
+        signed=meas.data_format == "signed_integer",
+        factor=getattr(meas, "factor", 1) or 1,
+        unit=getattr(unit, "value", unit),
+        device_class=getattr(device_class, "value", device_class),
+    )
+
+
+def encode_scaled(value: float, kind: ObjectKind) -> bytes:
+    """A number as BTHome carries it: value / factor, little-endian."""
+    raw = round(value / kind.factor)
+    return raw.to_bytes(kind.length, "little", signed=kind.signed)
+
+
+def decode_scaled(value: bytes, kind: ObjectKind) -> float:
+    return int.from_bytes(value, "little", signed=kind.signed) * kind.factor
+
+
 def split_objects(payload: bytes) -> list[tuple[int, int, bytes, str]]:
     """Split BTHome service data into (position, object_id, value, format) tuples.
 

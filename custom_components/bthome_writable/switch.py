@@ -1,8 +1,11 @@
-"""Switch platform: BTHome boolean objects declared writable.
+"""Switch platform: BTHome binary objects declared writable.
 
-The MVP's only platform (T1.2). Lights, numbers, text and buttons follow in
-T2.1, once the full object-to-platform table is written against BTHome's object
-list.
+Every binary object, not a chosen few. The MVP exposed four classes -- generic,
+power, light, lock -- on the reasoning that a `motion` switch is nonsense. That
+reasoning is wrong: a device does not declare an object writable by accident,
+and one advertising a writable `garage_door` has a garage door. Refusing it made
+the device unusable in the name of protecting its owner from it. See
+spec/PLATFORMS.md.
 """
 
 from __future__ import annotations
@@ -16,18 +19,24 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from . import BTHomeWritableConfigEntry
 from .coordinator import BTHomeWritableCoordinator
 from .entity import BTHomeWritableEntity
-from .protocol import WritableObject
+from .protocol import WritableObject, describe
 
-# BTHome boolean objects worth exposing as a switch, with the name to show.
-# Deliberately short: `door` or `motion` stay sensors even if a device declares
-# them writable, and offering them as switches would misrepresent the device.
-# T2.1 replaces this with the full object-to-platform table.
-SWITCHABLE: dict[int, str] = {
-    0x0F: "Generic",
-    0x10: "Power",
-    0x1E: "Light",
-    0x1F: "Lock",
-}
+
+def switchable(obj: WritableObject) -> bool:
+    kind = describe(obj.object_id)
+    return kind is not None and kind.kind == "binary"
+
+
+def display_name(obj: WritableObject) -> str:
+    """The object's BTHome class, as a label: `garage_door` -> Garage door.
+
+    Named after what the device says it is rather than a name of our own, so an
+    unusual writable object presents as itself.
+    """
+    kind = describe(obj.object_id)
+    if kind is None or not kind.device_class:
+        return "Switch"
+    return kind.device_class.replace("_", " ").capitalize()
 
 
 async def async_setup_entry(
@@ -52,9 +61,7 @@ async def async_setup_entry(
         new = [
             BTHomeWritableSwitch(coordinator, obj)
             for obj in coordinator.declaration.objects
-            if obj.object_id in SWITCHABLE
-            and not obj.write_only
-            and obj.position not in known
+            if switchable(obj) and not obj.write_only and obj.position not in known
         ]
         if not new:
             return
@@ -72,7 +79,7 @@ class BTHomeWritableSwitch(BTHomeWritableEntity, SwitchEntity):
         self, coordinator: BTHomeWritableCoordinator, obj: WritableObject
     ) -> None:
         super().__init__(coordinator, obj)
-        name = SWITCHABLE.get(obj.object_id, "Switch")
+        name = display_name(obj)
         suffix = _instance_suffix(coordinator, obj)
         self._attr_name = name if suffix is None else f"{name} {suffix}"
 

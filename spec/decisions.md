@@ -1330,3 +1330,58 @@ link's. The real ceiling is the smaller of the negotiated MTU minus framing and
 the device's own `maxWriteLength` — 48 characters on one board, 126 on another
 (D-017, D-035). Neither is knowable from the platform, so an over-long write
 fails and is reported rather than being prevented by a guess.
+
+---
+
+## D-037 — T2.1: the object↔platform table, and the list it replaces
+
+**Status:** written and implemented 2026-09-14. `spec/PLATFORMS.md`.
+
+The mapping is now a document rather than four ids in a dict, and it is
+**derived from `bthome-ble` at runtime** — `protocol.describe()` classifies an
+object from upstream's own table, so this project never keeps a copy of BTHome's
+object list to go stale. Of 95 objects: 59 numeric, 28 binary, 3 event, 1
+string, 1 raw, 3 metadata.
+
+### The switch platform was wrong, and in an interesting way
+
+It exposed four binary classes — `generic`, `power`, `light`, `lock` — on the
+reasoning that a `motion` switch is nonsense. It is, but the conclusion did not
+follow. **A device does not declare an object writable by accident**: the bit
+costs it a byte of advertising and a GATT service. A device advertising a
+writable `garage_door` has a garage door, and refusing it made that device
+unusable in the name of protecting its owner from it.
+
+All 28 binary classes are now offered, named after the BTHome class. A device
+that declares something strange presents as something strange, which is the
+truthful outcome rather than a curated one.
+
+### Numbers get their bounds from the encoding, and say so
+
+Range, step and unit come from the object's width, signedness and factor: a
+2-byte unsigned object with factor 0.01 offers 0 … 655.35 in hundredths.
+
+These are the *encoding's* limits, not the device's. BTHome gives a device no
+way to say its dimmer stops at 100, so the slider reaches 655.35 and the device
+is entitled to reject the write. Not a defect to paper over with a guess —
+documented instead, in `PLATFORMS.md` and in the platform's own docstring.
+
+### Left open rather than invented: light + brightness
+
+The task asks for a `light` with a brightness slider. **BTHome has no way to
+express which level belongs to which light** — no grouping, no parent id. The
+options (adjacency as a convention, a new object id, or leave them apart) all
+have costs, and choosing is a protocol decision, not an implementation one
+(rule 2). Written up in `PLATFORMS.md` for the owner and Gordon. Until then a
+writable light is a switch and a writable level is a number, unpaired.
+
+### A harness bug the new tests exposed
+
+`fast_confirmation`, which shrinks the confirmation window, was an autouse
+fixture declared in `test_switch.py` — so it applied only there. The number
+tests ran against the production ceiling: two minutes for the suite, and a
+revert test that timed out instead of reverting. Moved to `conftest.py`.
+
+Worth remembering generally: an autouse fixture in a test module is not a
+property of the suite, and the failure looks like the code being slow rather
+than the harness being scoped wrongly.

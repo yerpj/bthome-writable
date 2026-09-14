@@ -212,3 +212,30 @@ def radio():
         ),
     ):
         yield fake
+
+
+@pytest.fixture(autouse=True)
+def fast_confirmation(request):
+    """Shrink the confirmation window for every test in this module.
+
+    An entity that has written but not been confirmed keeps a task alive until
+    the ceiling, and `async_block_till_done` waits for it -- so production
+    values would make the suite wait a minute per write. The behaviour under
+    test is the ordering and the conditions, not the durations.
+
+    Opt out with `@pytest.mark.real_confirmation` where the durations are the
+    point.
+    """
+    if request.node.get_closest_marker("real_confirmation"):
+        yield
+        return
+
+    with (
+        patch(
+            "custom_components.bthome_writable.coordinator.CONFIRM_WINDOW_FLOOR", 0.05
+        ),
+        patch(
+            "custom_components.bthome_writable.coordinator.CONFIRM_WINDOW_CEILING", 1.0
+        ),
+    ):
+        yield

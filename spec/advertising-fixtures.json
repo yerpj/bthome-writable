@@ -347,6 +347,67 @@
       ]
     },
     {
+      "name": "writable-setpoint",
+      "description": "A writable numeric object: the shape of a dimmer level or a setpoint. Its range and step are the encoding's, derived from the object's width and factor -- BTHome gives a device no way to say its own limits are narrower (spec/PLATFORMS.md).",
+      "valid": true,
+      "device_info_byte": "40",
+      "service_data": "4000030158149a10ff04",
+      "service_data_length": 10,
+      "objects": [
+        {
+          "object_id": "00",
+          "value": "03",
+          "name": "packet_id",
+          "position": 0
+        },
+        {
+          "object_id": "01",
+          "value": "58",
+          "name": "battery",
+          "position": 1
+        },
+        {
+          "object_id": "14",
+          "value": "9a10",
+          "name": "moisture",
+          "position": 2
+        },
+        {
+          "object_id": "ff",
+          "value": "04",
+          "name": "declaration",
+          "position": 3
+        }
+      ],
+      "declaration": {
+        "bitmask": 4,
+        "bitmask_hex": "04",
+        "writable_positions": [
+          2
+        ],
+        "is_last_element": true
+      },
+      "expected_sensors": {
+        "packet_id": 3,
+        "battery": 88,
+        "moisture": 42.5
+      },
+      "writes": [
+        {
+          "name": "setpoint-to-60",
+          "description": "6000 little-endian is 0x1770 = 6000, which is 60.00%.",
+          "objects": [
+            {
+              "object_id": "14",
+              "value": "7017",
+              "name": "moisture"
+            }
+          ],
+          "payload": "147017"
+        }
+      ]
+    },
+    {
       "name": "write-only-display",
       "description": "A device whose only writable object is a write-only text: it advertises the placeholder and never the written value (\u00a73).",
       "valid": true,

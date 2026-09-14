@@ -140,6 +140,11 @@ def write(name: str, description: str, objects: list[dict[str, Any]]) -> dict[st
 BATTERY = lambda pct: obj(0x01, bytes([pct]), "battery")  # noqa: E731
 LIGHT = lambda on: obj(0x1E, bytes([1 if on else 0]), "light")  # noqa: E731
 PACKET_ID = lambda n: obj(0x00, bytes([n]), "packet_id")  # noqa: E731
+# BTHome moisture: unsigned 16-bit, factor 0.01, so the wire value is
+# percent * 100. A writable one is the shape of a setpoint or a dimmer level.
+MOISTURE = lambda pct: obj(  # noqa: E731
+    0x14, round(pct * 100).to_bytes(2, "little"), "moisture"
+)
 TEXT_EMPTY = obj(0x53, bytes([0]), "text", write_only=True)
 TEXT_NOOP = obj(0x53, bytes([0]), "text", note="length 0 = no-op (§4.3)")
 
@@ -242,6 +247,26 @@ def build_fixtures() -> list[dict[str, Any]]:
                     "second-light-off",
                     "Positions address the instances; no per-instance ID exists.",
                     [LIGHT(True), LIGHT(False), LIGHT(True)],
+                )
+            ],
+        )
+    )
+
+    fixtures.append(
+        fixture(
+            "writable-setpoint",
+            "A writable numeric object: the shape of a dimmer level or a "
+            "setpoint. Its range and step are the encoding's, derived from the "
+            "object's width and factor -- BTHome gives a device no way to say "
+            "its own limits are narrower (spec/PLATFORMS.md).",
+            [PACKET_ID(3), BATTERY(88), MOISTURE(42.5)],
+            writable_positions=[2],
+            expected_sensors={"packet_id": 3, "battery": 88, "moisture": 42.5},
+            writes=[
+                write(
+                    "setpoint-to-60",
+                    "6000 little-endian is 0x1770 = 6000, which is 60.00%.",
+                    [MOISTURE(60.0)],
                 )
             ],
         )
