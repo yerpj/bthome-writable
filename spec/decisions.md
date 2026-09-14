@@ -1066,3 +1066,40 @@ Options for the owner, none of them mine to pick:
 
 Until this is settled, an encrypted device on Espruino must keep its object
 list short, and a receiver cannot assume 23 bytes are available.
+
+---
+
+## D-031 — Deployments were silently corrupt, and nothing checked
+
+**Status:** found and fixed 2026-09-14, recovering from D-029.
+
+After the button recovery the Puck still would not advertise, and the reason was
+not the one being chased. `bw.setup()` threw `Got [ERASED] expected ID` — an
+Espruino *parser* error. The module in Storage had a hole in it: a chunk of the
+file that was never written, still erased flash.
+
+The console has no flow control, `espruino_deploy.py` sends a file as a few
+hundred `Storage.write()` statements back to back, and a dropped statement
+leaves exactly that. **Nothing verified what arrived.**
+
+What makes it nasty is Espruino's laziness: a function's body is parsed when it
+first runs, not when the module loads. So a damaged module `require`s cleanly,
+reports `typeof` as an object, and fails later from whichever function happened
+to span the gap — arbitrarily far from the deployment that caused it. Both
+D-022 and D-029 wore that same face, and this was hiding behind them.
+
+**The fix is the obvious one, which should have been there from the start.**
+After writing each file the deployer asks the device for `E.CRC32` of what it
+stored and compares it with the host's, rewriting up to three times and failing
+loudly rather than leaving a device to break later. It earned its place on the
+first run: `AESCCM` came back with the wrong CRC and the rewrite fixed it.
+
+The plain example then deployed, booted and closed its loop: 104.4 lux off,
+598.3 on, 5.7x.
+
+**Worth generalising.** Every silent-device incident in this project so far —
+D-022, D-029, this one — presents identically: powered, connectable or not,
+advertising nothing. The way to tell them apart is to ask the device something
+and read the answer, not to infer from the radio. `require("Storage").list()`,
+a CRC, `bw.plan()`: each of these would have separated these three causes in
+seconds.

@@ -34,6 +34,7 @@ import json
 from pathlib import Path
 import re
 import sys
+import zlib
 
 from bleak import BleakClient, BleakScanner
 
@@ -48,6 +49,9 @@ MAX_STORAGE_NAME = 28
 # Each Storage.write() is one console statement, and the console truncates a
 # statement well before a module fits in one.
 CHUNK = 384
+
+# How many times to rewrite a file whose stored copy does not match.
+WRITE_ATTEMPTS = 3
 
 NOISE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]|[\r\x00-\x08\x0b-\x1f]")
 
@@ -261,14 +265,39 @@ async def run(address: str, app: Path, reboot: bool, scan_timeout: float) -> int
         await send('require("Storage").erase(".varimg");\n')
         console.clear()
 
-        for name, source in modules.items():
-            print(f"writing {name} ...")
-            for statement in write_statements(name, source):
-                await send(statement + "\n", settle=0.25)
+        async def store(name: str, content: str) -> None:
+            """Write a file, then make the device prove it holds what we sent.
 
-        print("writing .bootcde ...")
-        for statement in write_statements(".bootcde", app_code):
-            await send(statement + "\n", settle=0.25)
+            This console has no flow control, so a statement can be dropped, and
+            a dropped chunk leaves a hole of erased flash in the middle of the
+            file. Espruino parses a function's body only when it first runs, so
+            a module with a hole loads without complaint and throws
+            `Got [ERASED] expected ID` later, from whichever function happened to
+            span the gap -- arbitrarily far from the install that caused it.
+            """
+            want = zlib.crc32(content.encode("ascii")) & 0xFFFFFFFF
+            quoted = json.dumps(name)
+            ask = f'print("CRC=", (E.CRC32(require("Storage").read({quoted}))>>>0));\n'
+            for _ in range(WRITE_ATTEMPTS):
+                print(f"writing {name} ...")
+                for statement in write_statements(name, content):
+                    await send(statement + "\n", settle=0.25)
+                console.clear()
+                await send(ask, 1.2)
+                got = None
+                text = NOISE.sub("", console.decode("utf-8", "replace"))
+                for line in text.splitlines():
+                    if line.strip().startswith("CRC="):
+                        with contextlib.suppress(ValueError):
+                            got = int(line.split("=", 1)[1].strip())
+                if got == want:
+                    return
+                print(f"  {name}: stored crc {got}, wanted {want} -- rewriting")
+            raise SystemExit(f"{name}: still damaged after {WRITE_ATTEMPTS} attempts")
+
+        for name, source in modules.items():
+            await store(name, source)
+        await store(".bootcde", app_code)
 
         await send('print("FILES=", JSON.stringify(require("Storage").list()));\n', 1.2)
         printed = NOISE.sub("", console.decode("utf-8", errors="replace"))
