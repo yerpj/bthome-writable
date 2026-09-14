@@ -1193,3 +1193,54 @@ One honest gap: the first attempt, immediately after deployment, silently
 changed nothing — no error reached `onError`, and it has not recurred in the
 runs since. Not explained, and not reproduced. Worth remembering if writes are
 ever seen to be dropped right after an upload.
+
+---
+
+## D-034 — A cached module's source is an offset into flash, not a copy
+
+**Status:** found and fixed 2026-09-14. Explains several earlier mysteries.
+
+After the modules deployed with matching CRCs and loaded with the right exports,
+the sketch still failed:
+
+```
+Uncaught SyntaxError: Got [ERASED] expected EOF
+    at setup (:1:1)
+```
+
+Printing the offending function gave the answer at once. This is
+`BTHomeWritable.encodeDeclaration`, straight off the device:
+
+```
+function (pos) {
+t.subarray(start, Math.min(start + 16, pt
+```
+
+That body is **AESCCM's source text**. Espruino keeps a function's source as an
+*offset into the flash file it was parsed from*, not as a copy, and `require()`
+caches the module object in RAM. So rewriting the module files underneath a
+cached module — which is exactly what a deployment does — leaves those offsets
+pointing at whatever now occupies the address. The functions then read as
+erased, or as a neighbour's text.
+
+Nothing detects it: `Storage.read()` returns the right bytes, the CRC matches,
+`Object.keys(module).length` is right, and the failure only appears when a
+function body is finally parsed, blamed on the line that called it.
+
+**The fix is one statement**: `Modules.removeAllCached()` after writing the
+modules and before running the sketch.
+
+### What this retrospectively explains
+
+- **The deployment that "corrupted" AESCCM.** D-031's CRC check is still doing
+  real work — it catches genuine dropped writes — but some of the confusion
+  attributed to dropped statements was this instead.
+- **D-033's one unexplained failure**, where the first write after a deployment
+  silently did nothing. A stale cached module is a very good candidate: the
+  write path would have been parsed out of moved flash.
+- **Why a power cycle always seemed to fix things.** It clears the cache, which
+  is the actual repair.
+
+The general lesson matches D-031's: on this platform, a device that answers
+every question correctly can still be broken, because the thing that is wrong is
+only read later. Ask it to *run* something, not just to describe itself.

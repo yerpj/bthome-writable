@@ -330,19 +330,42 @@ async def run(
         elif not to_flash:
             # Sent as source, not stored: the modules it requires are in flash,
             # so only the sketch itself crosses the link.
-            print(f"running {app.name} from RAM ...")
-            for line in app_code.splitlines():
-                if line.strip():
-                    await send(line + "\n", settle=0.12)
-            await asyncio.sleep(1.5)
-            errors = [
-                s.strip()
-                for s in NOISE.sub("", console.decode("utf-8", "replace")).splitlines()
-                if "Uncaught" in s or "ERROR" in s
-            ]
-            for line in errors[:5]:
-                print(f"  device: {line[:160]}")
-            if errors:
+            # Retried for the same reason stored files are CRC-checked: the
+            # console drops characters, and here a dropped one is a syntax error
+            # in the middle of a sketch, leaving the previous program running
+            # while the deployment reports success.
+            for attempt in range(1, WRITE_ATTEMPTS + 1):
+                print(f"running {app.name} from RAM ...")
+                await send("\x03")
+                await send("clearInterval();clearWatch();\n", 0.4)
+                # Espruino caches `require()` results, and a cached module's
+                # function bodies are *offsets into the flash file* rather than
+                # copies. Rewriting the modules underneath -- which is exactly
+                # what this tool just did -- leaves those offsets pointing at
+                # whatever now occupies that address. The symptom is a function
+                # whose source reads `[ERASED]`, or reads as a neighbouring
+                # module's text, thrown from a line that is perfectly fine.
+                await send("Modules.removeAllCached();\n", 0.4)
+                console.clear()
+                for line in app_code.splitlines():
+                    if line.strip():
+                        await send(line + "\n", settle=0.2)
+                await asyncio.sleep(1.5)
+                errors = [
+                    s.strip()
+                    for s in NOISE.sub(
+                        "", console.decode("utf-8", "replace")
+                    ).splitlines()
+                    if "Uncaught" in s or "ERROR:" in s
+                ]
+                if not errors:
+                    break
+                for line in errors[:4]:
+                    print(f"  device: {line[:150]}")
+                if attempt < WRITE_ATTEMPTS:
+                    print("  the sketch did not come through intact; resending")
+            else:
+                print(f"{app.name}: could not be run intact", file=sys.stderr)
                 return 1
     finally:
         # A link left half-open keeps the device believing a central is still
