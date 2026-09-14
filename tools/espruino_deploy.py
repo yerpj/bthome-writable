@@ -5,24 +5,30 @@ and wrong for leaving a device running: it costs RAM that a Puck.js does not
 have, and it does not survive a power cut without `save()`, whose memory image
 is a fragile thing to depend on.
 
-The idiomatic layout, and what this writes:
+What this writes, by default:
 
     Storage "BTHome"           the upstream module, by its bare name
     Storage "BTHomeWritable"   this project's module, likewise
-    Storage ".bootcde"         the application, run at boot
+    RAM                        the application, sent over the console
 
-`require("X")` resolves from Storage under exactly `X`, no extension — see
-`jswrap_modules.c`, "Has it been manually saved to Flash Storage?". So the
-application keeps its ordinary `require()` calls and the modules live in flash
-rather than in RAM.
+Modules belong in flash: `require("X")` resolves from Storage under exactly `X`,
+no extension -- see `jswrap_modules.c`, "Has it been manually saved to Flash
+Storage?" -- so the sketch keeps its ordinary `require()` calls and the module
+costs no RAM.
+
+The application deliberately does not. A sketch that throws while setting up the
+radio can leave a device advertising nothing, which cannot be connected to and
+so cannot be fixed over the air; from `.bootcde` that repeats at every boot
+(decisions.md D-029). Held in RAM it is undone by a power cut. `--to-flash`
+stores it in `.bootcde` anyway, for a device meant to run unattended.
 
     python -m tools.espruino_deploy --address C8:80:32:AD:F7:B9 \
         --app espruino/examples/light-loop.js
 
-The failure this avoids is worth naming: an application in `.bootcde` whose
-modules are *not* in Storage boots, throws on the first `require`, and leaves a
-device that answers its console and advertises nothing — indistinguishable from
-a flat battery (decisions.md D-022).
+Whatever it writes, it checks: the console has no flow control, and a dropped
+statement leaves a hole of erased flash that Espruino only notices when it first
+parses the function spanning it, arbitrarily later (D-031). Each stored file is
+read back and compared by CRC.
 """
 
 from __future__ import annotations
@@ -209,7 +215,9 @@ async def connect(device, attempts: int = 6) -> BleakClient:
     raise SystemExit(f"could not connect to the device: {last}")
 
 
-async def run(address: str, app: Path, reboot: bool, scan_timeout: float) -> int:
+async def run(
+    address: str, app: Path, reboot: bool, scan_timeout: float, to_flash: bool
+) -> int:
     # Prepared before the scan, so that a `require()` written inside a comment
     # — this project's module has one in its usage example — is not mistaken for
     # a dependency and chased to a 404.
@@ -297,7 +305,17 @@ async def run(address: str, app: Path, reboot: bool, scan_timeout: float) -> int
 
         for name, source in modules.items():
             await store(name, source)
-        await store(".bootcde", app_code)
+
+        if to_flash:
+            await store(".bootcde", app_code)
+        else:
+            # Nothing executable in flash. A sketch that throws while setting up
+            # the radio can leave a device that advertises nothing and therefore
+            # cannot be connected to; stored in `.bootcde`, that repeats at every
+            # boot and the only way back is the button (D-029). In RAM it lasts
+            # until the next reset, so a power cycle is the undo.
+            print("erasing .bootcde (the application runs from RAM)")
+            await send('require("Storage").erase(".bootcde");\n', 0.6)
 
         await send('print("FILES=", JSON.stringify(require("Storage").list()));\n', 1.2)
         printed = NOISE.sub("", console.decode("utf-8", errors="replace"))
@@ -305,10 +323,27 @@ async def run(address: str, app: Path, reboot: bool, scan_timeout: float) -> int
             if line.startswith("FILES="):
                 print(f"storage now holds {line[6:].strip()}")
 
-        if reboot:
+        if to_flash and reboot:
             print("rebooting onto the stored code ...")
             await client.write_gatt_char(UART_RX, b"load();\n", response=False)
             await asyncio.sleep(2)
+        elif not to_flash:
+            # Sent as source, not stored: the modules it requires are in flash,
+            # so only the sketch itself crosses the link.
+            print(f"running {app.name} from RAM ...")
+            for line in app_code.splitlines():
+                if line.strip():
+                    await send(line + "\n", settle=0.12)
+            await asyncio.sleep(1.5)
+            errors = [
+                s.strip()
+                for s in NOISE.sub("", console.decode("utf-8", "replace")).splitlines()
+                if "Uncaught" in s or "ERROR" in s
+            ]
+            for line in errors[:5]:
+                print(f"  device: {line[:160]}")
+            if errors:
+                return 1
     finally:
         # A link left half-open keeps the device believing a central is still
         # attached, which blocks the next connection for a supervision timeout.
@@ -325,7 +360,14 @@ def main() -> int:
     parser.add_argument(
         "--no-reboot",
         action="store_true",
-        help="leave the device running whatever it is running",
+        help="with --to-flash, leave the device running whatever it is running",
+    )
+    parser.add_argument(
+        "--to-flash",
+        action="store_true",
+        help="store the application in .bootcde so it runs at boot. Without "
+        "this the modules go to flash and the application runs from RAM, "
+        "where a sketch that breaks the radio is undone by a power cycle.",
     )
     parser.add_argument(
         "--scan-timeout",
@@ -335,7 +377,13 @@ def main() -> int:
     )
     args = parser.parse_args()
     return asyncio.run(
-        run(args.address, args.app, not args.no_reboot, args.scan_timeout)
+        run(
+            args.address,
+            args.app,
+            not args.no_reboot,
+            args.scan_timeout,
+            args.to_flash,
+        )
     )
 
 

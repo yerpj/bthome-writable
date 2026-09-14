@@ -1103,3 +1103,41 @@ advertising nothing. The way to tell them apart is to ask the device something
 and read the answer, not to infer from the radio. `require("Storage").list()`,
 a CRC, `bw.plan()`: each of these would have separated these three causes in
 seconds.
+
+---
+
+## D-032 — The bench can cut the power, so nothing has to be permanent
+
+**Status:** in place 2026-09-14, at the owner's suggestion and on his hardware.
+
+The Puck now sits on a switchable 3V3 rail driven by an OOTY board — a hardware
+debug aid on the bench, reachable over a serial port. `tools/ooty.py` drives it:
+
+```
+python -m tools.ooty state | on | off | cycle
+```
+
+Two things follow, and together they close the worst failure mode this project
+has had.
+
+**The application no longer lives in flash.** `espruino_deploy.py` now puts the
+modules in Storage, erases `.bootcde`, and sends the sketch over the console to
+RAM. A sketch that throws while configuring the radio can leave a device
+advertising nothing — unconnectable, therefore unfixable over the air — and from
+`.bootcde` that repeats at every boot (D-029). In RAM it lasts until the next
+reset. `--to-flash` is still there for a device meant to run unattended.
+
+**And a reset is now a command.** Verified in both directions: with the sketch
+running from RAM the device advertises `400014016405d328001e00ff08`; after
+`ooty cycle` it comes up as a bare `Puck.js f7b9` with no service data at all.
+
+What this buys is not convenience. Twice — D-029 and D-031 — work stopped
+because a device could only be recovered by a finger on a button, which meant
+waiting for someone to be in the room. Experiments that could brick the board
+were, until now, things to avoid. They are now things to try: measuring what the
+radio will really accept (D-030) means deliberately handing it payloads it will
+refuse.
+
+The OOTY's own protocol client is imported from its repository rather than
+reimplemented here; `OOTY_PATH` points at the checkout. `VM` is not a check on
+this rail — it watches the switched VBUS input, a different one.
