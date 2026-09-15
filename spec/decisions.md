@@ -1581,3 +1581,47 @@ False` throughout.
 protocol has to read the device rather than the receiver, and I have now written
 that down twice (D-039 said the same about positional addressing) after failing
 to apply it.
+
+## D-042 — A bindkey outlived the firmware that needed it  [INCIDENT]
+
+**Status:** found and guarded 2026-09-15, after the owner reported that the
+Light button in Home Assistant no longer lit the LED.
+
+Nothing was broken. Every part in isolation was healthy, which is what made it
+take a diagnosis rather than a glance:
+
+- the Puck was advertising `40 00 01 01 64 05 96 28 00 1e 00 ff 08` — packet id,
+  battery, illuminance, light at 0, and `ff 08` declaring position 3 writable
+- its GATT table carried `2faa0001…` / `2faa0002…` with write properties
+- the integration deployed on the Home Assistant share was byte-identical to
+  the repository
+- writing `1e 01` directly to the characteristic was confirmed in 219 ms
+
+The mismatch was in the config entry. It still held the bindkey from T3.2, when
+the Puck ran the encrypted example; the Puck had since been reflashed with the
+plain one. `_write_now` sealed every write because a key was configured, without
+ever asking whether the device was still using one. The Puck read the sealed
+payload as ordinary BTHome objects, failed, and rejected the whole write per
+§4.2 — correctly, and in total silence.
+
+**The asymmetry is the bug.** The opposite case was already handled: no bindkey
+plus encrypted advertising is logged. A bindkey plus plaintext advertising had
+no branch at all, so the only symptom available to the user was "the control
+stopped working". That is the same shape as D-029, D-039 and D-041: this
+protocol's failures are quiet by construction, and every one of them has to be
+given a voice deliberately.
+
+**The guard.** The coordinator now tracks `advertises_encrypted` from the
+device-information byte of the last advertisement. When a key is configured and
+the device is demonstrably advertising in clear, the write is refused with a
+message naming both facts and the two ways out.
+
+`None` is treated as "not yet known", not as "plain": refusing before the first
+advertisement arrives would break the opening write of every session.
+
+**Why refuse rather than downgrade.** Sending plaintext instead would have made
+a stale bindkey self-healing, and would have fixed this incident with no
+intervention. It is refused because an attacker able to make a keyed device
+appear to advertise in clear would then be handed unsealed writes. The choice is
+behind `ALLOW_PLAINTEXT_DOWNGRADE` in `const.py` — **[DECISION]** the owner may
+overturn it; it is receiver policy, not part of §5.

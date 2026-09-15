@@ -89,3 +89,16 @@ RESYNC_JUMP: Final = 100_000
 Far enough to clear any plausible drift in one step, and nothing compared with a
 32-bit counter: at one write a second it would take a century to exhaust even
 with a jump on every restart."""
+
+ALLOW_PLAINTEXT_DOWNGRADE: Final = False
+"""Whether a keyed device that advertises in clear may be written unsealed.
+
+False refuses the write and says why. The alternative -- sending plaintext
+because that is evidently what the device now speaks -- would make a stale
+bindkey self-healing, at the cost of handing unsealed writes to anyone who can
+make a keyed device look unencrypted. [DECISION] The owner may overturn this;
+it is a receiver policy, not part of section 5.
+
+The case is not hypothetical: it is how a Puck.js reflashed from the encrypted
+example to the plain one stopped responding to Home Assistant entirely, with
+nothing in the log (D-042)."""

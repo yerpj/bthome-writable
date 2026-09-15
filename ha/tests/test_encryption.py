@@ -10,10 +10,12 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from unittest.mock import patch
 
 from homeassistant.core import HomeAssistant
 import pytest
 
+from custom_components.bthome_writable import coordinator as coordinator_module
 from custom_components.bthome_writable.const import (
     CONF_BINDKEY,
     CONF_WRITE_COUNTER,
@@ -21,7 +23,10 @@ from custom_components.bthome_writable.const import (
     DEVICE_INFO_BYTE_ADVERTISING,
     DEVICE_INFO_BYTE_WRITE,
 )
-from custom_components.bthome_writable.coordinator import BTHomeWritableCoordinator
+from custom_components.bthome_writable.coordinator import (
+    BTHomeWritableCoordinator,
+    WriteFailed,
+)
 from custom_components.bthome_writable.protocol import (
     decrypt_advertising,
     is_encrypted,
@@ -153,3 +158,47 @@ def test_the_entry_carries_the_key_and_the_counter() -> None:
     once, and a counter that must outlive a restart."""
     assert CONF_BINDKEY == "bindkey"
     assert CONF_WRITE_COUNTER == "write_counter"
+
+
+async def test_a_keyed_device_that_advertises_in_clear_is_refused_loudly(
+    hass: HomeAssistant,
+) -> None:
+    """The failure that has no symptom, turned into one that does.
+
+    A Puck.js reflashed from the encrypted example to the plain one kept its
+    bindkey in the config entry. Every write was sealed, the device rejected the
+    whole payload per section 4.2, and nothing was logged -- the control simply
+    stopped working (D-042). Refusing is also the only safe answer: downgrading
+    to plaintext would hand unsealed writes to anyone able to make a keyed
+    device look unencrypted.
+    """
+    coordinator = BTHomeWritableCoordinator(
+        hass, "A4:C1:38:8E:1F:2B", bindkey=bytes(range(16))
+    )
+    coordinator.advertises_encrypted = False
+
+    with pytest.raises(WriteFailed, match="advertising in clear"):
+        await coordinator._write_now(b"\x1e\x01")
+
+
+async def test_a_keyed_device_still_seals_before_the_first_advertisement(
+    hass: HomeAssistant,
+) -> None:
+    """`None` is not `False`. Having heard nothing yet is not evidence that the
+    device is plain, and refusing then would break every write issued before the
+    first advertisement arrives."""
+    coordinator = BTHomeWritableCoordinator(
+        hass, "A4:C1:38:8E:1F:2B", bindkey=bytes(range(16))
+    )
+    assert coordinator.advertises_encrypted is None
+
+    # Past the downgrade guard, so it fails later -- on there being no device.
+    with (
+        patch.object(
+            coordinator_module.bluetooth,
+            "async_ble_device_from_address",
+            return_value=None,
+        ),
+        pytest.raises(WriteFailed, match="not reachable"),
+    ):
+        await coordinator._write_now(b"\x1e\x01")

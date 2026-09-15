@@ -19,6 +19,7 @@ from homeassistant.components import bluetooth
 from homeassistant.core import HomeAssistant, callback
 
 from .const import (
+    ALLOW_PLAINTEXT_DOWNGRADE,
     CONFIRM_ADVERTISEMENTS,
     CONFIRM_WINDOW_CEILING,
     CONFIRM_WINDOW_FLOOR,
@@ -80,6 +81,13 @@ class BTHomeWritableCoordinator:
         self.address = address
         self.bindkey = bindkey
         """The device's BTHome key, or None for a plain device (section 5)."""
+
+        self.advertises_encrypted: bool | None = None
+        """Whether the last advertisement was sealed, or None before the first.
+
+        Kept because a bindkey says what the *receiver* was told, and this says
+        what the device is actually doing. When they disagree the write is
+        refused rather than downgraded -- see `_write_now`."""
 
         self._counter = write_counter
         self._counter_mark = write_counter
@@ -159,7 +167,8 @@ class BTHomeWritableCoordinator:
         the service data is ciphertext, which is why the config flow has to ask
         for a bindkey before it can see a declaration at all.
         """
-        if not is_encrypted(payload):
+        self.advertises_encrypted = is_encrypted(payload)
+        if not self.advertises_encrypted:
             return payload[1:]
 
         if self.bindkey is None:
@@ -453,6 +462,23 @@ class BTHomeWritableCoordinator:
         differ, and a sealed comparison would never find a repeat.
         """
         if self.bindkey is not None:
+            if self.advertises_encrypted is False and not ALLOW_PLAINTEXT_DOWNGRADE:
+                # A key was configured but the device is advertising in clear.
+                # Sealing anyway produces bytes it cannot parse, and section 4.2
+                # makes it reject the whole write without a word -- the control
+                # simply stops working, which is the worst symptom there is.
+                #
+                # Downgrading to plaintext instead would fix that, and is
+                # refused deliberately: an attacker who can make a keyed device
+                # appear to advertise in clear would then be handed unsealed
+                # writes. Refusing loudly is the only option that is both
+                # visible and safe; removing the bindkey is the user's call.
+                raise WriteFailed(
+                    f"{self.address}: a bindkey is configured but the device is "
+                    "advertising in clear. Refusing to send an unencrypted "
+                    "write. Either reflash the device with encryption enabled, "
+                    "or remove the bindkey by deleting and re-adding this device"
+                )
             payload = seal_write(
                 payload, self.bindkey, self.address, self.next_write_counter()
             )
