@@ -1,0 +1,66 @@
+<!doctype html>
+<meta charset="utf-8">
+<style>
+  :root { --ink:#1a1d21; --muted:#5b6570; --line:#d5dbe1; --bar:#0b5394; --good:#0b6e4f; --warn:#8a6d00; }
+  * { box-sizing: border-box; }
+  body {
+    margin:0; background:#fff; color:var(--ink);
+    font:15px/1.5 -apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    width:1080px; padding:34px 40px 30px;
+  }
+  h1 { font-size:21px; margin:0 0 3px; letter-spacing:-.01em; }
+  .sub { color:var(--muted); font-size:14px; margin:0 0 24px; }
+  .sub b { color:var(--ink); font-weight:600; }
+
+  table { border-collapse:collapse; width:100%; }
+  th { text-align:left; font-size:11.5px; letter-spacing:.08em; text-transform:uppercase;
+       color:var(--muted); font-weight:700; padding:0 10px 7px 0; border-bottom:1px solid var(--line); }
+  th.n, td.n { text-align:right; width:92px; }
+  td { padding:11px 10px 11px 0; border-bottom:1px solid #eef1f4; vertical-align:middle; font-size:13.5px; }
+  td.what { width:270px; }
+  td.what b { display:block; font-weight:600; font-size:14px; }
+  td.what span { color:var(--muted); font-size:12.5px; }
+  td.n { font-variant-numeric:tabular-nums; font-weight:600; }
+
+  .track { position:relative; height:16px; background:#f1f4f7; border-radius:8px; overflow:hidden; }
+  .fill  { position:absolute; left:0; top:0; bottom:0; background:var(--bar); border-radius:8px; }
+  .fill.good { background:var(--good); }
+
+  .note { margin-top:20px; padding-top:15px; border-top:1px solid var(--line); display:flex; gap:38px; }
+  .note div { font-size:13px; color:var(--muted); flex:1; }
+  .note b { color:var(--ink); }
+</style>
+
+<h1>Latency: click → device acts → Home Assistant confirms</h1>
+<p class="sub">One Raspberry Pi, one Bluetooth adapter, <b>no ESPHome proxy</b>. Eight toggles per row, median reported.</p>
+
+<table>
+  <tr>
+    <th class="what">Configuration</th>
+    <th>Round trip</th>
+    <th class="n">Median</th>
+    <th class="n">Best</th>
+    <th class="n">Failed</th>
+  </tr>
+  <tr>
+    <td class="what"><b>Baseline</b><span>2 s advertising, silent while connected</span></td>
+    <td><div class="track"><div class="fill" style="width:100%"></div></div></td>
+    <td class="n">10.7 s</td><td class="n">8.7 s</td><td class="n">—</td>
+  </tr>
+  <tr>
+    <td class="what"><b>Device side</b><span>fast advertising on connect, <code>whenConnected</code></span></td>
+    <td><div class="track"><div class="fill" style="width:15.9%"></div></div></td>
+    <td class="n">1.7 s</td><td class="n">1.7 s</td><td class="n">1 in 6</td>
+  </tr>
+  <tr>
+    <td class="what"><b>Both sides</b><span>plus coalescing and redundancy suppression</span></td>
+    <td><div class="track"><div class="fill good" style="width:15.9%"></div></div></td>
+    <td class="n">1.7 s</td><td class="n">1.2 s</td><td class="n">0 in 8</td>
+  </tr>
+</table>
+
+<div class="note">
+  <div><b>The median is connection-bound.</b> None of this makes a BLE connection faster; what it removes is the wait for a connectable advertising event, which was most of the 10.7 s.</div>
+  <div><b>The first command after a quiet period still pays the idle interval</b> — 5–7 s at a 2 s advertising interval. That is the deliberate trade for battery, and where the remaining work is.</div>
+  <div><b>The advertising interval is not a latency dial.</b> Measured at a deliberately slow 5 s: commands still land in 1.7 s. It sets the idle refresh rate and the cold start, nothing else.</div>
+</div>

@@ -1,0 +1,103 @@
+<!doctype html>
+<meta charset="utf-8">
+<style>
+  :root {
+    --ink: #1a1d21;
+    --muted: #5b6570;
+    --line: #d5dbe1;
+    --dev: #0b6e4f;
+    --ha: #0b5394;
+    --bytes: #7a3e00;
+    --bg: #ffffff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.5 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    width: 1080px; padding: 34px 40px 30px;
+  }
+  h1 { font-size: 21px; margin: 0 0 3px; letter-spacing: -0.01em; }
+  .sub { color: var(--muted); font-size: 14px; margin: 0 0 26px; }
+  .sub b { color: var(--ink); font-weight: 600; }
+
+  .grid { display: grid; grid-template-columns: 1fr 96px 1fr; align-items: start; }
+  .head { font-size: 12px; letter-spacing: .09em; text-transform: uppercase; font-weight: 700; padding-bottom: 8px; }
+  .head.dev { color: var(--dev); }
+  .head.ha  { color: var(--ha); text-align: right; }
+
+  .row { display: contents; }
+  .card {
+    border: 1px solid var(--line); border-radius: 9px; padding: 11px 13px;
+    margin-bottom: 13px; background: #fff;
+  }
+  .card.dev { border-left: 3px solid var(--dev); }
+  .card.ha  { border-right: 3px solid var(--ha); text-align: right; }
+  .what { font-weight: 600; font-size: 14px; }
+  .why  { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+
+  code {
+    font: 12.5px/1.6 "SF Mono", "Cascadia Mono", Consolas, monospace;
+    color: var(--bytes); display: block; margin-top: 7px; word-break: break-all;
+  }
+  code i { color: var(--muted); font-style: normal; }
+  code b { color: #b3261e; font-weight: 700; }
+
+  .arrow { display: flex; flex-direction: column; align-items: center; padding-top: 30px; }
+  .arrow .label { font-size: 11px; color: var(--muted); margin-bottom: 4px; white-space: nowrap; }
+  .arrow svg { overflow: visible; }
+  .spacer { }
+
+  .foot {
+    margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line);
+    display: flex; gap: 34px; color: var(--muted); font-size: 13px;
+  }
+  .foot b { color: var(--ink); }
+</style>
+
+<h1>bthome-writable — the whole round trip</h1>
+<p class="sub">Real bytes from a Puck.js on the bench. No acknowledgement channel: <b>the refreshed advertising is the confirmation</b>.</p>
+
+<div class="grid">
+  <div class="head dev">Espruino device</div>
+  <div></div>
+  <div class="head ha">Home Assistant</div>
+
+  <div class="card dev">
+    <div class="what">1 — Ordinary BTHome advertising</div>
+    <div class="why">Three lights sharing one object ID, plus a declaration naming which positions are writable.</div>
+    <code>40 <i>00 f0</i> <i>01 64</i> 1e 01 1e 01 1e 01 <b>ff 1c</b></code>
+    <div class="why" style="margin-top:6px">
+      <b style="color:#b3261e">ff 1c</b> = bitmask 0b00011100 → positions 2, 3, 4.
+      Any BTHome receiver skips the unknown object; nothing else changes.
+    </div>
+  </div>
+  <div class="arrow">
+    <div class="label">advertising</div>
+    <svg width="76" height="12"><path d="M2 6 H74" stroke="#0b6e4f" stroke-width="1.6" fill="none"/><path d="M68 2 L74 6 L68 10" stroke="#0b6e4f" stroke-width="1.6" fill="none"/></svg>
+  </div>
+  <div class="card ha">
+    <div class="what">2 — Discovered, no configuration</div>
+    <div class="why">The declaration says what to offer. Entities appear beside the sensors the core BTHome integration already made, on one device card.</div>
+  </div>
+
+  <div class="card dev" style="grid-row:3">
+    <div class="what">4 — Applies it, and says so</div>
+    <div class="why">Position addresses the instance — BTHome has no per-instance ID and this invents none. The next packet carries the new state.</div>
+    <code>40 <i>00 f3</i> <i>01 64</i> 1e 01 <b>1e 00</b> 1e 01 ff 1c</code>
+  </div>
+  <div class="arrow">
+    <div class="label">one GATT write</div>
+    <svg width="76" height="12"><path d="M74 6 H2" stroke="#0b5394" stroke-width="1.6" fill="none"/><path d="M8 2 L2 6 L8 10" stroke="#0b5394" stroke-width="1.6" fill="none"/></svg>
+  </div>
+  <div class="card ha">
+    <div class="what">3 — Writes every writable object, in packet order</div>
+    <div class="why">Connect, write, disconnect. The object IDs are redundant given the position, and that is the point: they catch a receiver writing against a layout the device no longer has.</div>
+    <code>1e 01 <b>1e 00</b> 1e 01</code>
+  </div>
+</div>
+
+<div class="foot">
+  <div><b>1.7 s</b> click → action → confirmation</div>
+  <div><b>0 extra bytes</b> on the air for unencrypted devices beyond the 2-byte declaration</div>
+  <div><b>AES-CCM</b> both directions, BTHome's own, when a bindkey is set</div>
+</div>
