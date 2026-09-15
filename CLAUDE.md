@@ -20,7 +20,8 @@ The project owner (JP, @yerpj on GitHub) drives the discussion with Gordon; you 
 3. **Wrap, don't fork.** Espruino side: build on the existing `BTHome` module (https://www.espruino.com/BTHome), reuse its encoding tables, keep advertising ownership in one place. HA side: depend on the `bthome-ble` library for all BTHome parsing — never reimplement it.
 4. **Zero-config is non-negotiable.** Any step that would require the user to write configuration by hand (beyond a bindkey prompt) is a design bug. This is the lesson of the failed "Generic Bluetooth Integration" prior art.
 5. **Stay upstreamable.** Code as if the HA logic will be proposed into the core `bthome` integration later: HA core style, typing, tests via `pytest-homeassistant-custom-component`, no exotic dependencies.
-6. **Test vectors are the contract.** `/test-vectors/test-vectors.json` (produced in T0.3) must be consumed by BOTH test suites; a change to it is a spec change (rule 2 applies).
+6. **The bench may not be yours alone.** Home Assistant, the Bluetooth adapter and the Espruino devices are single instances that more than one agent may be using. Reads are free; before any write — deploying, toggling, connecting, cutting power — take the lock (`python -m tools.bench_lock acquire --note "..."`) and release it afterwards. `docs/shared-bench.md` explains what counts as a write and why the failure is silent.
+7. **Test vectors are the contract.** `/test-vectors/test-vectors.json` (produced in T0.3) must be consumed by BOTH test suites; a change to it is a spec change (rule 2 applies).
 
 ## Repo layout (create in T0.1)
 
