@@ -111,6 +111,15 @@ put there — say so in your lock note, and expect them to redeploy after you.
 state, that may only mean the entity is optimistic. Read the advertisement back,
 or read the Puck's own variables over the console.
 
+**Your BLE connection can lock Home Assistant out of a device for hours.** An
+Espruino accepts one central at a time, and Windows keeps the link open well
+past `disconnect()`. Home Assistant then reports `The proxy/adapter is out of
+connection slots or the device is no longer reachable` — which is false in both
+halves and points at the receiver, so it is very easy to spend an evening
+restarting Home Assistant instead. If writes from Home Assistant fail while your
+own direct writes still work, that is not evidence the device is healthy: it is
+evidence *you* are holding it. Power-cycle the device first (D-043).
+
 ## Work that needs no lock at all
 
 Most of it, which is the real answer to "can two agents help here":

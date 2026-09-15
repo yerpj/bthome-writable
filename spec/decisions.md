@@ -1625,3 +1625,58 @@ intervention. It is refused because an attacker able to make a keyed device
 appear to advertise in clear would then be handed unsealed writes. The choice is
 behind `ALLOW_PLAINTEXT_DOWNGRADE` in `const.py` — **[DECISION]** the owner may
 overturn it; it is receiver policy, not part of §5.
+
+## D-043 — The device was holding the connection, and every symptom pointed elsewhere  [INCIDENT]
+
+**Status:** understood and cleared 2026-09-15. Cost: a Home Assistant restart, a
+host reboot, two integrations disabled and re-enabled, all of them irrelevant.
+
+Home Assistant could not write to the Puck. What it logged was:
+
+> `Failed to connect after 9 attempt(s): No backend with an available connection
+> slot ... The proxy/adapter is out of connection slots or the device is no
+> longer reachable`
+
+Both halves of that sentence were false. The adapter had three free slots of
+five, and the device was advertising at RSSI -56 with `connectable: true`, heard
+0 s earlier. The message is `bleak_retry_connector`'s generic blurb appended
+after N failures, and it describes the receiver because that is the only side it
+can see. The actual state -- **the peripheral already has a central, and an
+Espruino accepts one** -- has no representation in it at all.
+
+Chasing the receiver cost the whole evening:
+
+- restarting Home Assistant: no change
+- reloading all four Bluetooth entries: no change
+- disabling the `espruino` integration (4 entries), suspected of holding the
+  Nordic UART link: no change, and it was innocent
+- disabling the relay automation that writes to the nice!nano continuously: no
+  change
+- rebooting the Home Assistant OS host: cleared two genuinely stale BlueZ
+  allocations that had survived a Home Assistant restart -- and still did not
+  fix the write
+
+One power cycle of the Puck fixed it. First write afterwards: 3.1 s, then four
+more at 3.0-3.4 s.
+
+**The likely holder was this workstation.** The bench tools connect over BLE
+from Windows, and Windows keeps an ACL link open well past `disconnect()`. That
+also explains the one observation that should have redirected me hours earlier:
+*direct writes from Windows kept working while Home Assistant never could*. I
+read that as "the device is fine, so the fault is in Home Assistant". It was
+evidence of the opposite -- the link was held here.
+
+**The rule this yields.** A local BLE tool run can lock Home Assistant out of a
+device indefinitely, and it presents as a receiver fault. Before blaming the
+receiver, power-cycle the device. It is thirty seconds against an evening.
+
+**What it did not turn out to be.** The coordinator does not leak connection
+slots: with the relay automation running again, the nice!nano's slot is taken
+and released normally, and only the `led_ble` device stays allocated -- which it
+does by design. That suspicion is closed.
+
+**What remains open.** The three ESPHome Bluetooth proxies are `loaded` as
+integrations but register no scanner: every diagnostic said `1 scanner(s)
+registered, 1 scanning, 1 connectable`. A working proxy would have given the
+Puck a second connectable path and this incident would have been survivable
+rather than total. Owner's call, outside this project.
