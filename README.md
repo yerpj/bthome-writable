@@ -21,9 +21,18 @@ Gordon Williams (Espruino) in
 [espruino#8013](https://github.com/orgs/espruino/discussions/8013). Nothing here is
 frozen yet; UUIDs and wire formats freeze at the first public release.
 
-Phase 0 (spec, test vectors, fixtures) and the software half of Phase 1 (both
-MVPs) are done and green. Both MVPs are now waiting on hardware: see
-`espruino/HARDWARE-TEST.md` and `ha/HARDWARE-TEST.md`.
+Phases 0 to 3 are complete and verified on hardware: the protocol, both
+implementations, the full object↔platform mapping, positional addressing,
+device merge and availability, and AES-CCM in both directions. Phase 4 is
+release work — robustness, documentation, HACS and EspruinoDocs publication,
+and the standardisation dossier for the BTHome maintainers.
+
+## Start here
+
+- **[`docs/espruino-quickstart.md`](docs/espruino-quickstart.md)** — make your
+  own device writable, from a self-contained file you paste into the Web IDE.
+- **[`docs/home-assistant-install.md`](docs/home-assistant-install.md)** —
+  install through HACS, add the device, and what to do when a control misbehaves.
 
 ## Reading order
 
