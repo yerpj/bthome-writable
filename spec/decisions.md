@@ -1719,3 +1719,37 @@ the three cases that a single fixed timeout would have conflated.
 tasks, so it never had the moment of completion that produces a decision entry.
 The lesson is small and worth keeping: a task that is finished in passing is a
 task nobody can later prove was finished.
+
+## D-045 — The nice!nano has AES now, and the vectors prove it on the board
+
+**Status:** verified 2026-09-16, after the owner rebuilt the firmware.
+
+Its build previously reported `timer,Flash,Storage,heatshrink,neopixel`. It now
+reports `timer,Flash,Storage,heatshrink,crypto,neopixel` on Espruino 2v29.242,
+board `NICENANO`, and `require("crypto").AES` is a function.
+
+That list is necessary and not sufficient, so the vectors were run on the board
+itself: **all 12 pass**, four advertising and eight write. Both directions, the
+zero and maximum counters, the forward jump, and the two replay cases.
+
+`tools/verify_device_ccm.py` is that check, made repeatable. It uploads
+`AESCCM.js`, feeds it every vector whose MIC is meant to verify, and compares
+against `test-vectors.json` — the same contract both test suites consume
+(CLAUDE.md rule 6). The negative vectors are deliberately excluded: they test
+that a *receiver* refuses something, which says nothing about this firmware's
+arithmetic.
+
+**Why a module list is not an answer.** Three of this project's encryption
+findings were invisible from the build flags and only appeared on hardware: AES
+CTR mode ignores its `iv` (D-027), `AES.encrypt` fails on large inputs long
+before memory runs out (D-028), and the radio refuses payloads that §2.3's
+arithmetic says should fit (D-030). A board that lists `crypto` can still be a
+board that computes the wrong thing.
+
+**Two things the reflash took with it.** `require("Storage").list()` came back
+empty, so the modules and the OLED application are gone — the board advertises
+as a bare `Espruino b216` with nothing but the Nordic UART. Anything depending
+on it, including the illuminance relay automation in Home Assistant, is pointing
+at a device that no longer runs the code. Redeploying is a `tools.espruino_deploy`
+away and was deliberately not done here: the question asked was about the
+firmware, and installing an application answers a different one.
