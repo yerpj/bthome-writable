@@ -1,187 +1,134 @@
 # Points to raise with Gordon
 
-Working list for the espruino#8013 discussion. Everything here came out of
-actually implementing the design; nothing here is a re-opening of a settled
-question. Ordered by how much it needs an answer.
+Working list for espruino#8013. Everything came out of implementing the design.
+Ordered by how much it needs an answer. Last checked 2026-09-16.
 
 ---
 
-## 1. A bug in the upstream `BTHome` module — FIXED
+## 1. Master builds advertise service data with no UUID
 
-Fixed in EspruinoDocs master on 2026-09-10 as
-`humidity : e => [0x2E, Math.round(e.v)]`. Not yet on espruino.com/modules,
-which is where the tooling fetches from, so devices still get the old one.
+Not a BTHome question, and the most urgent thing here. On a `2v29.242` build,
+`NRF.setAdvertising` emits the service-data AD structure **without its 16-bit
+UUID**. The changelog entry is in the unreleased section:
 
-`humidity` in `getAdvertisement`'s encoding table pushes the entry object where
-it means to push the value:
+> BLE: switch to our own code for creating advertisement packets (shared across
+> all platforms).
 
-```js
-humidity : e => [0x2E, e, 1],          // current
-humidity : e => [0x2E, Math.round(e.v)],   // presumably intended
+A standard UUID with nothing to do with this project makes the point:
+
+```
+NRF.getAdvertisingData({0x180F:[1,2,3]}, {showName:false})
+  got       02 01 06 04 16 01 02 03
+  expected  02 01 06 06 16 0f 18 01 02 03
 ```
 
-Every neighbouring entry uses `e.v`, and the trailing `1` looks like a factor
-left over from the `b16` helper's signature. A device advertising `humidity`
-would emit an object rather than a byte. Unrelated to this project — found while
-reading the module to wrap it — but worth fixing.
+Every key spelling behaves the same — `0xFCD2`, `"FCD2"`, `64722`, `0x180F`. On
+the air, a nice!nano's BTHome payload begins where `d2 fc` should be, so
+receivers file it under UUID `0x0040` and no BTHome install will ever match it.
+A Puck.js on a release build is unaffected.
 
-Source: https://www.espruino.com/modules/BTHome.js
+The raw AD-structure form still works, and is our workaround if this is
+intended:
+
+```
+NRF.setAdvertising([2,1,6, 13,0x16,0xd2,0xfc, ...payload], {showName:false})
+  ->  02 01 06 0d 16 d2 fc 40 00 77 02 f0 0a 53 00 ff 04
+```
+
+Same builds also stopped shortening the local name to make a packet fit — they
+refuse the packet instead. Nothing found in the issues, discussions or forum, so
+this looks unreported. Full measurements in `decisions.md` D-046.
 
 ---
 
-## 2. Write-only objects: §3 says something undetectable — PARTLY ANSWERED
+## 2. The `BTHome` module fixes are not published
 
-**Answered on the device side, 2026-09-10:** an entry with `set` and no `get` is
-write-only, and the module advertises it back at zero length without the sketch
-having to declare it. Implemented; `writeOnly: true` survives for the other
-case, a value the device *could* report but would rather not.
+You fixed both on 2026-09-10 and EspruinoDocs master has them:
 
-**Still open on the receiver side.** "Advertise it back with zero length" has no
-representation for a *fixed-length* object — an object ID with no value bytes is
-not something a BTHome parser can walk — so the ambiguity below is unchanged for
-that class, and the proposed wording still needs your agreement.
+```js
+illuminance : e => b24(5, e, 100),
+humidity    : e => [0x2E, Math.round(e.v)],
+```
 
-The working document declares a write-only object by advertising it "with an
-empty/zero value".
+`https://www.espruino.com/modules/BTHome.js` still serves the old file — no
+`illuminance`, and `humidity : e => [0x2E, e, 1]`, which pushes the entry object
+where it means to push the value. That URL is what the Web IDE and every
+deployment tool fetch from, so devices still get the broken one and this repo's
+example still goes through `raw`.
 
-For a variable-length object that is unambiguous — a length byte of 0 cannot
-arise any other way. For a **fixed-length** object it cannot be detected at all:
-a light that is off advertises `1E 00`, byte-identical to a "zero value"
-placeholder. A receiver cannot tell a write-only trigger from an actuator that
-happens to be off, and guessing wrong means either exposing a real switch as a
-stateless entity, or waiting forever for a confirmation that will never come.
+---
+
+## 3. Write-only, for fixed-length objects — needs your agreement
+
+Settled on the device side: an entry with `set` and no `get` is write-only, and
+the module advertises it back at zero length (D-009).
+
+Open for **fixed-length** objects, where "advertise it with an empty value" has
+no representation — an object ID with no value bytes is not something a BTHome
+parser can walk. A light that is off advertises `1E 00`, byte-identical to a
+placeholder, so a receiver cannot tell a stateless trigger from an actuator that
+happens to be off. Guessing wrong means either exposing a real switch as
+stateless, or waiting forever for a confirmation that will never come.
 
 **Proposed wording:** a write-only object is a *variable-length* object
 advertising length 0, or an *event-class* object advertising its "none" value.
-Nothing is lost: write-only exists for actuators with no meaningful uplink — a
-display, a buzzer, a trigger — which are exactly those classes. A write-only
-boolean is close to meaningless, and a device wanting one can use an event
-object.
-
-Implemented that way on both sides already (decisions.md D-009); the spec text
-is what needs your agreement.
+Nothing is lost — write-only exists for displays, buzzers and triggers, which
+are exactly those classes. Implemented this way on both sides; the spec text is
+what needs agreeing.
 
 ---
 
-## 3. Encrypted write payload: field order corrected
+## 4. `0x3B command` has no no-op — needs a decision
 
-**Already changed, flagging for the record.** §3.4 of the working document put
-the counter *before* the ciphertext:
+§4.3 says a write leaves an event object alone by sending its "none" value,
+`0x00`. True for two of the three event objects:
 
-```
-[counter u32 LE][ciphertext][MIC 4]      working document
-[ciphertext][counter u32 LE][MIC 4]      PROTOCOL.md, as shipped
-```
+| object | `0x00` means |
+|---|---|
+| `0x3A` button | none |
+| `0x3C` dimmer | none |
+| **`0x3B` command** | **`off`** |
 
-BTHome's own encrypted advertising uses the second order. Keeping the write
-different means neither side can share its framing code between the two
-directions — concretely awkward on Espruino, which must both build encrypted
-advertising and parse encrypted writes on a constrained target — and it is a
-gratuitous divergence in a specification whose case to the BTHome maintainers
-rests on reusing BTHome's own formats. My guess is the original order was
-written in passing rather than chosen.
+`bthome-ble`'s `COMMAND_EVENTS` starts at `0x00: "off"` with no "none" anywhere.
+Since a write carries *every* writable object (§4.2), a device declaring a
+writable command alongside anything else cannot have that other thing written
+without also commanding it — and today that command is `off`. A user toggling a
+light would silently switch something off, and the protocol would call the write
+correct.
 
-Test vectors are generated in the new order (decisions.md D-008).
-
----
-
-## 4. The packet-id object shifts every bitmask bit
-
-**No decision needed, but it will trip implementers.** Your worked example
-(`40 0161 1E01 FF02`) omits BTHome's packet-id object, so the battery is at
-position 0 and the light at position 1. The Espruino module emits the packet id
-— your own `getAdvertisement` always does — which puts it at position 0 and
-makes the same device advertise `FF 04`, not `FF 02`.
-
-Correct under the same rule, but it caught me while writing the module. The spec
-now says so normatively (§2.2) and shows the same device both ways (§8.3).
+Three ways out, none ours to pick: forbid declaring `0x3B` writable; give it a
+no-op value outside the vocabulary; or let §4.3 admit some objects have no no-op
+and require such an object to be a device's only writable one. Until then this
+project offers no control for `0x3B` at all.
 
 ---
 
-## 5. The capacity limit needed arithmetic, not a round number
+## 5. §2.3's budget is wrong, and now has measurements
 
-"Everything must fit in a 31-byte advertising payload" is true but not
-actionable: the Flags AD structure (3 bytes) and the Service Data header (4)
-come out first, and then the device-information byte. The usable budget is **23
-bytes for objects, declaration included**. Spelled out in §2.3 and enforced at
-`setup()` on the device side.
+The working document said the usable budget was 23 bytes. Every radio measured
+takes less, and two terms were never counted: Espruino's always-present `0x0590`
+manufacturer data, and the local name.
 
-Eight writable one-byte objects plus the declaration come to 18 bytes, so the
-limit is comfortable — but it is much tighter than "31" suggests, and a device
-that also advertises a complete local name has considerably less.
+| board / firmware | with name | without |
+|---|---|---|
+| Puck.js 2v27 | 17 | 20 |
+| nice!nano 2v29.242 | 7 | 22 |
 
----
+On the nice!nano the arithmetic that holds is 31 less 3 flags, 4 manufacturer
+data, 4 service-data header, and `2 + len(name)` — and that firmware refuses
+rather than shortening the name, so a thirteen-character default costs 15 bytes.
+The Puck gives back only 3 when the name is dropped, so older builds evidently
+do shorten it.
 
-## 6. Provisional UUIDs, if you have a convention — ANSWERED
-
-```
-Service                2FAA0001-3B0B-4B1A-9E2A-B4C2952E62F2
-Write characteristic   2FAA0002-3B0B-4B1A-9E2A-B4C2952E62F2   (write, write-no-response)
-```
-
-Answered on 2026-09-10: one randomly assigned 128-bit base, varying only the
-second 16-bit group per characteristic, rather than two independent UUIDs — the
-ordinary Bluetooth convention, and one base to store instead of two. Adopted
-(D-001). Still frozen only at the first release.
+Eight writable one-byte objects plus the declaration come to 18, so the limit is
+still workable — but "31" is misleading and the spec now says so. `showName:
+false` is the first thing to try when a packet is refused. (D-030, D-046.)
 
 ---
 
-## 7. Verified, for the thread
+## 6. `AES.encrypt` in CTR mode ignores its `iv` — a security bug
 
-`bthome-ble` skips an unknown object ID with a DEBUG log and stops parsing
-there; it does not error. So the declaration can live in the BTHome service data
-itself and the manufacturer-data fallback is not needed. The catch: objects
-placed *after* the declaration are silently dropped for every existing BTHome
-install, so "declaration last" had to become a MUST rather than a SHOULD.
-
-Checked on both `bthome-ble` 3.24.0 and 3.22.1 (the version Home Assistant
-2025.1 pins). Method and full findings in `decisions.md` D-005; the check is a
-test in CI, so a regression on a future release surfaces on the next dependency
-bump.
-
-Pleasant side effect: `bthome-ble` already names duplicate objects `light_1`,
-`light_2`, … by their order in the packet — the same positional model as the
-bitmask, so upstream entity naming and our addressing agree by construction.
-
----
-
-## 8. The `BTHome` module has no `illuminance` type — FIXED
-
-Added in EspruinoDocs master on 2026-09-10 as
-`illuminance : e => b24(5, e, 100)`, which is exactly the encoding needed.
-Not yet published to espruino.com/modules, so this repo's example still
-goes through `raw` for now.
-
-BTHome object `0x05` (illuminance, uint24, 0.01 lux) is not in
-`getAdvertisement`'s table. It is a common enough sensor that its absence is
-noticeable — the light-loop example in this repo wanted it and had to go
-through the `raw` escape hatch instead:
-
-```js
-{ type: "raw", get: () => [0x05, v & 255, (v >> 8) & 255, (v >> 16) & 255] }
-```
-
-That works, and `raw` is clearly there for exactly this, but it puts the object
-ID and the byte order in the sketch rather than in the table where every other
-object's encoding lives. A one-line addition alongside `pressure`, which is
-already a `b24`:
-
-```js
-illuminance : e => b24(5, e, 100),      // lux, floating point
-```
-
-A related note for anyone reading that table: `raw` means "emit these bytes
-verbatim", which is *not* BTHome's raw object `0x54` (length-prefixed). Two
-different things sharing a name; worth a comment in the module, and something a
-wrapper has to be careful about — this repo's module briefly treated `raw` as
-length-prefixed and would have mis-parsed writes to one.
-
----
-
-## 9. `AES.encrypt` in CTR mode ignores its `iv` — a security bug
-
-Found on Puck.js 2v27 while working out whether BTHome's AES-CCM is affordable
-on an nRF52. Two IVs with no byte in common give the same answer, and it is
+Puck.js 2v27. Two IVs with no byte in common give the same answer, and it is
 `E(0…0)`: the counter block is always zero.
 
 ```
@@ -190,107 +137,52 @@ iv ffeeddccbbaa99887766554433221100  ->  1838858c73da85d4885458a8e5dbda4f
 AES-ECB of an all-zero block         =   1838858c73da85d4885458a8e5dbda4f
 ```
 
-CBC and ECB are correct — both match a reference implementation byte for byte,
-which is how the vectors below pass. `OFB` returns `undefined` rather than a
-result, which may be the same root cause.
+CBC and ECB are correct, byte for byte against a reference. `OFB` returns
+`undefined`, possibly the same root cause.
 
-**Why it is worth more than a bug report.** CTR over a nonce is the obvious way
-to build a stream cipher, and this one silently uses one keystream for every
-message under a key: two ciphertexts XOR to the two plaintexts XORed. It looks
-like it works. Anyone who reached for it has no confidentiality between
-messages, and nothing told them.
-
-It costs this project only an extra loop — the CCM keystream comes from one ECB
-call over the concatenated counter blocks instead — so there is no hurry on our
-account.
-
-Reproduce with `python -m tools.ccm_bench --address <mac>`.
+Worth more than a bug report because it looks like it works: CTR over a nonce is
+the obvious way to build a stream cipher, and this one uses one keystream for
+every message under a key, so two ciphertexts XOR to the two plaintexts XORed.
+Anyone who reached for it has no confidentiality between messages and nothing
+told them. It costs us only an extra loop — we take the keystream from ECB
+instead — so no hurry on our account. Reproduce with
+`python -m tools.ccm_bench --address <mac>`.
 
 ---
 
-## 10. CCM is affordable, and needs no JavaScript AES
+## 7. `AES.encrypt` returns `undefined` when it cannot allocate
 
-For the record, since it was an open question: BTHome's AES-CCM composes out of
-Espruino's native CBC and ECB. All sixteen test vectors reproduce byte for byte
-on a Puck.js 2v27, in **75 ms per frame** -- of which under 5 ms is the cipher.
-(A first version did it in two large calls at 31.8 ms, and broke on the point
-below; asking for 32 bytes at a time is what costs the difference.)
+It allocates its result as one contiguous run of heap. With no run that long it
+prints `ERROR: Not enough memory for result` and returns `undefined`, so the
+caller's `new Uint8Array(...)` throws `Unsupported first argument of type
+undefined` at a line that has nothing wrong with it.
 
-`AES.ccmEncrypt` would be better still, but `USE_AES_CCM` is not set in the
-Puck.js build — if it is cheap to enable there, it would remove the framing
-entirely.
-
-The remaining 27 ms is interpreted JavaScript, and the profile is worth knowing
-generally: **touching one typed-array element from JS costs about 0.7 ms on this
-board**, so an 8-byte XOR loop outweighs all of the AES.
+`process.memory().free` does not predict it — it counts free blocks, not
+consecutive ones. In one session a 48-byte AES call failed while a REPL
+`new Uint8Array(256)` succeeded. Throwing rather than returning `undefined`, and
+saying *contiguous* rather than "not enough memory" with 24 kB free, would save
+the next person the afternoon.
 
 ---
 
----
+## 8. Settled, for the record
 
-## 11. `AES.encrypt` returns `undefined` when it cannot allocate its result
-
-Related to the above, and the more annoying of the two to debug.
-
-`AES.encrypt` allocates its result as one contiguous run of the heap. When there
-is no run that long it prints `ERROR: Not enough memory for result` and returns
-`undefined` -- so the caller's `new Uint8Array(...)` then throws
-`Unsupported first argument of type undefined`, pointing at a line that has
-nothing wrong with it.
-
-The threshold moves with how full the heap is, which made it look like a size
-limit at first:
-
-```
-                        free blocks   16   32   48   64   128
-sketch running                 1494    ok   ok   ok  FAIL  FAIL
-fresh interpreter              2567    ok   ok   ok    ok    ok
-```
-
-`process.memory().free` does not predict it -- it counts free blocks, not
-consecutive ones. In the same session where a 48-byte AES call failed, a REPL
-`new Uint8Array(256)` succeeded.
-
-Two things would help anyone hitting this: throwing rather than returning
-`undefined`, and a message that says contiguous rather than "not enough memory"
-when there are 24 kB free. Working around it is easy once understood -- ask for
-32 bytes at a time, chain CBC through its IV -- but it costs about twice the
-time, and the way it presents gives no clue what to try.
-
----
-
----
-
-## 12. §4.3's event no-op does not exist for `0x3B command`
-
-§4.3 says a write leaves an event object alone by sending "BTHome's existing
-'none' event value, `0x00`". That holds for two of the three event objects and
-not for the third:
-
-| object | `0x00` means |
-|---|---|
-| `0x3A` button | none — nothing happened |
-| `0x3C` dimmer | none |
-| **`0x3B` command** | **`off`** |
-
-`bthome-ble`'s own vocabulary (`event.py`) has `COMMAND_EVENTS` starting at
-`0x00: "off"`, with no "none" at any value.
-
-**Why it matters.** A write carries *every* writable object (§4.2), so a device
-declaring a writable command alongside anything else cannot have that other
-thing written without also sending the command something. With the current
-wording that something is `off`. A user toggling a light would be switching
-something off as a side effect, silently, and the protocol would say the write
-was correct.
-
-Three ways out, none of them ours to pick:
-
-1. **Exclude `0x3B` from writability** — say a device MUST NOT declare it
-   writable. Simple, and loses a genuinely useful object.
-2. **Give it a no-op value** outside the current vocabulary, `0xFF` say. Costs a
-   value in a table that is BTHome's, not ours.
-3. **Let §4.3 say some objects have no no-op**, and require a device declaring
-   one to have it as its *only* writable object. Honest, and awkward to state.
-
-Until it is settled, this project does not offer a control for `0x3B` at all
-(spec/PLATFORMS.md), which is the conservative reading rather than a decision.
+- **UUIDs.** One randomly assigned 128-bit base, second 16-bit group varying per
+  characteristic: `2FAA0001-…` service, `2FAA0002-…` write. Adopted (D-001),
+  frozen at first release.
+- **Encrypted write field order** is `[ciphertext][counter u32 LE][MIC 4]`,
+  matching BTHome's own encrypted advertising rather than the working document's
+  original order (D-008).
+- **The packet-id object shifts every bitmask bit.** Your worked example omitted
+  it and got `FF 02`; a device using `getAdvertisement` emits it and gets
+  `FF 04`. Now normative in §2.2 with the same device shown both ways.
+- **`bthome-ble` tolerates the declaration**: unknown object IDs are skipped
+  with a DEBUG log, no error — so it lives in the BTHome service data and the
+  manufacturer-data fallback is not needed. Objects *after* the declaration are
+  silently dropped, which is why "declaration last" is a MUST (D-005). It also
+  already names duplicates `light_1`, `light_2`… by packet order, so its naming
+  and our positional addressing agree by construction.
+- **CCM is affordable and needs no JavaScript AES**: all vectors reproduce on a
+  Puck.js 2v27 at 75 ms per frame, under 5 ms of it cipher. One ask remains —
+  `USE_AES_CCM` is not set in the Puck.js build, and enabling it would remove
+  our framing entirely.
