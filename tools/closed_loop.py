@@ -70,9 +70,9 @@ async def fresh_packet(watcher: Watcher, after: float, timeout: float) -> bytes 
     """Wait for an advertisement newer than `after`.
 
     One scanner runs for the whole sequence rather than being restarted around
-    each write: a host with a single adapter takes seconds to resume scanning
-    after a disconnect, and a scanner started inside that window can miss the
-    device entirely.
+    each write: on Windows the adapter takes seconds to resume scanning after a
+    disconnect, and a scanner started inside that window can miss the device
+    entirely. (BlueZ does not have this problem, D-047.)
     """
     loop = asyncio.get_running_loop()
     deadline = loop.time() + timeout

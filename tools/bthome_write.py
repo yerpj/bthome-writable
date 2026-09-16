@@ -11,13 +11,14 @@ window has to be larger than.
 
 Exit status is 0 only if the device advertised the written value.
 
-**On the latency it reports.** A host with one Bluetooth adapter cannot scan
-while it is connected, so the measured confirmation time includes however long
-the adapter takes to resume scanning after the disconnect — measured at four to
-eight seconds on Windows, which says nothing about the device. Treat the number
-as an upper bound and a smoke test. The figure that matters comes from the
-receiver that will really be listening: a Home Assistant host that scans
-continuously, or a second adapter dedicated to scanning.
+**On the latency it reports.** On Windows the adapter stops delivering
+advertisements around the connection and takes four to eight seconds to resume
+after the disconnect, so the measured confirmation time includes that, which
+says nothing about the device. This is a property of the WinRT stack, not of
+BLE: a Raspberry Pi running BlueZ keeps scanning while connected (D-047).
+Treat the number as an upper bound and a smoke test. The figure that matters
+comes from the receiver that will really be listening: a Home Assistant host,
+which keeps scanning, or a second adapter dedicated to scanning.
 """
 
 from __future__ import annotations

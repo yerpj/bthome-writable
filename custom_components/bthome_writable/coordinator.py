@@ -354,9 +354,8 @@ class BTHomeWritableCoordinator:
         Starting it when the value was *queued* would fold the debounce, the
         connection setup and the disconnect into a window that is meant to
         measure only how long the device takes to refresh its advertising
-        (§6) — and on a host with a single Bluetooth adapter, which cannot
-        scan while it is connected, that is several seconds of the budget
-        spent before the device has even been told anything.
+        (§6) — and connection setup alone is seconds, so that would be most of
+        the budget spent before the device has even been told anything.
         """
         self._write_listeners.append(listener)
 

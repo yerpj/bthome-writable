@@ -207,6 +207,12 @@ That is the main gap in this report.
 write therefore begins by deliberately blacking out the exact channel the
 confirmation must arrive on, and the adapter then takes seconds to resume.
 
+> **Correction (2026-09-16, `decisions.md` D-047).** This heading overstates
+> what was measured. The blackout below is real on the **Windows** host, but it
+> is a property of that Bluetooth stack, not of BLE or of single-adapter hosts:
+> a Raspberry Pi running BlueZ keeps receiving advertisements while connected.
+> On that host the seconds before a confirmation are connection setup.
+
 Measured on the Windows host: **four advertisements caught in thirty seconds**
 from a device advertising every two, with complete silence for stretches after
 each connection. Several apparent device failures during this session turned out

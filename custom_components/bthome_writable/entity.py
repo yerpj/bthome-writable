@@ -175,11 +175,13 @@ class BTHomeWritableEntity(Entity):
         """Wait out the confirmation window, then revert if nothing arrived.
 
         Two conditions, not one: the window must elapse *and* the device must
-        actually have been heard from. A host with a single Bluetooth adapter
-        cannot scan while it is connected and takes seconds to resume, so a
-        purely time-based window can expire having heard nothing at all —
-        reverting on no evidence (D-011). The ceiling stops that from becoming
-        an indefinite wait when a device really has gone away.
+        actually have been heard from. Some hosts go deaf for seconds around a
+        connection — a Windows/WinRT adapter was measured at four to eight — and
+        a device can be out of range or asleep, so a purely time-based window
+        can expire having heard nothing at all, reverting on no evidence
+        (D-011). A Raspberry Pi running BlueZ keeps scanning throughout
+        (D-047), so there the evidence condition is simply met. The ceiling
+        stops the wait becoming indefinite when a device really has gone away.
         """
         heard_before = self.coordinator.advertisements
         waited = 0.0

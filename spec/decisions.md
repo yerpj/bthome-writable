@@ -257,6 +257,11 @@ a host with one Bluetooth adapter cannot scan while it is connected, so several
 seconds pass between the click and the first moment a confirmation could even be
 observed.
 
+> **Corrected by D-047.** True of the Windows host this was measured on, not of
+> single-adapter hosts in general: a Raspberry Pi running BlueZ keeps scanning
+> while connected. The seconds are real, but they are connection setup. The fix
+> below stands either way.
+
 **The fix.** The coordinator now reports when a queued write has actually been
 delivered, and the entity opens its window then. A write that fails outright
 reverts immediately rather than waiting out a window for an answer that cannot
@@ -473,6 +478,13 @@ This is what makes `whenConnected` (D-014) load-bearing rather than a nicety,
 and it is why the confirmation model counts advertisements rather than seconds
 (D-011): on a single-adapter host, the receiver is deaf precisely because it
 wrote.
+
+> **Corrected by D-047.** "Cannot scan while it is connected" was a Windows/WinRT
+> observation generalised into a property of single-adapter hosts. BlueZ on a
+> Raspberry Pi keeps scanning throughout a connection. The worst realistic
+> environment is still the right design target, and `whenConnected` and the
+> evidence-counting confirmation are still worth having — for WinRT, for
+> devices out of range or asleep — but not for the reason given here.
 
 ---
 
@@ -1861,3 +1873,41 @@ and the evidence above is what the question should be asked with.
 
 Until then the nice!nano cannot carry BTHome on this build. The Puck is
 unaffected.
+
+## D-047 — A single-adapter host *can* scan while connected; that was WinRT
+
+**Status:** measured 2026-09-16, after enaon challenged the claim in
+espruino#8013. He was right.
+
+The claim, repeated in seven places and posted to the discussion, was that a
+host with one Bluetooth adapter cannot scan while it is connected, and that this
+is where the seconds before a confirmation go. It came from the Windows host,
+where the adapter did go silent around a connection and took four to eight
+seconds to recover — and was then stated as a property of single-adapter hosts.
+
+Measured on the Home Assistant Raspberry Pi (BlueZ), three runs of 15 s each.
+The control is a device nobody connects to (`WL2-Time`), so it isolates the
+host's scanning from anything the Puck does while connected:
+
+| run | control, idle | control, during a write to the Puck |
+|---|---|---|
+| 1 | 15 adverts, widest gap 1.52 s | 12 adverts, widest gap 4.03 s |
+| 2 | 12 adverts, 3.03 s | 13 adverts, 2.92 s |
+| 3 | 12 adverts, 3.02 s | 12 adverts, 3.45 s |
+
+The control keeps arriving at its usual rate; the one 4 s gap is inside the
+idle spread. **The Pi scans while connected.** The Puck itself is heard *more*
+during a write, which is its fast advertising after a connection (D-014).
+
+**What survives.** The seconds are real; they are connection setup — waiting for
+a connectable advertising event, connecting, the MTU exchange, the write, the
+disconnect — which is what the latency figure already said ("the median is
+connection-bound"). The designs the claim justified stand on other grounds:
+the confirmation window still counts evidence rather than only time (WinRT
+exists, and a device can be out of range or asleep), and `whenConnected` still
+keeps a device audible to anyone listening.
+
+**Corrected** in `coordinator.py`, `entity.py`, `tools/bthome_write.py`,
+`tools/closed_loop.py`, and annotated rather than rewritten in D-010,
+D-015, and `docs/first-use-case.md` §5.4, so the
+record shows what was believed and when it stopped being.
