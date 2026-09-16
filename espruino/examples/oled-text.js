@@ -72,6 +72,12 @@ function start() {
       { type: "text", set: show },
     ],
     interval: 1000,
+    // This packet needs 10 bytes of service data, and a nice!nano advertising
+    // its default "Espruino b216" leaves 7 -- the name takes 15 of the 31 and
+    // this firmware does not shorten it to make room (D-046). The device is
+    // still discovered: Home Assistant matches on the BTHome service data, not
+    // on a name.
+    showName: false,
     onError: function (error) {
       console.log("write rejected:", error.code, error.message);
     },

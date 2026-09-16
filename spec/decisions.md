@@ -1753,3 +1753,84 @@ on it, including the illuminance relay automation in Home Assistant, is pointing
 at a device that no longer runs the code. Redeploying is a `tools.espruino_deploy`
 away and was deliberately not done here: the question asked was about the
 firmware, and installing an application answers a different one.
+
+## D-046 — This firmware drops the service-data UUID, and the name is not free  [INCIDENT]
+
+**Status:** measured on the nice!nano, 2v29.242, board `NICENANO`, 2026-09-16.
+Two separate findings, both from one failed deployment. The first is ours to
+work around; the second is not ours at all.
+
+### The name is part of the 31 bytes, and §2.3 never said so
+
+Redeploying `oled-text.js` failed three times with
+`the radio refused 10 bytes of service data: ERR 0x9 (INVALID_LENGTH)`. The same
+application advertised the same 10 bytes on this board before it was reflashed.
+
+Measured by bisection on the device, asking the radio to accept service data of
+each length until it stopped refusing:
+
+| `showName` | service data accepted |
+| --- | --- |
+| true | 7 bytes |
+| false | 22 bytes |
+
+The difference is 15 — `2 + len("Espruino b216")`, the whole name. This firmware
+does **not** shorten the local name to make a packet fit; it refuses the packet.
+A Puck.js gave back only 3 bytes for the same switch (D-030), so it evidently
+does shorten. The reflash is what changed it here: the board previously
+advertised as `WL2Home`, seven characters, and came back with the thirteen-
+character default.
+
+The arithmetic that actually holds on this board, with 31 bytes to spend:
+
+    3  flags
+    4  manufacturer data -- Espruino's company ID, always present
+    4  service data header and UUID
+    2 + len(name), if showName
+
+leaving 20 bytes without a name and 5 with this one. §2.3 counts neither the
+manufacturer data nor the name, which is the whole of why its budget is
+optimistic (D-030) — now with the two missing terms named.
+
+**Changed.** `oled-text.js` sets `showName: false`, and says why. The guard in
+`refreshAdvertising` now drops the name in its retreat unconditionally: the
+fallback packet exists to keep a device findable after a rejection, and a
+fallback that can itself be refused is not a fallback. Being findable matters
+more than being named.
+
+### The bigger one: `NRF.setAdvertising` omits the 16-bit UUID
+
+With the name gone the application ran, advertised 10 bytes, and Home Assistant
+still showed nothing. The air says why. Compare the two boards:
+
+    puck   len=16 type=0x16  d2 fc 40 00 d6 01 64 05 ef e7 00 1e 01 ff 08
+    nano   len=11 type=0x16  40 00 78 02 f0 0a 53 00 ff 04
+
+The nano's service-data structure has **no UUID**. The BTHome payload is byte-
+for-byte correct and begins where `d2 fc` should be, so a receiver reads the
+first two bytes as the UUID and files the device under `0x0040`. No BTHome
+receiver will ever recognise it.
+
+It is not the key form. Asked directly, every spelling produces the same
+UUID-less structure, including a standard UUID that has nothing to do with this
+project:
+
+    {0xFCD2:[1,2,3]}   ->  02 01 06 04 16 01 02 03
+    {"FCD2":[1,2,3]}   ->  02 01 06 04 16 01 02 03
+    {64722:[1,2,3]}    ->  02 01 06 04 16 01 02 03
+    {0x180F:[1,2,3]}   ->  02 01 06 04 16 01 02 03
+
+**A workaround exists and is proven.** `NRF.setAdvertising` also takes a raw
+array of AD structures, and that form emits the UUID correctly:
+
+    NRF.setAdvertising([2,1,6, 13,0x16,0xd2,0xfc, ...payload], {showName:false})
+    ->  02 01 06 0d 16 d2 fc 40 00 77 02 f0 0a 53 00 ff 04
+
+**[DECISION] Not taken unilaterally.** Moving the module to the raw form would
+make it responsible for the flags, the name and the manufacturer data on every
+board — including the ones where the object form works — to route around what
+looks like a firmware regression. That trade belongs to the owner and to Gordon,
+and the evidence above is what the question should be asked with.
+
+Until then the nice!nano cannot carry BTHome on this build. The Puck is
+unaffected.

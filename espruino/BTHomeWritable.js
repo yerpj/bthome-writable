@@ -35,11 +35,15 @@ else is derived. Options:
                  AES-CCM, S5) - which costs 8 service-data bytes for the counter
                  and MIC, so there is much less room for objects.
   showName       put the device name in the advertising packet (default true).
-                 False buys 3 bytes of service data on an nRF52, which an
-                 encrypted device is likely to want (D-030).
+                 It shares the same 31 bytes as the service data and how much it
+                 costs depends on the firmware: a Puck.js gave back 3 bytes when
+                 it was turned off (D-030), a nice!nano on 2v29.242 gave back 15
+                 -- the full name, unshortened (D-046). If your packet is
+                 refused, this is the first thing to try.
   maxServiceData what the radio will really accept, in bytes. S2.3's arithmetic
-                 says 24; a measured Puck.js takes 17, or 20 with showName
-                 false, and refusing the packet is how you find out. Set this to
+                 says 24 and every measured radio takes less: a Puck.js 17, or
+                 20 with showName false; a nice!nano 7, or 22 with showName
+                 false. Refusing the packet is how you find out. Set this to
                  your radio's number and the packet is checked at setup instead.
   onError        called with a rejected write's error
 
@@ -351,7 +355,14 @@ function refreshAdvertising() {
     // means it cannot be fixed without the button (D-022, D-029). Fall back to
     // the smallest valid BTHome packet, which keeps it findable and reachable,
     // and report the real numbers.
-    NRF.setAdvertising({ 0xFCD2:[st.plan.info, PKT_ID, st.packetId & 255] }, opts);
+    //
+    // The name goes too, unconditionally. It is part of the same 31 bytes and
+    // can be most of them -- 15 on a nice!nano advertising "Espruino b216"
+    // (D-046) -- so keeping it here risks the retreat throwing as well, which
+    // would leave the device in exactly the state this guard exists to
+    // prevent. Being findable matters more than being named.
+    const minimal = { 0xFCD2:[st.plan.info, PKT_ID, st.packetId & 255] };
+    NRF.setAdvertising(minimal, Object.assign({}, opts, { showName:false }));
     throw err("advertising_rejected", `the radio refused ${sd.length} bytes of service data: ${e.message}`);
   }
 }
