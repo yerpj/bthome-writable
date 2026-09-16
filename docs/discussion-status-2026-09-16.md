@@ -6,7 +6,7 @@ Phases 0–3 of the plan are done and verified on hardware; phase 4 is release w
 - **Espruino module** — wraps the existing `BTHome` module rather than forking it. Sensors, controls and write-only objects (`set` with no `get`) all come from one `advertise:` list.
 - **Home Assistant integration** — zero-config discovery; entities merge onto the device card the core BTHome integration already made. Switch, number, text and button platforms.
 - **Encryption** — BTHome's own AES-CCM, both directions, no JavaScript AES needed. The shared crypto test vectors pass **on-device** on a Puck.js and on a nice!nano.
-- **Measured on hardware** — positional addressing and whole-write rejection both proven; 1.7 s click-to-confirmed at best, 3.3 s on today's bench, on one Raspberry Pi with no ESPHome proxy.
+- **Measured on hardware** — positional addressing and whole-write rejection both proven; 1.7 s click-to-confirmed at best, 3.3 s on today's bench, at a **1 s advertising interval**, on one Raspberry Pi with no ESPHome proxy. The interval is not a latency dial: the device advertises fast during and after a connection, so commands still land in 1.7 s with it set to 5 s. What it sets is the idle refresh rate and the cost of the first command after a quiet period.
 
 Two points I'd value your view on, both written up in `spec/for-gordon.md`:
 
