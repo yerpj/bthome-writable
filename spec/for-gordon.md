@@ -3,6 +3,13 @@
 Working list for espruino#8013. Everything came out of implementing the design.
 Ordered by how much it needs an answer. Last checked 2026-09-16.
 
+> **FR —** Liste de travail pour la discussion espruino#8013. Tout ce qui suit
+> est sorti de l'implémentation réelle du protocole. Classé par besoin de
+> réponse décroissant. Dernière vérification : 16-09-2026.
+>
+> *Chaque section anglaise est suivie de sa traduction dans un bloc comme
+> celui-ci. L'anglais reste le texte à transmettre à Gordon.*
+
 ---
 
 ## 1. Master builds advertise service data with no UUID
@@ -39,6 +46,28 @@ Same builds also stopped shortening the local name to make a packet fit — they
 refuse the packet instead. Nothing found in the issues, discussions or forum, so
 this looks unreported. Full measurements in `decisions.md` D-046.
 
+> **FR — Les builds de master émettent du service data sans UUID.**
+>
+> Ce n'est pas une question BTHome, et c'est le point le plus urgent du
+> document. Sur un firmware `2v29.242`, `NRF.setAdvertising` produit la
+> structure de service data **sans son UUID 16 bits**. L'entrée de changelog
+> correspondante est dans la section non publiée : « BLE: switch to our own code
+> for creating advertisement packets » — Gordon a réécrit le constructeur de
+> paquets d'advertising, partagé entre toutes les plateformes.
+>
+> L'exemple choisi utilise `0x180F`, un UUID standard sans aucun rapport avec ce
+> projet : on attend `06 16 0f 18 01 02 03`, on obtient `04 16 01 02 03`. Toutes
+> les orthographes de clé donnent le même résultat. Sur l'air, la charge BTHome
+> d'un nice!nano commence là où `d2 fc` devrait être, donc les récepteurs
+> classent l'appareil sous l'UUID `0x0040` et aucune installation BTHome ne le
+> reconnaîtra jamais. Un Puck.js sur une version publiée n'est pas touché.
+>
+> La forme brute de `setAdvertising` fonctionne encore : c'est notre
+> contournement si ce comportement est volontaire. Ces mêmes builds ont aussi
+> cessé de raccourcir le nom local pour faire tenir un paquet — ils refusent le
+> paquet à la place. Rien trouvé dans les issues, discussions ou forum : cela
+> semble non signalé. Mesures complètes dans `decisions.md` D-046.
+
 ---
 
 ## 2. The `BTHome` module fixes are not published
@@ -55,6 +84,16 @@ humidity    : e => [0x2E, Math.round(e.v)],
 where it means to push the value. That URL is what the Web IDE and every
 deployment tool fetch from, so devices still get the broken one and this repo's
 example still goes through `raw`.
+
+> **FR — Les correctifs du module `BTHome` ne sont pas publiés.**
+>
+> Gordon a corrigé les deux le 10-09-2026 et EspruinoDocs master les contient
+> bien. Mais `https://www.espruino.com/modules/BTHome.js` sert toujours
+> l'ancienne version : pas d'`illuminance`, et un `humidity` qui empile l'objet
+> d'entrée là où il devrait empiler la valeur. Or c'est précisément de cette URL
+> que le Web IDE et tous les outils de déploiement téléchargent. Les appareils
+> reçoivent donc encore la version cassée, et l'exemple de ce dépôt doit
+> continuer à passer par l'échappatoire `raw`.
 
 ---
 
@@ -75,6 +114,28 @@ advertising length 0, or an *event-class* object advertising its "none" value.
 Nothing is lost — write-only exists for displays, buzzers and triggers, which
 are exactly those classes. Implemented this way on both sides; the spec text is
 what needs agreeing.
+
+> **FR — Objets en écriture seule, cas des longueurs fixes : votre accord est
+> nécessaire.**
+>
+> Réglé côté appareil : une entrée qui a un `set` et pas de `get` est en
+> écriture seule, et le module la ré-advertise à longueur zéro (D-009).
+>
+> Reste ouvert pour les objets à **longueur fixe**, où « l'advertiser avec une
+> valeur vide » n'a aucune représentation possible — un identifiant d'objet sans
+> octet de valeur n'est pas quelque chose qu'un parseur BTHome sait parcourir.
+> Une lampe éteinte advertise `1E 00`, octet pour octet identique à un
+> emplacement vide. Un récepteur ne peut donc pas distinguer un déclencheur sans
+> état d'un actionneur simplement éteint. Se tromper, c'est soit exposer un vrai
+> interrupteur comme sans état, soit attendre indéfiniment une confirmation qui
+> ne viendra jamais.
+>
+> **Formulation proposée :** un objet en écriture seule est un objet à
+> *longueur variable* advertisé à longueur 0, ou un objet de *classe événement*
+> advertisé à sa valeur « none ». Rien n'est perdu : l'écriture seule existe pour
+> les afficheurs, les buzzers et les déclencheurs, qui sont exactement ces
+> classes-là. Déjà implémenté ainsi des deux côtés ; c'est le texte de la spec
+> qui attend votre accord.
 
 ---
 
@@ -101,6 +162,27 @@ no-op value outside the vocabulary; or let §4.3 admit some objects have no no-o
 and require such an object to be a device's only writable one. Until then this
 project offers no control for `0x3B` at all.
 
+> **FR — `0x3B command` n'a pas de valeur neutre : une décision est requise.**
+>
+> Le §4.3 dit qu'une écriture laisse un objet événement tranquille en envoyant sa
+> valeur « none », `0x00`. C'est vrai pour deux des trois objets événement, mais
+> pas pour `0x3B command`, dont le `0x00` signifie **`off`** — une commande
+> réelle. Le vocabulaire `COMMAND_EVENTS` de `bthome-ble` commence à
+> `0x00: "off"` et ne contient aucun « none ».
+>
+> Or une écriture porte **tous** les objets writable (§4.2). Un appareil qui
+> déclare une commande writable à côté d'autre chose ne peut donc pas voir cette
+> autre chose écrite sans que la commande reçoive aussi quelque chose — et
+> aujourd'hui ce quelque chose vaut `off`. Un utilisateur qui bascule une lampe
+> éteindrait silencieusement autre chose, et le protocole considérerait
+> l'écriture comme correcte.
+>
+> Trois issues, et ce n'est pas à nous de choisir : interdire de déclarer `0x3B`
+> writable ; lui donner une valeur neutre hors vocabulaire ; ou admettre au §4.3
+> que certains objets n'ont pas de valeur neutre et exiger qu'un tel objet soit
+> le seul writable de l'appareil. En attendant, ce projet n'offre aucune commande
+> pour `0x3B`.
+
 ---
 
 ## 5. §2.3's budget is wrong, and now has measurements
@@ -123,6 +205,26 @@ do shorten it.
 Eight writable one-byte objects plus the declaration come to 18, so the limit is
 still workable — but "31" is misleading and the spec now says so. `showName:
 false` is the first thing to try when a packet is refused. (D-030, D-046.)
+
+> **FR — Le budget du §2.3 est faux, et il est désormais mesuré.**
+>
+> Le document de travail annonçait 23 octets utiles. Tous les radios mesurés en
+> prennent moins, et deux termes n'avaient jamais été comptés : les données
+> constructeur `0x0590` qu'Espruino ajoute systématiquement, et le nom local.
+>
+> Mesures : Puck.js 2v27 → 17 octets avec le nom, 20 sans. nice!nano 2v29.242 →
+> 7 avec, 22 sans.
+>
+> Sur le nice!nano l'arithmétique qui tient est : 31 moins 3 de flags, 4 de
+> données constructeur, 4 d'en-tête de service data, et `2 + longueur du nom`. Ce
+> firmware refuse le paquet au lieu de raccourcir le nom, donc un nom par défaut
+> de treize caractères coûte 15 octets. Le Puck ne rend que 3 octets quand on
+> retire le nom : les builds plus anciens le raccourcissent manifestement.
+>
+> Huit objets writable d'un octet plus la déclaration font 18 octets, donc la
+> limite reste vivable — mais « 31 » induit en erreur, et la spec le dit
+> maintenant. `showName: false` est la première chose à essayer quand un paquet
+> est refusé.
 
 ---
 
@@ -148,6 +250,24 @@ told them. It costs us only an extra loop — we take the keystream from ECB
 instead — so no hurry on our account. Reproduce with
 `python -m tools.ccm_bench --address <mac>`.
 
+> **FR — `AES.encrypt` en mode CTR ignore son `iv` : une faille de sécurité.**
+>
+> Sur Puck.js 2v27. Deux IV n'ayant aucun octet en commun donnent le même
+> résultat, et ce résultat est `E(0…0)` : le bloc compteur est toujours nul. CBC
+> et ECB sont corrects, octet pour octet contre une implémentation de référence.
+> `OFB` renvoie `undefined`, peut-être la même cause racine.
+>
+> Cela vaut plus qu'un simple rapport de bug parce que **ça a l'air de
+> fonctionner**. Le CTR sur un nonce est la façon évidente de construire un
+> chiffrement par flot, et celui-ci utilise un seul flux de clé pour tous les
+> messages sous une même clé : deux chiffrés XORés donnent les deux clairs
+> XORés. Quiconque s'en est servi n'a aucune confidentialité entre messages, et
+> rien ne le lui a dit.
+>
+> Pour nous le coût est seulement une boucle supplémentaire — nous prenons le
+> flux de clé depuis ECB — donc rien ne presse de notre côté. Reproductible avec
+> `python -m tools.ccm_bench --address <mac>`.
+
 ---
 
 ## 7. `AES.encrypt` returns `undefined` when it cannot allocate
@@ -162,6 +282,20 @@ consecutive ones. In one session a 48-byte AES call failed while a REPL
 `new Uint8Array(256)` succeeded. Throwing rather than returning `undefined`, and
 saying *contiguous* rather than "not enough memory" with 24 kB free, would save
 the next person the afternoon.
+
+> **FR — `AES.encrypt` renvoie `undefined` quand il ne peut pas allouer.**
+>
+> Il alloue son résultat en une plage contiguë du tas. Quand aucune plage n'est
+> assez longue, il affiche `ERROR: Not enough memory for result` et renvoie
+> `undefined` — si bien que le `new Uint8Array(...)` de l'appelant lève
+> `Unsupported first argument of type undefined`, en pointant une ligne qui n'a
+> rien de fautif.
+>
+> `process.memory().free` ne le prédit pas : il compte les blocs libres, pas les
+> blocs consécutifs. Dans une même session, un appel AES de 48 octets a échoué
+> alors qu'un `new Uint8Array(256)` au REPL réussissait. Lever une exception
+> plutôt que renvoyer `undefined`, et dire *contigu* plutôt que « pas assez de
+> mémoire » avec 24 ko libres, épargnerait l'après-midi au suivant.
 
 ---
 
@@ -186,3 +320,29 @@ the next person the afternoon.
   Puck.js 2v27 at 75 ms per frame, under 5 ms of it cipher. One ask remains —
   `USE_AES_CCM` is not set in the Puck.js build, and enabling it would remove
   our framing entirely.
+
+> **FR — Réglé, pour mémoire.**
+>
+> - **UUID.** Une seule base 128 bits tirée au hasard, dont seul le deuxième
+>   groupe de 16 bits varie par caractéristique : `2FAA0001-…` pour le service,
+>   `2FAA0002-…` pour l'écriture. Adopté (D-001), figé à la première release.
+> - **Ordre des champs d'une écriture chiffrée** :
+>   `[chiffré][compteur u32 LE][MIC 4]`, ce qui reprend l'advertising chiffré de
+>   BTHome plutôt que l'ordre initial du document de travail (D-008).
+> - **L'objet packet id décale tous les bits du masque.** L'exemple de Gordon
+>   l'omettait et donnait `FF 02` ; un appareil qui utilise `getAdvertisement`
+>   l'émet et donne `FF 04`. C'est désormais normatif au §2.2, avec le même
+>   appareil montré des deux façons.
+> - **`bthome-ble` tolère la déclaration** : un identifiant d'objet inconnu est
+>   sauté avec un log DEBUG, sans erreur — elle peut donc vivre dans le service
+>   data BTHome, et le repli par données constructeur est inutile. Les objets
+>   placés *après* la déclaration sont silencieusement perdus, ce qui est la
+>   raison pour laquelle « déclaration en dernier » est un MUST (D-005). Cette
+>   bibliothèque nomme déjà les doublons `light_1`, `light_2`… selon leur ordre
+>   dans le paquet : son nommage et notre adressage positionnel coïncident donc
+>   par construction.
+> - **Le CCM est abordable et ne demande aucun AES en JavaScript** : tous les
+>   vecteurs se reproduisent sur un Puck.js 2v27 à 75 ms par trame, dont moins de
+>   5 ms de chiffrement. Une seule demande subsiste : `USE_AES_CCM` n'est pas
+>   activé dans le build Puck.js, et l'activer supprimerait entièrement notre
+>   couche d'assemblage.
