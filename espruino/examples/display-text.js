@@ -3,8 +3,10 @@
  * The use case: show a Home Assistant sensor value on a screen attached to an
  * Espruino device. The text is a *write-only* object (PROTOCOL.md §3): Home
  * Assistant writes it, the device shows it, and the device never advertises it
- * back — a screen's worth of text does not fit in an advertising packet, and
- * §2.3's budget is 23 bytes for everything.
+ * back — a screen's worth of text does not fit in an advertising packet. §2.3
+ * puts the budget at 23 bytes for everything, and every radio measured takes
+ * less than that: 17 on a Puck.js, 7 on a nice!nano advertising its name
+ * (decisions.md D-030, D-046).
  *
  * That has a consequence worth understanding before building on it: **a
  * write-only object has no confirmation**. Section 6's model — the device's

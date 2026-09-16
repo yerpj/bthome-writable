@@ -37,7 +37,11 @@ pip install bleak
 cp -r custom_components/bthome_writable <config>/custom_components/
 
 # 2. Install the sketch on the Puck. Modules go to Storage under their bare
-#    names, the app to .bootcde, so it survives a power cut.
+#    names; the application runs from RAM and .bootcde is erased, so a power
+#    cut undoes it. That is deliberate while you are experimenting -- an
+#    advertising payload the radio refuses throws inside setup(), and a device
+#    that is not advertising cannot be connected to, so it cannot be fixed over
+#    the air (decisions.md D-029). Add --to-flash once you are happy with it.
 python -m tools.espruino_deploy --address <mac> --app espruino/examples/light-loop.js
 ```
 
@@ -50,17 +54,21 @@ illuminance actually moved with the commanded state:
 
 ## What I would value opinions on
 
-1. **Write-only objects.** A text object for a screen can't be advertised back —
-   too big for the 23-byte object budget — so it has no confirmation at all.
-   Detecting "write-only" from the declaration alone is currently ambiguous.
-2. **The declaration is positional**, so the packet-id object shifts every bit.
-   Cheap on-device, but it means a layout change silently re-points every entity.
-3. **MTU−3 is a hard ceiling** for a write; there is no long-write fallback.
+1. **Write-only objects** have no representation for *fixed-length* ones. A
+   light that is off advertises `1E 00`, byte-identical to an "empty value"
+   placeholder, so a receiver cannot tell a stateless trigger from an actuator
+   that happens to be off.
+2. **`0x3B command` has no no-op** — its `0x00` is `off`, a real command. Since
+   a write carries every writable object, declaring it writable alongside
+   anything else means that other thing cannot be written without also
+   switching something off.
+3. **The declaration is positional**, so the packet-id object shifts every bit.
+   Cheap on-device, but a layout change silently re-points every entity.
+4. **MTU−3 is a hard ceiling** for a write; there is no long-write fallback.
    48 chars at MTU 53, ~18 at MTU 23.
-4. **Provisional UUIDs** and an `illuminance` type missing from the Espruino
-   `BTHome` module (this example goes through its `raw` escape hatch).
 
-Details and the rest in [`spec/for-gordon.md`](https://github.com/yerpj/bthome-writable/blob/main/spec/for-gordon.md).
+These four and the rest, each with the measurement behind it, in
+[`spec/for-gordon.md`](https://github.com/yerpj/bthome-writable/blob/main/spec/for-gordon.md).
 
 ## Two things that will look like faults but are not
 
@@ -75,5 +83,11 @@ Details and the rest in [`spec/for-gordon.md`](https://github.com/yerpj/bthome-w
 
 Status: draft. Nothing is frozen; UUIDs and wire formats freeze at first
 release. Both test suites are green and the protocol has a shared test-vector
-contract, but it has run on exactly one device, one HA install, and one
-Bluetooth adapter — which is the reason for this post.
+contract, including AES-CCM vectors that pass on-device. But it has run on two
+boards, one Home Assistant install and one Bluetooth adapter, all on the same
+bench — which is the reason for this post.
+
+To make your own device writable rather than replicate this one, start at
+[`docs/espruino-quickstart.md`](https://github.com/yerpj/bthome-writable/blob/main/docs/espruino-quickstart.md),
+then
+[`docs/home-assistant-install.md`](https://github.com/yerpj/bthome-writable/blob/main/docs/home-assistant-install.md).
