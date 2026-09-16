@@ -1680,3 +1680,42 @@ integrations but register no scanner: every diagnostic said `1 scanner(s)
 registered, 1 scanning, 1 connectable`. A working proxy would have given the
 Puck a second connectable path and this incident would have been survivable
 rather than total. Owner's call, outside this project.
+
+## D-044 — T2.4 was finished without ever being written down
+
+**Status:** audited and closed 2026-09-16. No code changed; this entry exists
+because the task did not have one, and a masterplan whose record disagrees with
+its repository is worse than one that is merely behind.
+
+T2.4 asks for four things, and each is already carried by a named test rather
+than by a claim:
+
+- **Timeout and revert.** `test_an_unconfirmed_write_reverts` writes, then keeps
+  the device advertising *the old value* four times. The entity goes back to
+  what the device says and the log names the reason. That is §6.4 exactly: the
+  device was heard from, and it did not obey.
+  `test_a_write_that_never_reaches_the_device_reverts_at_once` covers the other
+  half, where the write never lands, and reverts without waiting out a window
+  that has nothing to wait for.
+- **Warning surfacing.** The revert asserts on `caplog`, so the message is part
+  of the contract rather than a courtesy. (Its promotion to the logbook belongs
+  to T4.1, not here.)
+- **Batching into one write-all.** `test_rapid_toggles_coalesce_into_one_write`
+  spams three commands and asserts the device received exactly `["1e00"]` — one
+  connection, not three. `test_a_single_click_is_not_delayed_by_the_debounce`
+  guards the other direction, because a trailing debounce would have paid for
+  that with the common case (D-020).
+- **Stateless write-only paths.** `test_a_write_only_object_is_never_suppressed`
+  — a trigger has no advertised value to compare against, and re-sending it is
+  the entire point.
+
+The confirmation window itself is covered beyond the acceptance criterion:
+`test_the_confirmation_window_follows_the_advertising_interval`,
+`test_a_deaf_host_waits_out_the_ceiling_instead_of_the_window` and
+`test_a_heard_device_is_written_off_after_the_window_not_the_ceiling` separate
+the three cases that a single fixed timeout would have conflated.
+
+**Why it slipped.** T2.4 was implemented incrementally while chasing other
+tasks, so it never had the moment of completion that produces a decision entry.
+The lesson is small and worth keeping: a task that is finished in passing is a
+task nobody can later prove was finished.

@@ -21,6 +21,36 @@ from .protocol import WritableObject
 
 _LOGGER = logging.getLogger(__name__)
 
+LOGBOOK_ENTRY = "logbook_entry"
+"""Home Assistant's logbook event.
+
+Fired rather than calling `logbook.async_log_entry`, so the logbook stays an
+optional consumer instead of a dependency in the manifest: a user who has
+removed it still gets a working integration, and one who has it sees why a
+control snapped back.
+
+A failed write is exactly the event the logbook exists for. It is invisible
+otherwise -- the entity reverts, which from the outside is indistinguishable
+from never having been pressed -- and a warning in the log is not somewhere a
+user looks when a light did not come on (T4.1)."""
+
+
+def _log_to_logbook(hass, entity_id: str, message: str) -> None:
+    """Record one failed write beside the state change it undid."""
+    if entity_id is None:
+        # Before the entity is registered there is nothing to attach to, and a
+        # logbook row with no entity is noise rather than evidence.
+        return
+    hass.bus.async_fire(
+        LOGBOOK_ENTRY,
+        {
+            "name": "BTHome Writable",
+            "message": message,
+            "domain": DOMAIN,
+            "entity_id": entity_id,
+        },
+    )
+
 
 class BTHomeWritableEntity(Entity):
     """Base for every entity backed by a writable BTHome object."""
@@ -125,6 +155,12 @@ class BTHomeWritableEntity(Entity):
                 self.entity_id,
                 error,
             )
+            _log_to_logbook(
+                self.hass,
+                self.entity_id,
+                f"the command did not reach the device ({error}); "
+                "reverted to its last advertised state",
+            )
             self._revert()
             return
 
@@ -170,6 +206,13 @@ class BTHomeWritableEntity(Entity):
             self.entity_id,
             waited,
             heard,
+        )
+        _log_to_logbook(
+            self.hass,
+            self.entity_id,
+            f"the device did not confirm the command within {waited:.1f} s "
+            f"({heard} advertisement(s) heard); reverted to its last "
+            "advertised state",
         )
         self._revert()
 
