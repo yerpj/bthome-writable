@@ -1826,6 +1826,33 @@ array of AD structures, and that form emits the UUID correctly:
     NRF.setAdvertising([2,1,6, 13,0x16,0xd2,0xfc, ...payload], {showName:false})
     ->  02 01 06 0d 16 d2 fc 40 00 77 02 f0 0a 53 00 ff 04
 
+### The cause, from Espruino's own changelog
+
+The owner was right to send me to the changelog. The entry is in the
+**unreleased** section, above `2v29`, which is exactly what a firmware calling
+itself `2v29.242` is built from -- a master build 242 commits past the release:
+
+> **BLE: switch to our own code for creating advertisement packets (shared
+> across all platforms).**
+
+and, in the same batch:
+
+> BLE: Allow `NRF.getAdvertisingData({},{name:"foo"})` to force a name for a
+> specific advertising packet
+
+So the packet builder was rewritten, and both observations above are that
+rewrite: the 16-bit service-data UUID is no longer emitted, and the local name
+is no longer shortened to make a packet fit. The Puck.js, on a release build,
+still has the old builder and is unaffected -- which is why two boards running
+the same module disagree.
+
+A search of the Espruino issues, discussions and forum turned up nothing about
+the missing UUID, so this appears to be unreported. It is worth reporting: it is
+not a BTHome problem, and any Espruino sketch advertising service data on a
+master build is silently producing packets no receiver will match. The evidence
+to send is the four-line probe above -- `{0x180F:[1,2,3]}` is the persuasive
+one, because it has nothing to do with this project.
+
 **[DECISION] Not taken unilaterally.** Moving the module to the raw form would
 make it responsible for the flags, the name and the manufacturer data on every
 board — including the ones where the object form works — to route around what
