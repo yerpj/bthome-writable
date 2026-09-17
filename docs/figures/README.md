@@ -5,7 +5,7 @@ mechanism rather than describe it.
 
 | File | What it shows |
 | --- | --- |
-| `round-trip.png` | The four steps, with real bench bytes: advertising carrying the `0xFF` declaration, discovery, the write, the refreshed advertising that confirms it. |
+| `round-trip.png` | The four steps, with real bench bytes: advertising carrying the `0xFF` declaration, discovery, the write to one entry's characteristic, the acknowledgement. |
 | `latency.png` | Click → action → confirmation, measured on one Raspberry Pi with no ESPHome proxy: 10.7 s baseline down to 1.7 s. |
 
 Each `.png` is rendered from the `.html` beside it, so the numbers stay
@@ -19,7 +19,8 @@ chrome --headless --disable-gpu --hide-scrollbars \
 ```
 
 The byte strings in `round-trip.png` are copied from the bench, not composed:
-`40 00 f0 01 64 1e 01 1e 01 1e 01 ff 1c` is a Puck.js advertising three lights
-on one object ID, and `ff 1c` is the declaration -- bitmask `0b00011100`,
-naming positions 2, 3 and 4. The latency figures come from the T3.2 runs
-recorded in `spec/decisions.md`.
+`40 00 f0 01 64 ff 1e 1e 1e` is a Puck.js running `three-lights.js`, where
+`ff 1e 1e 1e` is the declaration -- three `light` entries, served on
+characteristics `2FAA0001` to `2FAA0003`. None of their values are on the air.
+The latency figures come from the T3.2 runs and from D-049, both recorded in
+`spec/decisions.md`.

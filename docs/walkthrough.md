@@ -18,13 +18,13 @@ Best done on a board that is not already set up, and ideally by someone else.
 
 | # | Step | Expected | Result |
 | --- | --- | --- | --- |
-| 1 | Paste `single-light-standalone.js` into the Web IDE, send | console prints the address and `writable positions: [ 2 ]` | |
-| 2 | Scan, or `tools.bthome_write --payload 1e01` | LED on, confirmation under a second | |
+| 1 | Paste `single-light-standalone.js` into the Web IDE, send | console prints the address and `writable entries: [ 30 ]` | |
+| 2 | Scan, or `tools.bthome_write --payload 1e01` | LED on, the write acknowledged in milliseconds | |
 | 3 | Install via HACS, restart | *BTHome Writable* appears in HACS and in the integration list | |
 | 4 | Look at Devices & services | the board is offered without being asked for | |
 | 5 | Configure it | one switch, no questions beyond confirming | |
 | 6 | Find the device page | switch **and** the core BTHome sensors on one card | |
-| 7 | Toggle from the UI | LED follows, entity settles in about 1–3 s | |
+| 7 | Toggle from the UI | LED follows, entity settles in about 1–3 s, shown as assumed state | |
 | 8 | Power the board off, wait | entity goes unavailable | |
 | 9 | Power it back on | the sketch is gone (it runs from RAM) and the docs said so | |
 | 10 | Re-send, toggle again | works, without re-adding anything in Home Assistant | |

@@ -55,7 +55,7 @@
 </style>
 
 <h1>bthome-writable — the whole round trip</h1>
-<p class="sub">Real bytes from a Puck.js on the bench. No acknowledgement channel: <b>the refreshed advertising is the confirmation</b>.</p>
+<p class="sub">Real bytes from a Puck.js on the bench. Writable values never go on the air: <b>the GATT write response is the acknowledgement</b>.</p>
 
 <div class="grid">
   <div class="head dev">Espruino device</div>
@@ -64,11 +64,11 @@
 
   <div class="card dev">
     <div class="what">1 — Ordinary BTHome advertising</div>
-    <div class="why">Three lights sharing one object ID, plus a declaration naming which positions are writable.</div>
-    <code>40 <i>00 f0</i> <i>01 64</i> 1e 01 1e 01 1e 01 <b>ff 1c</b></code>
+    <div class="why">Packet id and battery, as before, plus a declaration listing the object types this device accepts writes for — here three lights.</div>
+    <code>40 <i>00 f0</i> <i>01 64</i> <b>ff 1e 1e 1e</b></code>
     <div class="why" style="margin-top:6px">
-      <b style="color:#b3261e">ff 1c</b> = bitmask 0b00011100 → positions 2, 3, 4.
-      Any BTHome receiver skips the unknown object; nothing else changes.
+      <b style="color:#b3261e">ff 1e 1e 1e</b> → entries 1, 2, 3, served on 2FAA0001…0003.
+      Last in the service data, so any BTHome receiver skips it; nothing else changes.
     </div>
   </div>
   <div class="arrow">
@@ -81,23 +81,23 @@
   </div>
 
   <div class="card dev" style="grid-row:3">
-    <div class="what">4 — Applies it, and says so</div>
-    <div class="why">Position addresses the instance — BTHome has no per-instance ID and this invents none. The next packet carries the new state.</div>
-    <code>40 <i>00 f3</i> <i>01 64</i> 1e 01 <b>1e 00</b> 1e 01 ff 1c</code>
+    <div class="what">4 — Applies it, and acknowledges</div>
+    <div class="why">The write response says the bytes arrived; the second light going out says what they did. The advertising is unchanged but for the packet id — a written value is never advertised.</div>
+    <code>40 <i>00 f3</i> <i>01 64</i> ff 1e 1e 1e</code>
   </div>
   <div class="arrow">
     <div class="label">one GATT write</div>
     <svg width="76" height="12"><path d="M74 6 H2" stroke="#0b5394" stroke-width="1.6" fill="none"/><path d="M8 2 L2 6 L8 10" stroke="#0b5394" stroke-width="1.6" fill="none"/></svg>
   </div>
   <div class="card ha">
-    <div class="what">3 — Writes every writable object, in packet order</div>
-    <div class="why">Connect, write, disconnect. The object IDs are redundant given the position, and that is the point: they catch a receiver writing against a layout the device no longer has.</div>
-    <code>1e 01 <b>1e 00</b> 1e 01</code>
+    <div class="what">3 — Writes one object, to that entry's characteristic</div>
+    <div class="why">Connect, write with response, disconnect. Entry 2 is 2FAA0002, and nothing else on the device is touched. The object ID is redundant given the characteristic, and that is the point: it catches a receiver writing against a layout the device no longer has.</div>
+    <code>→ 2FAA0002 &nbsp; <b>1e 00</b></code>
   </div>
 </div>
 
 <div class="foot">
-  <div><b>1.7 s</b> click → action → confirmation</div>
-  <div><b>0 extra bytes</b> on the air for unencrypted devices beyond the 2-byte declaration</div>
+  <div><b>1.7 s</b> click → action, of which 16 ms is the write</div>
+  <div><b>4 bytes</b> on the air for three writable lights, and none of their values</div>
   <div><b>AES-CCM</b> both directions, BTHome's own, when a bindkey is set</div>
 </div>

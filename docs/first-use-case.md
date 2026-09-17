@@ -7,6 +7,15 @@ own light sensor measuring that the command had a physical effect.
 Recorded 8 September 2026. Provisional: this is one device, one receiver, one
 afternoon.
 
+> **This report describes protocol version 1** — a positional bitmask, a
+> write-all payload, and confirmation by the refreshed advertising. Version 2
+> replaced all three: the declaration lists writable object *types*, each entry
+> has its own characteristic, the write response is the acknowledgement, and a
+> writable value is never advertised (`spec/decisions.md` D-048, re-verified on
+> hardware in D-049). It is kept as written because the measurements and the
+> failures below are what produced version 2; for what the protocol does now,
+> read `spec/PROTOCOL.md`.
+
 ---
 
 ## 1. What was set up
@@ -339,4 +348,4 @@ Home Assistant side: copy `custom_components/bthome_writable/` into
 own, or under *Add integration → BTHome Writable*.
 
 Full findings and reasoning: `spec/decisions.md` (D-001 to D-011). Open
-questions for the Espruino discussion: `spec/for-gordon.md`.
+questions for the Espruino discussion: [espruino#8013](https://github.com/orgs/espruino/discussions/8013).

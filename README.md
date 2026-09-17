@@ -2,10 +2,12 @@
 
 A minimal, BTHome-compatible **downlink** for BLE devices in Home Assistant.
 
-Devices declare in their BTHome advertising which of their objects are *writable*.
-Home Assistant connects briefly, writes new values — in BTHome's own format and with
-BTHome's own encryption — to a single GATT characteristic, then disconnects. The
-refreshed advertising is the confirmation; there is no ack protocol.
+Devices list in their BTHome advertising which BTHome object types they accept
+writes for. Home Assistant connects briefly, writes one value — in BTHome's own
+format and with BTHome's own encryption — to that entry's own GATT
+characteristic, and disconnects. A device whose values can change by themselves
+makes those characteristics readable and bumps BTHome's settings revision
+(`0x65`) when they do, so a receiver knows to read them again.
 
 | Directory       | Contents                                                        |
 |-----------------|-----------------------------------------------------------------|
@@ -16,16 +18,19 @@ refreshed advertising is the confirmation; there is no ack protocol.
 | `test-vectors/` | Crypto test vectors — the shared contract between both codebases |
 | `tools/`        | Generators and verification scripts                              |
 
-Status: **draft / pre-release.** The protocol is being converged publicly with
-Gordon Williams (Espruino) in
+Status: **draft / pre-release**, protocol version 2.0-draft.1. The protocol is
+converged publicly with Gordon Williams (Espruino) in
 [espruino#8013](https://github.com/orgs/espruino/discussions/8013). Nothing here is
 frozen yet; UUIDs and wire formats freeze at the first public release.
 
-Phases 0 to 3 are complete and verified on hardware: the protocol, both
-implementations, the full object↔platform mapping, positional addressing,
-device merge and availability, and AES-CCM in both directions. Phase 4 is
-release work — robustness, documentation, HACS and EspruinoDocs publication,
-and the standardisation dossier for the BTHome maintainers.
+Version 2 replaces version 1's positional bitmask, its write-all payload and its
+advertising-based confirmation with a list of writable object types, one
+characteristic per entry, and reads gated on the settings revision
+([`decisions.md` D-048](spec/decisions.md)). Both implementations, all three test
+suites and the bench tools are on version 2, verified on a Puck.js and a
+nice!nano through Home Assistant and an ESP32 proxy (D-049). What remains is
+release work: documentation, HACS and EspruinoDocs publication, and the
+standardisation dossier for the BTHome maintainers.
 
 ## Start here
 
@@ -44,7 +49,6 @@ and the standardisation dossier for the BTHome maintainers.
 - `spec/PROTOCOL.md` — the protocol. Normative.
 - `spec/decisions.md` — every resolved question, with the measurement or the
   ruling that resolved it.
-- `spec/for-gordon.md` — what still needs Gordon in espruino#8013.
 - `spec/bthome-dossier.md` — material for the eventual submission to the
   BTHome maintainers: prior art, the actuator proposal, objections and evidence.
 - `SPEC-WORKING-DOCUMENT.md` — the original design rationale and task

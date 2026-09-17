@@ -18,12 +18,12 @@ That file is generated and self-contained: the `BTHomeWritable` module is
 inlined into it, so there is nothing else to install. `require("BTHome")` is
 resolved by the Web IDE from Espruino's own module library.
 
-The console should answer with the board's address and which positions it is
-offering:
+The console should answer with the board's address and which object types it is
+offering writes for — `30` is `0x1E`, BTHome's `light`:
 
 ```
 advertising as c8:80:32:ad:f7:b9 public
-writable positions: [ 2 ]
+writable entries: [ 30 ]
 ```
 
 **It runs from RAM.** A power cut undoes it, which is deliberate while you are
@@ -42,24 +42,27 @@ Any BLE scanner will do — nRF Connect on a phone, or from this repository:
 python -m tools.bthome_write --address <mac> --payload 1e01
 ```
 
-which writes `light = on` and waits for the device to say so. You should see the
-LED come on and the tool report a confirmation in well under a second.
+which writes `light = on` to entry 1's characteristic. You should see the LED
+come on and the tool report the write acknowledged a few milliseconds after the
+link is up. The light's state is not advertised: what proves the write arrived is
+the device's own write response, and what proves it had an effect is the LED.
 
 The advertisement looks like this:
 
 ```
-40 00 0c 01 64 1e 00 ff 04
-│  │     │     │     └── declaration: bitmask 0b00000100 → position 2
-│  │     │     └──────── light (0x1E), currently off
-│  │     └────────────── battery (0x01), 100 %
-│  └──────────────────── packet id (0x00) — always position 0
-└─────────────────────── BTHome device information, unencrypted
+40 00 01 01 5a ff 1e
+│  │     │     │  └── entry 1: writes of light (0x1E) accepted, on 2FAA0001
+│  │     │     └───── declaration (0xFF), last in the service data
+│  │     └─────────── battery (0x01), 90 %
+│  └───────────────── packet id (0x00)
+└──────────────────── BTHome device information, unencrypted
 ```
 
-Everything before `ff 04` is ordinary BTHome that any receiver already
-understands. `ff 04` is the whole of this protocol on the air: object `0xFF`,
-one byte of bitmask, last in the service data. A receiver that does not know it
-skips it like any unknown object.
+Everything before `ff 1e` is ordinary BTHome that any receiver already
+understands. `ff 1e` is the whole of this protocol on the air: object `0xFF`,
+then one BTHome object ID per writable entry, last in the service data. A
+receiver that does not know it skips it like any unknown object — which is why
+it has to be last (D-005).
 
 ## 3. Add it to Home Assistant
 
@@ -79,7 +82,6 @@ bw.setup({
     { type: "battery", get: function () { return E.getBattery(); } },
     {
       type: "light",
-      get: function () { return light.on; },
       set: function (v) { light.on = v; digitalWrite(LED1, v); },
     },
   ],
@@ -87,16 +89,24 @@ bw.setup({
 });
 ```
 
-Each entry is one BTHome object, in packet order.
+Each entry is one BTHome object.
 
-- **`get` only** — an ordinary sensor. Read-only, exactly as the upstream
+- **`get` only** — an ordinary sensor, advertised exactly as the upstream
   `BTHome` module would advertise it.
-- **`get` and `set`** — a control. It is advertised *and* declared writable, and
-  Home Assistant offers it as a switch, a number, or text depending on the
-  object's type.
-- **`set` only** — a control with no state to report: a button, a command, a
-  trigger. It is declared writable and Home Assistant never waits for a
-  confirmation it cannot get.
+- **`set` only** — a control: listed in the declaration, given a characteristic,
+  and offered by Home Assistant as a switch, a number, a text box or a button
+  depending on the object's type. Its value is never advertised, and Home
+  Assistant shows what it last wrote, as assumed state.
+- **`get` and `set`** — a control whose value can also change on the device
+  itself: a knob, a button, a schedule. Its characteristic becomes readable, the
+  device advertises BTHome's settings revision (`0x65`), and your code calls
+  `bw.changed()` after a local change so receivers read it again.
+  `espruino/examples/button-light.js` is the whole pattern in forty lines.
+
+Reach for `get` and `set` only when something other than a receiver can change
+the value. A light that only Home Assistant switches needs no readback: a
+characteristic that is read on every restart costs a connection, and the device
+is the authority either way.
 
 `type` is a BTHome object name — `light`, `power`, `temperature`, `text`,
 `button`… The mapping from object to Home Assistant platform is in
@@ -143,7 +153,8 @@ front:
 | --- | --- |
 | `single-light.js` | The minimum: one writable LED. |
 | `light-loop.js` | The LED plus the board's own light sensor, so a receiver sees the write had a *physical* effect rather than an echo. |
-| `three-lights.js` | Three objects sharing one BTHome ID, addressed by position. |
+| `three-lights.js` | Three objects sharing one BTHome ID, told apart by entry number. |
+| `button-light.js` | A light the board's own button also switches: readable characteristic, settings revision, `bw.changed()`. |
 | `encrypted-light.js` | The same, sealed with a bindkey. |
 | `oled-text.js` | A writable `text` object driving an SSD1306. |
 
@@ -152,14 +163,20 @@ Each has a self-contained build under `espruino/dist/`.
 ## When something does not work
 
 **The console prints `write rejected:` with a code.** The device refused the
-whole write, which is what §4.2 requires: a write must match the declared layout
-exactly or be rejected entirely. The usual cause is a receiver holding a stale
-picture of the device after you changed the sketch. Its next advertisement fixes
-it.
+whole write, which is what §4.2 requires: a write must carry exactly the entry's
+object ID and exactly its length, or be rejected entirely. The usual cause is a
+receiver holding a stale picture of the device after you changed the sketch; its
+next advertisement, and a dropped GATT cache, fix it.
 
 **Nothing advertises at all after sending your own sketch.** Almost always an
 exception inside `setup()`. Reconnect with the Web IDE and read the console.
 Because the sketch is in RAM, a power cycle also clears it.
+
+**A syntax error in the module, from a line that is plainly fine.** On a
+Puck.js that reads "Got UNFINISHED TEMPLATE LITERAL": it is an out-of-memory
+message in disguise. Sending sketch after sketch without `reset()` leaves every
+previous one's globals and listeners in RAM (D-049). `reset()` first;
+`espruino_deploy` now does.
 
 **Home Assistant cannot write, but your own tools can.** Do not conclude the
 device is healthy. An Espruino accepts one central at a time, and a desktop

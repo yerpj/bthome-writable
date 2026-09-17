@@ -54,15 +54,16 @@ adjacent building blocks already accepted.
   retried write cannot tolerate.
 - **[bthome.io #72](https://github.com/home-assistant/bthome.io/issues/72)** —
   *Add a generic quantity percentage type* (open, 2026-03). A typeless 0–100 %
-  "level of something". Same shape as the proposed Level actuator; worth aligning
-  the encoding.
+  "level of something". A writable one would be the natural way to express a
+  generic setpoint, and it costs this project nothing either way — the entry
+  would simply name that ID.
 - **[bthome-ble #25](https://github.com/Bluetooth-Devices/bthome-ble/issues/25)**
   — *Characteristic to offer configuration* (open since 2022, originally raised
   by balloob). A read-only GATT characteristic for static device data. Shows the
   "BTHome plus a GATT connection" pattern has been considered by the project's
   founders, not only by us.
 - **Channel `0x60`** — checked: a plain uint8 value, not an addressing
-  mechanism. Does not compete with positional addressing.
+  mechanism. Does not compete with entry numbering.
 - Home Assistant core already writes to BLE sensors over GATT in other
   integrations (e.g. setting the clock on ThermoPro devices,
   home-assistant/core #135740), so connect-write-disconnect is not foreign to
@@ -81,44 +82,49 @@ adjacent building blocks already accepted.
 
 ---
 
-## 2. Proposal under discussion: actuator objects (status: sent to Gordon 2026-09-17)
+## 2. The ask: one object ID (settled 2026-09-17, D-048)
 
-Prompted by Gordon's question whether events should be writable at all. The
-underlying issue: BTHome has no notion of an actuator, so the current design
-makes *sensor* objects writable, mixing measurement and command — a writable
-LED shows up in Home Assistant both as a `binary_sensor` and as a `switch`, and a
-thermostat setpoint would pass for a measured temperature.
+**BTHome is asked for a single object ID: `0xFF`, the declaration.** Everything
+else in this extension reuses BTHome's own object table, encodings and
+encryption. No new data format, no new parsing concept, no second ID.
 
-Four objects, IDs to be assigned by BTHome (`0x66`–`0xFE` were free in
-bthome-ble 3.22.1; the values below are placeholders):
+```
+0xFF <objectID_1> <objectID_2> ... <objectID_n>
+```
 
-| Object     | ID (provisional) | Size | Format                     | Advertised   | No-op in a write | HA entity |
-|------------|------------------|------|----------------------------|--------------|------------------|-----------|
-| **Switch** | `0xF0`           | 1    | uint8: 0 off, 1 on         | actual state | current value    | switch    |
-| **Level**  | `0xF1`           | 2    | uint16 LE, 0.01 %, 0–10000 | actual level | current value    | number    |
-| **Action** | `0xF2`           | 1    | uint8: 0 idle, 1 trigger   | always 0     | 0                | button    |
-| **Text**   | `0xF3`           | 1+n  | length + UTF-8             | length 0     | length 0         | text      |
+Last in the service data, it lists the BTHome object types the device accepts
+writes for. Entry *k* is served on its own GATT characteristic; a write carries
+one object, `ID + value`, in BTHome's own encoding. Writable values are not
+advertised, so a device that only receives commands publishes nothing extra. A
+device whose values can change by themselves advertises the **settings revision
+`0x65`** — BTHome's own, already merged — and serves readable characteristics,
+which is exactly the out-of-band re-read `0x65` was specified for.
 
-Rules:
+The full specification is `PROTOCOL.md`; the reasoning is D-048.
 
-1. Only actuator objects are writable; sensors and events never are.
-2. Actuator objects come after all other objects, so a parser that does not know
-   them stops without losing anything.
-3. The advertised value is the device's actual state, which is what confirms a
-   write.
-4. Values are absolute — no toggle, no increment — so a retried write is
-   harmless.
-5. A write carries every actuator object in packet order; unchanged ones resend
-   their current value, Action sends 0, Text sends length 0.
-6. An unknown ID, a wrong order or an out-of-range value rejects the whole write.
+### The actuator-objects proposal, and why it was dropped
 
-Consequences: the `0xFF` declaration becomes unnecessary (the ID says what is
-writable), taking with it the 8-object limit, the packet-id shift and the
-`0x3B` no-op problem. For BTHome: four table entries and no new parsing concept.
-GATT, encryption and the confirmation model are unchanged. Deliberately left
-out: setpoints with a unit (e.g. target temperature), which would fit better as
-a wrapper around an existing sensor object — a new parsing concept, so a later
-extension.
+An earlier draft (sent to Gordon on 2026-09-17) asked BTHome for four new
+*actuator* objects — Switch, Level, Action, Text — on the grounds that BTHome
+has no notion of an actuator, so making sensor objects writable mixes
+measurement and command: a writable LED appeared in Home Assistant both as a
+`binary_sensor` and as a `switch`.
+
+Gordon's answer removed the problem instead of solving it. Since a written value
+is no longer advertised, nothing writable is parsed as a sensor, and the
+duplicate entity disappears without new objects. What the four objects were for:
+
+| It was meant to fix | How version 2 fixes it |
+|---|---|
+| Sensor/actuator confusion | Writable values are not advertised at all; a control is never also a sensor |
+| Per-instance addressing | One characteristic per entry |
+| No no-op for `0x3B command` | A write touches one entry, so no object is ever sent a filler value |
+| The 8-object limit and the packet-id shift of the v1 bitmask | The declaration lists object IDs, not positions |
+| Confirming a write | The GATT write response, plus `0x65` and a read where the device can change by itself |
+
+That leaves four fewer IDs to ask for, and no new concept for the maintainers to
+review. Still deliberately out of scope: pairing a level with its light
+(`PLATFORMS.md`), and setpoints with a unit.
 
 ---
 
@@ -126,12 +132,12 @@ extension.
 
 | Objection | Answer | Source |
 |---|---|---|
-| A connection is too slow for a good experience (#146) | 1.7 s click-to-confirmed at best, 3.3 s on the current bench, one Raspberry Pi, no proxy | `decisions.md` D-013, D-024; `docs/figures/latency.png` |
+| A connection is too slow for a good experience (#146) | 1.7 s click to action at best, of which 16 ms is the write itself; measured again on version 2 through an ESP32 proxy | `decisions.md` D-013, D-024, D-049; `docs/figures/latency.png` |
 | It costs battery: the device must advertise fast | The idle advertising interval does not set command latency: 1.7 s measured at a 5 s interval, because the device advertises fast only during and after a connection | D-014, D-024 |
 | Unknown objects break existing receivers | bthome-ble skips an unknown ID and stops parsing; placing new objects last loses nothing for existing installs. Tested in CI | D-005 |
-| Writes are a security hole | BTHome's own AES-CCM, both directions, direction bound into the nonce so an advertisement cannot be replayed as a write; vectors pass on-device on two boards; HA warns once per unencrypted actuator | D-033, D-041, D-045 |
-| It only works on one bench | Two boards (Puck.js, nice!nano), one HA install, one adapter. **Weak point** — needs outside testers and an ESPHome-proxy test before submission | `docs/try-it.md` |
-| Advertising space is too tight | Measured budgets are below §2.3's arithmetic (Espruino manufacturer data and the local name); a few actuator objects still fit | D-030, D-046 |
+| Writes are a security hole | BTHome's own AES-CCM, all three directions (advertising, write, read), the direction bound into the nonce so no recording replays as another; vectors pass on-device on two boards; HA warns once per unencrypted device, and refuses to downgrade a keyed device to plaintext | D-033, D-041, D-042, D-045 |
+| It only works on one bench | Two boards (Puck.js, nice!nano), one HA install, one adapter and one ESP32 proxy. **Weak point** — needs testers outside this bench before submission | `docs/try-it.md` |
+| Advertising space is too tight | The declaration costs one byte per writable entry and nothing else — writable values are not advertised. Measured budgets are below §2.4's arithmetic (Espruino manufacturer data and the local name), and a three-light declaration is 4 bytes | D-030, D-046, D-049 |
 
 Claims to avoid, because they were wrong once in public:
 
@@ -144,11 +150,12 @@ Claims to avoid, because they were wrong once in public:
 
 ## 4. Before submitting
 
-- Gordon's answer on the actuator proposal (§2), and the protocol updated
-  accordingly.
-- A test through an ESPHome Bluetooth proxy — the setup most HA users have, and
-  an unmet T1.2 acceptance criterion.
+- ~~Gordon's answer on the actuator proposal~~ — answered; version 2 is the
+  result (D-048), implemented and verified on hardware (D-049).
+- ~~A test through an ESPHome Bluetooth proxy~~ — done 2026-09-17 through
+  `esp32-bluetooth-proxy-1f1020`.
 - At least one tester outside this bench (`docs/walkthrough.md`,
-  `docs/try-it.md`).
-- Check #72 again: if a generic percentage lands, reuse its encoding for Level.
+  `docs/try-it.md`). **The remaining gap.**
+- An encrypted device on version 2, on hardware: the vectors cover both sides,
+  the boards have not been run with a bindkey since the rewrite.
 - Re-run the prior-art search; update §1 with anything new.

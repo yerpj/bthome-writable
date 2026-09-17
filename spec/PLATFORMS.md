@@ -21,8 +21,7 @@ one this table uses:
 | binary sensor | 28 | `switch` |
 | numeric sensor | 59 | `number` |
 | string (`0x53`) | 1 | `text` |
-| event (`0x3A` button, `0x3C` dimmer) | 2 | `button`, one per value |
-| event (`0x3B` command) | 1 | — not exposed, see below |
+| event (`0x3A` button, `0x3C` dimmer, `0x3B` command) | 3 | `button`, one per value |
 | raw (`0x54`) | 1 | — not exposed |
 | metadata (`0xF0`–`0xF2`) | 3 | — not exposed |
 
@@ -33,7 +32,8 @@ classes — `generic`, `power`, `light`, `lock` — on the reasoning that a
 `motion` switch is nonsense.
 
 That reasoning is wrong, and worth saying why. **A device does not declare an
-object writable by accident**: the bit costs it a byte and a GATT service. A
+object writable by accident**: the entry costs it a byte of advertising and a
+GATT characteristic. A
 device advertising a writable `window` is telling us it has a window opener; one
 advertising a writable `garage_door` has a garage door. Refusing those makes
 them unusable, in the name of protecting the user from a device they own.
@@ -55,9 +55,10 @@ outcome.
 - **Metadata (`0xF0`–`0xF2`)**: device type and firmware version. A receiver
   that let a user write these would be offering to lie about the device.
 - **The packet id (`0x00`) and the declaration (`0xFF`)** are the protocol's own
-  fields. Positions addressing them are a malformed declaration, not a control
-  (`bitmask-beyond-object-count` and `declaration-marks-itself` in the
-  fixtures).
+  fields, and §2.1 forbids them as entries. An entry naming one is counted — so
+  that the entries after it keep their characteristic numbers — and never
+  offered (`forbidden-entry` in the fixtures). The same goes for an object ID
+  this receiver does not know (`unknown-entry-type`).
 
 ## Per-platform rules
 
@@ -68,8 +69,11 @@ numbered the way `bthome-ble` numbers duplicate sensors (`light_1`, `light_2`),
 so a device's controls and its readings are numbered by one scheme rather than
 two.
 
-The value is one byte, `0x00` or `0x01`. Confirmation follows §6: optimistic,
-then confirmed by the refreshed advertising, then reverted if it never comes.
+The value is one byte, `0x00` or `0x01`, written to that entry's own
+characteristic and nothing else. The state follows §3: what was last written,
+shown as assumed state, unless the device reports state — it advertises a
+settings revision and serves readable characteristics — in which case it is what
+was last read.
 
 ### `number` — numeric objects
 
@@ -96,10 +100,10 @@ as a promise.
 
 ### `text` — the string object
 
-One `text` entity. In practice a text object is write-only (§3): advertised as a
-zero-length placeholder and never as content. So **the confirm/revert model of
-§6 must not be applied**, the entity's state is what the receiver last sent, and
-it is unknown until something is sent — including after a restart. Restoring a
+One `text` entity. A text object is normally write-only: nothing writable is
+advertised in version 2, and a display has no reason to serve a readable
+characteristic. So the entity's state is what the receiver last sent, and it is
+unknown until something is sent — including after a restart. Restoring a
 remembered value would assert something the receiver cannot check.
 
 The maximum length is not knowable from here: it is the smaller of the
@@ -109,10 +113,10 @@ A receiver should let the device refuse rather than guess a limit.
 
 ### `button` — event objects
 
-An event object's "none" value is a defined no-op (§4.3), which makes it the one
-class that is naturally stateless: pressing writes the event, and the resting
-state is `none`. No confirmation applies, for the same reason as text — and
-unlike text there is nothing to display either.
+An event is naturally stateless: pressing writes the event to that entry's
+characteristic, and there is no resting value to show. Nothing is coalesced
+either — two presses are two writes, because the second is not a repeat to
+drop.
 
 **One button per value of the vocabulary**, read from `bthome-ble`: a writable
 button object becomes seven buttons (press, double press, … hold press), a
@@ -121,11 +125,12 @@ the rest unreachable, which is the mistake the switch platform used to make.
 
 A dimmer's second byte is a step count; a press sends one step.
 
-**`0x3B command` is not offered**, because §4.3's no-op does not exist for it:
-its `0x00` is `off`, a real command. A write touching any other object on the
-same device would have to send it one. That is a gap in the specification rather
-than in the platform — written up in `for-gordon.md` §12 — and until it is
-settled, declining is the conservative reading rather than a decision.
+**`0x3B command` is offered**, which version 1 could not do. Its `0x00` is
+`off`, a real command with no no-op, and a write-all payload would have sent it
+one every time anything else on the device was written. Version 2 writes one
+entry and nothing else, so the difficulty disappears (D-048). Its vocabulary is
+five buttons — off, on, toggle, step up, step down — and the step commands carry
+a one-step argument.
 
 ## Open: how a brightness finds its light  [DECISION — owner and Gordon]
 
@@ -141,8 +146,8 @@ candidates all have costs:
    to it. Costs nothing on the air and uses the ordering §2.1 already makes
    meaningful, but it is a convention two implementations could easily read
    differently, and it makes packet order load-bearing in a new way.
-2. **A new object** carrying the pairing. Honest and explicit; costs a BTHome
-   object id we do not have, and we have not yet been granted `0xFF`.
+2. **A new object** carrying the pairing. Honest and explicit; costs a second
+   BTHome object id, where the whole of this extension currently asks for one.
 3. **Leave it apart** — a `switch` and a `number`, and let the user group them
    in Home Assistant. Costs nothing and asks something of every user.
 

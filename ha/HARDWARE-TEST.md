@@ -1,18 +1,18 @@
 # T1.2 — hardware test procedure `[HW]`
 
-The integration is complete and covered by 57 automated tests, but every one of
-them runs against a fake radio. This is the part that needs a real Espruino
-board, a real Home Assistant, and — for the last section — a real ESPHome
-Bluetooth proxy.
+The integration is complete and covered by 116 automated tests, but every one of
+them runs against a fake radio and a fake GATT client. This is the part that
+needs a real Espruino board, a real Home Assistant, and — for step 5 — a real
+ESPHome Bluetooth proxy.
 
 Run `espruino/HARDWARE-TEST.md` first. If the device does not behave there,
 nothing here will make sense.
 
-> **Steps 1 to 3 are already done**, against Home Assistant 2026.7.4 on a
-> Raspberry Pi 3 with a Puck.js — the integration was deployed over the Samba
-> add-on and driven through the REST API. Results are recorded below each step.
-> Steps 4, 6 and 7 need a hand on the hardware; step 5 needs an ESPHome proxy
-> powered up, and the three configured on that box were all offline.
+> **Steps 1 to 5 have been run on protocol version 2**, against Home Assistant
+> 2026.7.4 on a Raspberry Pi 3 with a Puck.js — the integration deployed over the
+> Samba add-on and driven through the REST API, the device reached through an
+> ESP32 Bluetooth proxy. Results are recorded below each step and in
+> `spec/decisions.md` D-049. Steps 6 and 7 need a hand on the hardware.
 
 **Acceptance criteria (T1.2):** an end-to-end toggle from the Home Assistant UI,
 both directly and through an ESPHome proxy; and a plain BTHome device is never
@@ -41,7 +41,7 @@ should show a discovered **BTHome Writable** device.
 
 Click **Configure**. The dialog should read, with your board's MAC:
 
-> *… (A4:C1:38:…) declares 1 writable object(s).*
+> *… (A4:C1:38:…) accepts writes for 1 of its BTHome objects.*
 
 Submit it.
 
@@ -82,41 +82,41 @@ MAC shown on each.
 Toggle the switch in the UI.
 
 Expected: **the LED follows within a second**, and the toggle stays where you
-put it.
+put it. On a device that does not report state — most of them — the entity is
+marked *assumed state*: it shows what Home Assistant last wrote.
 
-Do it several times, both directions. Then watch for the failure mode that
-matters: a toggle that **flips back on its own** after a few seconds means the
-device applied nothing, or its refreshed advertising never reached Home
-Assistant. Note how long it takes to flip back.
+Do it several times, both directions. The failure mode to watch for is a toggle
+that **goes back on its own**: that is a write Home Assistant could not deliver,
+and it leaves a row in the entity's logbook saying the command did not reach the
+device.
 
-> **Done, 2026-09-08 — and it found the bug this step was written for.** The
-> first run bounced on every toggle: `on` at 0.5 s, `off` at 5.3 s, `on` again
-> at 7.3 s. The write always worked; the confirmation window was being started
-> when the value was queued rather than when the device had been told, so it
-> expired before an answer was possible. Fixed (decisions.md D-010); three
-> consecutive toggles now settle in under a second with no flip-back, and the
-> device's advertising independently reads `1E 01`.
->
-> The LED itself is verified too, by the device's own light sensor rather than
-> by eye — see step 3 of the Espruino procedure. Four further toggles after the
-> D-011 fix, each settling in under half a second with no spurious transition.
+> **Done, 2026-09-17 on version 2.** `switch.turn_on` returned in 0.3 s and the
+> board reported `lamp.on === true`; the entity held its value. The LED itself
+> is verified by the device's own light sensor rather than by eye — see step 3
+> of the Espruino procedure.
 
-## Step 4 — the confirmation really comes from advertising
+## Step 4 — a write that does not land is not shown as applied
 
-This distinguishes "it works" from "it looks like it works".
+This distinguishes "it works" from "it looks like it works". Version 2 has no
+confirming advertisement: what Home Assistant shows is what it last *delivered*,
+so the thing to check is that an undelivered write changes nothing.
 
-1. Toggle the switch on.
-2. Immediately power the board off (pull the battery, or hold reset).
+1. Power the board off (pull the battery, or hold reset).
+2. Toggle the switch.
 
-Expected: the toggle **reverts to its last advertised state** after a few
-seconds, and `home-assistant.log` carries:
+Expected: the entity **goes back** to its previous value within a few seconds,
+and the entity's logbook carries a row:
 
 ```
-... did not advertise the written value within N.N s; reverting to its last advertised state
+... the command did not reach the device (...)
 ```
 
-Then power the board back on. The entity should return with the state the board
-actually has, not the one you asked for.
+Then power the board back on and toggle again: it works, without re-adding
+anything.
+
+> **Covered by the test suite** against a fake link that drops mid-write, and
+> by D-042/D-043 on hardware, where exactly this failure was silent in an
+> earlier build. Still worth running by hand once.
 
 ## Step 5 — through an ESPHome proxy
 
@@ -131,11 +131,26 @@ Expected: the same behaviour, perhaps a second slower. Watch the ESPHome node's
 log while toggling — you should see a connection open and close per write, not a
 connection that stays up.
 
-> **Not done, 2026-09-08.** All three proxies configured on that box were
-> unreachable (`Connect call failed` for each in the log), so every measurement
-> above went through the Raspberry Pi's own adapter. This step is the one most
-> likely to behave differently, because the write competes for a proxy's few
-> connection slots — worth doing before anyone calls the MVP finished.
+> **Done, 2026-09-17.** The Puck was reached through
+> `esp32-bluetooth-proxy-1f1020`, which was the scanner that heard it throughout
+> (Home Assistant's Bluetooth diagnostics name the source per device). Writes,
+> reads and discovery all went through it, at the speeds recorded above.
+
+## Step 5b — reading state back, on a device that reports it
+
+Install `espruino/examples/button-light.js`. Its light entry has a `get`, so the
+device advertises a settings revision and serves a readable characteristic.
+
+1. Restart Home Assistant. The entity should come up with the board's **real**
+   state, not `unknown`, and without the *assumed state* marking.
+2. Press the board's button. Home Assistant should follow within a few seconds,
+   without anyone writing anything.
+
+> **Done, 2026-09-17.** The state was read on first sight after a restart; a
+> local toggle at 17:23:47 showed in Home Assistant at 17:23:51. That second
+> half found a real bug: a read that fails because something else holds the
+> device's single connection used to count as done, leaving the state stale
+> forever. It is now retried on a later advertisement (D-049).
 
 ## Step 6 — availability
 
@@ -164,8 +179,8 @@ coexistence documentation.
 - Whether a plain BTHome device was offered by this integration (step 1) — and
   which device you tested with, or that you had none.
 - One card or two (step 2).
-- Whether the toggle held, and any flip-back delay (step 3).
-- The exact revert log line from step 4.
+- Whether the toggle held (step 3).
+- The exact logbook row from step 4.
 - Whether step 5 worked, and how much slower it felt.
 - What happened in step 7, in as much detail as you can.
 

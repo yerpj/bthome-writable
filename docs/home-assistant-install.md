@@ -56,15 +56,29 @@ The full table, and why the device decides rather than the receiver, is in
 
 ## How a command behaves
 
-Press the switch. The entity shows the new value straight away, Home Assistant
-connects, writes, disconnects, and waits for the device's next advertisement to
-confirm. If the confirmation never comes, **the entity snaps back** to what the
-device is actually advertising, and says why in the logbook.
+Press the switch. Home Assistant connects, writes one BTHome object to that
+entity's own characteristic, waits for the device's write response, and
+disconnects. Nothing else on the device is touched. If the write does not land,
+**the entity goes back** to the last value that did, and says why in the
+logbook.
 
-That is the whole state model: the advertising is the truth, and an unconfirmed
-command is not a command that worked. Expect about one to three seconds end to
-end on a healthy setup; the first command after a quiet period costs more,
-because the device has to be caught advertising before it can be connected to.
+Expect about one to three seconds end to end on a healthy setup; the first
+command after a quiet period costs more, because the device has to be caught
+advertising before it can be connected to.
+
+### Where the state comes from
+
+A written value is not advertised, so most controls show **what Home Assistant
+last wrote**, marked as assumed state — the device is the authority on whether
+it applied it, and the write response is the evidence that it heard.
+
+A device whose values can also change by themselves — a knob, a physical button,
+a schedule — says so by advertising BTHome's *settings revision* (`0x65`) and
+making its characteristics readable. Home Assistant then reads the real values
+when it first sees the device, and again each time the revision changes. Those
+entities are not assumed state: they show what the device said. If a read fails
+because something else held the device's one connection, it is retried on a
+later advertisement (D-049).
 
 ## Unencrypted devices
 
@@ -84,11 +98,12 @@ advertising BTHome without a declaration — an ordinary sensor. The core BTHome
 integration handles it; this one deliberately does not offer it.
 
 **A control stopped working and nothing is logged.** Check the logbook on the
-entity: a failed write leaves a row there. If it says the device did not confirm,
-the likeliest causes in order are a stale GATT table after the device's code
-changed (it recovers by itself on the next write), an encrypted device whose
-counter has drifted (it resynchronises after two failures), and a device that is
-simply refusing the write.
+entity: a failed write leaves a row there, saying the command did not reach the
+device. The likeliest causes in order are a stale GATT table after the device's
+code changed (it recovers by itself: the table is dropped and the next write
+rediscovers it), an encrypted device whose counter has drifted (it resynchronises
+after two failures), and a device that is simply refusing the write — which it
+must do if the object ID or the length is not exactly what that entry expects.
 
 **Home Assistant says it refuses to send an unencrypted write.** You gave this
 device a bindkey and it is now advertising in clear — typically because it was

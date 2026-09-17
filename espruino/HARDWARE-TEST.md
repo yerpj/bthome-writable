@@ -4,18 +4,19 @@ Everything below needs a physical nRF52-class Espruino board. The software side
 is complete and unit-tested; this is the part that cannot be verified without a
 radio.
 
-> **Steps 1 and 3 to 5 are already done**, on a Puck.js
-> (`C8:80:32:AD:F7:B9`) driven from the host — see the results recorded below
-> each step and the tools under `tools/`. What remains needs a pair of human
-> eyes or a hand on the hardware: the LED itself, the power-cycle behaviour, and
-> the Web IDE coexistence.
+> **Every step below has been run on protocol version 2**, on a Puck.js
+> (`C8:80:32:AD:F7:B9`, 2v27) driven from the host — the results are recorded
+> under each step and collected in `decisions.md` D-049. What still wants a pair
+> of human eyes is the LED itself, the power-cycle behaviour and the Web IDE
+> coexistence.
 
-Where a step says "nRF Connect", `tools/espruino_upload.py`,
-`tools/bthome_write.py` and `tools/reject_matrix.py` do the same job from a
-terminal against any host with a Bluetooth adapter.
+Where a step says "nRF Connect", `tools/espruino_deploy.py`,
+`tools/bthome_write.py`, `tools/reject_matrix.py`, `tools/closed_loop.py` and
+`tools/multi_instance.py` do the same job from a terminal against any host with
+a Bluetooth adapter.
 
 **Acceptance criterion (T1.1):** a write over GATT toggles the GPIO, and the
-advertising reflects the new state within one advertising interval.
+device acknowledges it.
 
 ## What you need
 
@@ -42,12 +43,12 @@ advertising reflects the new state within one advertising interval.
 On upload the console should print the board's MAC address and:
 
 ```
-writable positions: [ 2 ]
+writable entries: [ 30 ]
 ```
 
-Position 2, not 1, because BTHome's packet-id object occupies position 0
-(PROTOCOL.md §8.3). If it prints something else, stop — the layout is wrong and
-every step below will mislead you.
+`30` is `0x1E`, BTHome's `light`: the declaration lists the object *types* the
+device accepts writes for, in characteristic order. If it prints something else,
+stop — the layout is wrong and every step below will mislead you.
 
 ## Step 1 — the advertising is well-formed
 
@@ -57,29 +58,36 @@ and look at the **Service Data** for UUID `0xFCD2`.
 Expected, with `<pid>` incrementing and `<batt>` your battery level:
 
 ```
-40 00 <pid> 01 <batt> 1E 00 FF 04
+40 00 <pid> 01 <batt> FF 1E
 ```
 
 - `40` — BTHome v2, unencrypted.
-- `00 <pid>` — packet id, changes every second.
+- `00 <pid>` — packet id, changes every interval.
 - `01 <batt>` — battery.
-- `1E 00` — light, currently off.
-- `FF 04` — the declaration: bit 2 set, so position 2 (the light) is writable.
+- `FF 1E` — the declaration, last in the service data: one entry, `0x1E`
+  (`light`), served on characteristic `2FAA0001`.
 
-**Record the exact hex string.** If `FF 04` is missing, `setup()` threw — check
+The light's own value is **not** there, and must not be (§2.3).
+
+**Record the exact hex string.** If `FF 1E` is missing, `setup()` threw — check
 the IDE console.
 
-> **Done, 2026-09-08.** `40 00 <pid> 01 64 1E 00 FF 04`, packet id incrementing.
-> The battery reads 100 % on a fresh CR2032.
+> **Done, 2026-09-17.** `light-loop.js` advertises
+> `40 00 <pid> 01 64 05 <lux×3> FF 1E`, 11 bytes, packet id incrementing.
 
 ## Step 2 — the service is discoverable
 
-Connect to the board in nRF Connect. You should see a custom service:
+Connect to the board in nRF Connect. You should see a custom service with one
+characteristic per declared entry:
 
 ```
-2FAA0001-3B0B-4B1A-9E2A-B4C2952E62F2
-  └─ 2FAA0002-3B0B-4B1A-9E2A-B4C2952E62F2   (WRITE, WRITE NO RESPONSE)
+2FAA0000-3B0B-4B1A-9E2A-B4C2952E62F2
+  └─ 2FAA0001-3B0B-4B1A-9E2A-B4C2952E62F2   (WRITE)
 ```
+
+Entry *k* is at `2FAA000k`, in hexadecimal: entry 10 is `2FAA000A`. A
+characteristic is also READ only when the entry's value can change without a
+write (step 7).
 
 ## Step 3 — a write toggles the GPIO
 
@@ -90,40 +98,32 @@ silent).
 
 Write `1E00`. The LED goes out.
 
-> **Done, 2026-09-08.** The writes are accepted and the advertised light object
-> follows them (`1E 00` ⇄ `1E 01`), verified over the air.
+> **Done, 2026-09-17.** `python -m tools.bthome_write --address <mac> --payload
+> 1e01` is acknowledged 16 ms after the link is up, the link itself taking 1.7 s
+> from a Windows host.
 >
 > The LED physically lighting was verified too, and without anyone watching it:
 > `examples/light-loop.js` drives the green LED and reads the Puck's light
 > sensor, which works through the red one. Commanding the light on raises the
-> device's own illuminance reading from 115 to 583 — **5.1x** — and commanding
-> it off brings it back to 115. Rerun with
+> device's own illuminance reading from 103 to 595 — **5.8x** — and commanding
+> it off brings it back. Rerun with
 > `python -m tools.closed_loop --address <mac>`.
 
-## Step 4 — the advertising confirms it (the real acceptance criterion)
+## Step 4 — the write response is the acknowledgement
 
-This is the one that matters, and it is easiest to see if you **disconnect
-first**, because nRF Connect stops showing advertising while connected.
+Version 1 confirmed a write through the refreshed advertising. Version 2 does
+not: writable values are not advertised, and the GATT write response is what
+says the bytes arrived (§4.2). So the thing to check here is that the device
+*applies* what it acknowledged, which needs evidence of its own:
 
-1. Write `1E01`, disconnect.
-2. Scan again and read the service data.
+1. a measurement the device publishes — `tools/closed_loop.py`, step 3;
+2. or the sketch's console — `print(lamp.on)` after the write;
+3. or, on a device that reports state, a read (step 7).
 
-Expected: `1E 01` where it read `1E 00`, and a different packet id.
+What must **not** happen is the light's value appearing in the advertising.
 
-**Measure the latency.** The device refreshes its advertising immediately on
-applying the write (§6.2) rather than waiting for the next interval. With
-`interval: 1000`, the new state should appear well under one second after the
-write — not on the next round second. If it consistently takes a full interval,
-the immediate refresh is not working, which matters for battery devices that
-advertise every 10 s. Note what you observe.
-
-> **Measured, 2026-09-08, and the number is not the device's.** Four to eight
-> seconds from `tools/bthome_write.py`, but a host with one Bluetooth adapter
-> cannot scan while it is connected, so most of that is the adapter returning
-> to scanning. The figure that matters came from Home Assistant, which scans
-> continuously: a toggle settles in under a second (decisions.md D-010).
-> A clean measurement of the device alone still wants a second adapter
-> dedicated to scanning.
+> **Done, 2026-09-17.** All three routes agree, and nothing writable is
+> advertised.
 
 ## Step 5 — bad writes are rejected, not partially applied
 
@@ -132,20 +132,46 @@ time, thanks to the `onError` hook in the example.
 
 | Write | Expected console output | Expected LED |
 |---|---|---|
-| `1F01` (wrong object ID) | `write rejected: objectid_mismatch` | unchanged |
+| `1F01` (not the entry's object ID) | `write rejected: objectid_mismatch` | unchanged |
 | `1E` (truncated) | `write rejected: truncated` | unchanged |
 | `1E01FF02` (trailing bytes) | `write rejected: trailing_bytes` | unchanged |
 | `` (empty) | `write rejected: truncated` | unchanged |
 
-The trailing-bytes case is the important one: it is a stand-in for a replayed
-advertisement, which carries the declaration after the light object. A parser
-that accepted the prefix would apply it.
+The trailing-bytes case is the important one: it is a stand-in for a second
+object smuggled into one write. A parser that accepted the prefix would apply
+it.
 
-> **Done, 2026-09-08.** All four cases produced exactly the codes in the table,
-> and the advertised state was unchanged afterwards. Rerun any time with
+> **Done, 2026-09-17.** All four cases produced exactly the codes in the table,
+> and `lamp.on` was unchanged afterwards. Rerun with
 > `python -m tools.reject_matrix --address <mac>`.
 
-## Step 6 — it survives a reconnect and a reboot
+## Step 6 — the entry number addresses the instance
+
+Send `examples/three-lights.js`: three `light` entries, `FF 1E 1E 1E`. Write
+`1E01` to `2FAA0001`, then to `2FAA0002`, then to `2FAA0003`.
+
+Expected: each write moves one lamp, and it is the one whose number was
+addressed. Then write `0F00` to `2FAA0001` — a `generic` object where the entry
+says `light` — and expect `objectid_mismatch` with nothing changed.
+
+> **Done, 2026-09-17.** Each entry moved only its own lamp; the mismatched write
+> was refused. Rerun with `python -m tools.multi_instance --address <mac>`.
+
+## Step 7 — reading back, when the device can change by itself
+
+Send `examples/button-light.js`: the same light, switchable by the board's
+button as well. Its entry has a `get`, so its characteristic is readable and the
+advertising carries BTHome's settings revision (`0x65`).
+
+1. Write `1E01`. Read the characteristic: `1E01`. The revision does **not** move
+   — the receiver that wrote it already knows (§3.2).
+2. Press the button. The revision changes, and a read returns the new value.
+
+> **Done, 2026-09-17.** Read `1E01` after the write, revision unchanged at
+> `0x50`; after a button press the revision went to `0x51` and the read returned
+> `1E00`. `python -m tools.bthome_write --address <mac> --payload 1e01 --read`.
+
+## Step 8 — it survives a reconnect and a reboot
 
 1. Write `1E01`, disconnect, reconnect, write `1E00`. Still works.
 2. Reset the board (`reset()` or the button). The LED starts off, advertising
@@ -153,11 +179,19 @@ that accepted the prefix would apply it.
 
 ## What to report back
 
-- The exact service-data hex from steps 1 and 4.
+- The exact service-data hex from step 1.
 - Whether the LED followed every write in step 3.
-- The latency observed in step 4 (immediate, or one full interval).
+- What proved the write was applied in step 4, and how long it took.
 - The rejection codes from step 5, and whether the LED ever moved.
 - Anything the IDE console printed that this document does not predict.
 
 If any step fails, the hex string and the console output are enough to diagnose
 it — send those rather than a description.
+
+## One failure mode that looks like a bug in the module
+
+A sketch sent over the console without `reset()` leaves the previous one's
+globals, its `NRF.on()` listeners and the module cache in RAM. After three
+deployments a Puck.js had 109 of 2630 blocks free, and the next
+`require("BTHomeWritable")` failed with `Got UNFINISHED TEMPLATE LITERAL` — an
+out-of-memory message wearing a syntax error's clothes (D-049). `reset()` first.
