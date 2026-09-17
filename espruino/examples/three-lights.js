@@ -1,21 +1,16 @@
-/* bthome-writable — three lights, and nothing but their position to tell them
- * apart.
+/* bthome-writable — three lights of one type, told apart by entry number.
  *
- * This is the claim of PROTOCOL.md §2.1 put on hardware. The device advertises
- * three `light` objects with the same object ID (`0x1E`). BTHome has no
- * per-instance identifier and this protocol invents none: what addresses the
- * second light is that it is *second in the packet*, and the declaration's
- * bitmask names positions rather than IDs.
+ * The declaration lists `0x1E` three times (PROTOCOL.md §2.1). BTHome has no
+ * per-instance identifier and this protocol invents none: the second light is
+ * entry 2, served on characteristic 2FAA0002, and a write to it touches nothing
+ * else (§4.2).
  *
- * A write carries all three (§4.2, write-all in packet order), so the receiver
- * resends the two it is not changing. If positional addressing were wrong — if
- * the module sorted unstably, or the receiver counted from the wrong place —
- * the symptom would not be an error. It would be the wrong light switching,
- * which is why this is worth running rather than only unit-testing.
+ * If the numbering were wrong the symptom would not be an error. It would be
+ * the wrong light switching, which is why this is worth running on hardware
+ * rather than only unit-testing.
  *
  * Two of the three drive real LEDs, so a person in the room can see which one
- * moved. LED1 is left alone: `Puck.light()` reads through it, and an actuator
- * sharing a part with the sensor would make the test lie.
+ * moved. LED1 is left alone: `Puck.light()` reads through it.
  *
  * Install with:
  *   python -m tools.espruino_deploy --address <mac> \
@@ -26,9 +21,9 @@
 
 var bw = require("BTHomeWritable");
 
-// The third has no LED to drive: a Puck.js has three and one is the sensor.
-// It is still a full participant in the packet, which is the point -- its
-// position has to keep working with nothing physical behind it.
+// The third has no LED to drive: a Puck.js has three and one is the sensor. It
+// still gets its entry and its characteristic, which is the point -- its number
+// has to keep working with nothing physical behind it.
 var lamps = [
   { on: false, pin: LED2 },
   { on: false, pin: LED3 },
@@ -44,7 +39,6 @@ function apply() {
 function entry(index) {
   return {
     type: "light",
-    get: function () { return lamps[index].on; },
     set: function (v) {
       lamps[index].on = v;
       apply();
@@ -67,5 +61,5 @@ bw.setup({
 
 apply();
 console.log("advertising as", NRF.getAddress());
-console.log("writable positions:", bw.plan().writablePositions);
+console.log("writable entries:", bw.plan().entryIds);
 console.log("service data bytes:", bw.plan().serviceDataLength, "of", bw.plan().budget);

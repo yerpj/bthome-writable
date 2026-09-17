@@ -30,17 +30,14 @@ const LIGHT_LEVEL = 0.25; // -> 0.25 * 1000 * 100 = 25000 = a8 61 00 little-endi
  * Keyed by the example's name, since dist/ holds two forms of each. */
 const EXPECTED = {
   "single-light": {
-    // 40 | 00 01 | 01 5a | 1e 00 | ff 04
-    packet: "400001015a1e00ff04",
+    // 40 | 00 01 | 01 5a | ff 1e -- the light is declared, its state is not advertised
+    packet: "400001015aff1e",
     pin: "LED1",
-    // 40 | 00 02 | 01 5a | 1e 01 | ff 04
-    afterWrite: "400002015a1e01ff04",
   },
   "light-loop": {
-    // 40 | 00 01 | 01 5a | 05 a8 61 00 | 1e 00 | ff 08
-    packet: "400001015a05a861001e00ff08",
+    // 40 | 00 01 | 01 5a | 05 a8 61 00 | ff 1e
+    packet: "400001015a05a86100ff1e",
     pin: "LED2",
-    afterWrite: "400002015a05a861001e01ff08",
   },
 };
 
@@ -58,6 +55,7 @@ function run(source) {
   const handlers = {};
   const pins = {};
   let characteristics = null;
+  let serviceUuid = null;
 
   const context = {
     console: { log() {} },
@@ -84,8 +82,10 @@ function run(source) {
         options.push(opts);
       },
       setServices(services) {
-        characteristics = services[Object.keys(services)[0]];
+        serviceUuid = Object.keys(services)[0];
+        characteristics = services[serviceUuid];
       },
+      updateServices() {},
       getAddress: () => "c8:80:32:ad:f7:b9",
     },
     E: { getBattery: () => BATTERY },
@@ -122,7 +122,12 @@ function run(source) {
     timeouts,
     handlers,
     pins,
-    characteristics,
+    get characteristics() {
+      return characteristics;
+    },
+    get serviceUuid() {
+      return serviceUuid;
+    },
     context,
   };
 }
@@ -161,17 +166,35 @@ for (const name of BUNDLES) {
     assert.equal(hex(result.advertised[0]), expected.packet);
   });
 
-  test(`${name}: a write drives the right pin and shows up in the packet`, () => {
+  test(`${name}: a write to characteristic 1 drives the right pin`, () => {
     const result = run(load(name));
-    const uuids = Object.keys(result.characteristics);
-    assert.equal(uuids.length, 1);
+    assert.equal(result.serviceUuid, "2FAA0000-3B0B-4B1A-9E2A-B4C2952E62F2");
+    assert.deepEqual(Object.keys(result.characteristics), [
+      "2FAA0001-3B0B-4B1A-9E2A-B4C2952E62F2",
+    ]);
+    const light = result.characteristics["2FAA0001-3B0B-4B1A-9E2A-B4C2952E62F2"];
 
-    result.characteristics[uuids[0]].onWrite({ data: [0x1e, 0x01] });
+    light.onWrite({ data: [0x1e, 0x01] });
     assert.equal(result.pins[expected.pin], true, `${expected.pin} should be on`);
-    assert.equal(hex(result.advertised[1]), expected.afterWrite);
-
-    result.characteristics[uuids[0]].onWrite({ data: [0x1e, 0x00] });
+    light.onWrite({ data: [0x1e, 0x00] });
     assert.equal(result.pins[expected.pin], false);
+  });
+
+  test(`${name}: the light's state never reaches the advertising`, () => {
+    /* PROTOCOL.md §2.3: writable values are not advertised. */
+    const result = run(load(name));
+    const light = result.characteristics["2FAA0001-3B0B-4B1A-9E2A-B4C2952E62F2"];
+    light.onWrite({ data: [0x1e, 0x01] });
+    for (const packet of result.advertised) {
+      assert.doesNotMatch(hex(packet), /1e01/);
+    }
+  });
+
+  test(`${name}: a write of the wrong object type is refused`, () => {
+    const result = run(load(name));
+    const light = result.characteristics["2FAA0001-3B0B-4B1A-9E2A-B4C2952E62F2"];
+    light.onWrite({ data: [0x53, 0x01, 0x41] });
+    assert.notEqual(result.pins[expected.pin], true);
   });
 
   test(`${name}: schedules a periodic refresh of the advertised values`, () => {

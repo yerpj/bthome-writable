@@ -1,11 +1,12 @@
 "use strict";
 
-/* The JS half of the advertising-fixture contract (T0.4).
+/* The JS half of the advertising-fixture contract (PROTOCOL.md v2).
  *
- * Every valid fixture is rebuilt from its object list with the codec and must
- * come out byte-identical to the payload the Python side verified against the
- * real BTHome parser. Every write payload is then fed back through the device's
- * own write parser. If the two implementations ever diverge, this fails.
+ * Every valid fixture is rebuilt from its objects and entries with the codec and
+ * must come out byte-identical to the payload the Python side verified against
+ * the real BTHome parser. Every write and read is then fed through the device's
+ * own write parser for its entry. If the two implementations ever diverge, this
+ * fails.
  */
 
 const test = require("node:test");
@@ -22,6 +23,7 @@ const DOCUMENT = JSON.parse(
   )
 );
 const FIXTURES = DOCUMENT.fixtures;
+const LENGTH_PREFIXED = new Set([0x53, 0x54]);
 
 function hexToBytes(hex) {
   const bytes = [];
@@ -33,22 +35,21 @@ function bytesToHex(bytes) {
   return bytes.map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-/* The objects a fixture declares writable, minus the declaration itself. */
-function writableObjects(fixture) {
-  return fixture.declaration.writable_positions
-    .filter((p) => p < fixture.objects.length)
-    .map((p) => fixture.objects[p])
-    .filter((o) => o.object_id !== "ff");
+function sensorObjects(fixture) {
+  return fixture.objects
+    .filter((o) => o.object_id !== "ff")
+    .map((o) => ({ id: parseInt(o.object_id, 16), value: hexToBytes(o.value) }));
 }
 
-/* Turn a fixture's writable objects into the layout the device holds. */
-function layoutFor(fixture) {
-  return writableObjects(fixture).map((o) => {
-    const id = parseInt(o.object_id, 16);
-    // 0x53 is BTHome's text object: a length byte followed by that many bytes.
-    if (id === 0x53) return { id, variable: true };
-    return { id, length: hexToBytes(o.value).length };
-  });
+function entryIds(fixture) {
+  return fixture.declaration ? fixture.declaration.entries.map((e) => parseInt(e, 16)) : null;
+}
+
+/* The spec the device holds for entry `k`, as its setup would derive it. */
+function specFor(fixture, access) {
+  const id = parseInt(fixture.declaration.entries[access.entry - 1], 16);
+  if (LENGTH_PREFIXED.has(id)) return { id, variable: true, entry: access.entry };
+  return { id, length: hexToBytes(access.object.value).length, entry: access.entry };
 }
 
 test("the budget the codec enforces is the one the fixtures were built to", () => {
@@ -59,119 +60,79 @@ for (const fixture of FIXTURES) {
   if (!fixture.valid) continue;
 
   test(`${fixture.name}: the codec rebuilds the advertised service data`, () => {
-    const objects = fixture.objects
-      .filter((o) => o.object_id !== "ff")
-      .map((o) => ({ id: parseInt(o.object_id, 16), value: hexToBytes(o.value) }));
-    const positions = fixture.declaration
-      ? fixture.declaration.writable_positions
-      : null;
-
     const built = bw.buildServiceData(
       parseInt(fixture.device_info_byte, 16),
-      objects,
-      fixture.declaration ? positions : null
+      sensorObjects(fixture),
+      entryIds(fixture)
     );
     assert.equal(bytesToHex(built), fixture.service_data);
   });
 
-  for (const entry of fixture.writes || []) {
-    test(`${fixture.name} / ${entry.name}: the device accepts the write`, () => {
-      const parsed = bw.parseWrite(hexToBytes(entry.payload), layoutFor(fixture));
-
-      // Every writable object came back, in order, with its ID intact.
-      assert.equal(parsed.length, entry.objects.length);
-      parsed.forEach((got, index) => {
-        assert.equal(got.id, parseInt(entry.objects[index].object_id, 16));
-        assert.equal(bytesToHex(got.value), entry.objects[index].value);
-      });
+  for (const access of (fixture.writes || []).concat(fixture.reads || [])) {
+    test(`${fixture.name} / ${access.name}: one object, accepted on entry ${access.entry}`, () => {
+      assert.equal(access.uuid, bw.characteristicUuid(access.entry).toLowerCase());
+      const value = bw.parseWrite(hexToBytes(access.payload), specFor(fixture, access));
+      assert.equal(bytesToHex(value), access.object.value);
     });
   }
 }
 
-test("declaration-not-last is rejected when built through the codec", () => {
-  /* The codec cannot produce it at all: it always appends the declaration.
-   * This test states that as an invariant rather than leaving it implicit. */
-  const built = bw.buildServiceData(
-    0x40,
-    [
-      { id: 0x01, value: [97] },
-      { id: 0x1e, value: [1] },
-    ],
-    [1]
+test("declaration-not-last cannot be produced: the codec always appends it", () => {
+  const built = bw.buildServiceData(0x40, [{ id: 0x01, value: [97] }], [0x1e]);
+  assert.deepEqual(built.slice(-2), [bw.DECLARATION_OBJECT_ID, 0x1e]);
+});
+
+test("forbidden-entry is refused when built through the codec", () => {
+  const fixture = FIXTURES.find((f) => f.violates === "forbidden_entry");
+  assert.throws(
+    () => bw.buildServiceData(0x40, sensorObjects(fixture), entryIds(fixture)),
+    (error) => error.code === "forbidden_entry"
   );
-  assert.equal(built[built.length - 2], bw.DECLARATION_OBJECT_ID);
 });
 
 test("capacity-overflow is refused rather than truncated", () => {
   const fixture = FIXTURES.find((f) => f.violates === "capacity_exceeded");
-  const objects = fixture.objects
-    .filter((o) => o.object_id !== "ff")
-    .map((o) => ({ id: parseInt(o.object_id, 16), value: hexToBytes(o.value) }));
-
   assert.throws(
-    () =>
-      bw.buildServiceData(0x40, objects, fixture.declaration.writable_positions),
+    () => bw.buildServiceData(0x40, sensorObjects(fixture), entryIds(fixture)),
     (error) => error.code === "capacity_exceeded"
   );
 });
 
-test("a bitmask addressing a missing object is refused at build time", () => {
+test("a write aimed at a layout the device no longer has is refused", () => {
+  /* The desync guard of §4.2: a receiver still holding old firmware's layout
+   * sends a light to what is now a text entry. */
+  const fixture = FIXTURES.find((f) => f.name === "two-lights-and-display");
+  const lightOff = fixture.writes.find((w) => w.name === "second-light-off");
   assert.throws(
-    () => bw.buildServiceData(0x40, [{ id: 0x01, value: [97] }], [5]),
-    (error) => error.code === "position_addresses_missing_object"
-  );
-});
-
-test("a stale layout is caught by the object-ID check", () => {
-  /* Risk #8: the device was reflashed with a different layout while the
-   * receiver still holds the old one. The redundant object IDs exist for
-   * exactly this. */
-  const fixture = FIXTURES.find((f) => f.name === "multi-instance-and-display");
-  const entry = fixture.writes.find((w) => w.name === "second-light-off");
-
-  // The device now expects a text object where the receiver sends a light.
-  const staleLayout = layoutFor(fixture);
-  staleLayout[0] = { id: 0x53, variable: true };
-
-  assert.throws(
-    () => bw.parseWrite(hexToBytes(entry.payload), staleLayout),
+    () => bw.parseWrite(hexToBytes(lightOff.payload), { id: 0x53, variable: true, entry: 3 }),
     (error) => error.code === "objectid_mismatch"
   );
 });
 
-test("a truncated write is rejected", () => {
-  const fixture = FIXTURES.find((f) => f.name === "multi-instance-and-display");
-  const entry = fixture.writes.find((w) => w.name === "second-light-off");
-  const truncated = hexToBytes(entry.payload).slice(0, -2);
-
+test("a truncated write is refused", () => {
+  const fixture = FIXTURES.find((f) => f.name === "two-lights-and-display");
+  const hello = fixture.writes.find((w) => w.name === "display-hello");
   assert.throws(
-    () => bw.parseWrite(truncated, layoutFor(fixture)),
+    () => bw.parseWrite(hexToBytes(hello.payload).slice(0, -1), specFor(fixture, hello)),
     (error) => error.code === "truncated"
   );
 });
 
-test("trailing bytes are rejected", () => {
-  /* §4.2: unlike advertising, a write is a closed format. A permissive parser
-   * here is what would let a replayed advertisement apply its objects. */
+test("a write carrying two objects is refused", () => {
+  /* §4.2: exactly one object per write. Version 1's write-all shape must not be
+   * accepted by accident. */
   const fixture = FIXTURES.find((f) => f.name === "single-light");
-  const entry = fixture.writes[0];
-  const extended = hexToBytes(entry.payload).concat([0xff, 0x02]);
-
+  const on = fixture.writes[0];
+  const doubled = hexToBytes(on.payload).concat(hexToBytes(on.payload));
   assert.throws(
-    () => bw.parseWrite(extended, layoutFor(fixture)),
+    () => bw.parseWrite(doubled, specFor(fixture, on)),
     (error) => error.code === "trailing_bytes"
   );
 });
 
-test("the length-0 no-op is recognised on a text object", () => {
-  const fixture = FIXTURES.find((f) => f.name === "write-only-display");
-  const noop = fixture.writes.find((w) => w.name === "display-noop");
-  const layout = layoutFor(fixture);
-  const parsed = bw.parseWrite(hexToBytes(noop.payload), layout);
-
-  assert.equal(bw.isNoOp(parsed[0], layout[0]), true);
-
-  const real = fixture.writes.find((w) => w.name === "display-hello");
-  const parsedReal = bw.parseWrite(hexToBytes(real.payload), layout);
-  assert.equal(bw.isNoOp(parsedReal[0], layout[0]), false);
+test("an empty write is refused", () => {
+  assert.throws(
+    () => bw.parseWrite([], { id: 0x1e, length: 1, entry: 1 }),
+    (error) => error.code === "truncated"
+  );
 });

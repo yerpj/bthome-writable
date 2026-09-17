@@ -5,24 +5,22 @@ const assert = require("node:assert/strict");
 
 const bw = require("../BTHomeWritable.js");
 
-test("declaration element is <0xFF> <bitmask>", () => {
-  assert.deepEqual(bw.encodeDeclaration([1]), [0xFF, 0b10]);
-  assert.deepEqual(bw.encodeDeclaration([0]), [0xFF, 0b1]);
-  assert.deepEqual(bw.encodeDeclaration([1, 2, 3]), [0xFF, 0b1110]);
+test("the declaration is 0xFF followed by the entries' object IDs", () => {
+  assert.deepEqual(bw.encodeDeclaration([0x1e]), [0xff, 0x1e]);
+  assert.deepEqual(bw.encodeDeclaration([0x10, 0x57]), [0xff, 0x10, 0x57]);
+  assert.deepEqual(bw.encodeDeclaration([0x1e, 0x1e, 0x53]), [0xff, 0x1e, 0x1e, 0x53]);
 });
 
-test("Gordon's single-light example encodes to FF02", () => {
-  // packet: 40 0161 1E01 FF02 -- battery is object 0, the light is object 1.
-  assert.deepEqual(bw.encodeDeclaration([1]), [0xFF, 0x02]);
+test("an empty declaration is just the object ID", () => {
+  assert.deepEqual(bw.encodeDeclaration([]), [0xff]);
 });
 
-test("encode and decode round-trip", () => {
-  for (const positions of [[], [0], [7], [0, 3, 7], [0, 1, 2, 3, 4, 5, 6, 7]]) {
-    const mask = bw.encodeDeclaration(positions)[1];
-    assert.deepEqual(bw.decodeDeclaration(mask), positions);
+test("the packet id, the declaration and device information are not entries", () => {
+  for (const id of [0x00, 0xff, 0xf0, 0xf1, 0xf2]) {
+    assert.throws(
+      () => bw.encodeDeclaration([0x1e, id]),
+      (error) => error.code === "forbidden_entry",
+      `0x${id.toString(16)} should be refused`
+    );
   }
-});
-
-test("a position beyond the one-byte bitmask is rejected", () => {
-  assert.throws(() => bw.encodeDeclaration([8]), /out of range/);
 });

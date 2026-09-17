@@ -1,7 +1,7 @@
 /* bthome-writable — the minimal device: one LED, writable from Home Assistant.
  *
  * Flash this onto an nRF52-class Espruino board (Puck.js, MDBT42Q, Bangle.js)
- * with the Web IDE. See ../HARDWARE-TEST.md for the T1.1 test procedure.
+ * with the Web IDE. See ../HARDWARE-TEST.md for the test procedure.
  */
 
 var bw = require("BTHomeWritable");
@@ -16,9 +16,11 @@ function apply() {
 bw.setup({
   advertise: [
     { type: "battery", get: function () { return E.getBattery(); } },
+    // `set` makes it writable: listed in the declaration, served on
+    // characteristic 2FAA0001. Its state is not advertised (PROTOCOL.md §2.3),
+    // and nothing but a write changes it, so it needs no `get` either.
     {
       type: "light",
-      get: function () { return light.on; },
       set: function (v) {
         light.on = v;
         apply();
@@ -27,12 +29,12 @@ bw.setup({
   ],
   interval: 1000,
   onError: function (error) {
-    // Writes are rejected silently on the wire (there is no ack channel), so
-    // this is the only place a desync becomes visible during bring-up.
+    // Espruino acknowledges a write before this code runs, so a rejected write
+    // looks delivered to the receiver. This is the only place it shows.
     console.log("write rejected:", error.code, error.message);
   },
 });
 
 apply();
 console.log("advertising as", NRF.getAddress());
-console.log("writable positions:", bw.plan().writablePositions);
+console.log("writable entries:", bw.plan().entryIds);

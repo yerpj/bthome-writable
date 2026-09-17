@@ -4,18 +4,10 @@
  * value on a display attached to a BLE device, without the device polling
  * anything or the user writing any configuration.
  *
- * An SSD1306 over I2C on a nice!nano. The text object is **write-only** — it
- * has a `set` and no `get`, which is all the module needs to work that out
- * (PROTOCOL.md §3). It is advertised as a zero-length placeholder, never as
- * content, for two reasons: a screen's worth of text does not fit in an
- * advertising packet, and what is on someone's screen is not necessarily
- * everyone's business.
- *
- * The consequence is worth stating plainly: **a write-only object has no
- * confirmation.** §6's model — the refreshed advertising is the proof — cannot
- * apply to a value the device never advertises. If a write is lost, nothing
- * says so. The temperature object below is there partly so the device still has
- * something to say for itself.
+ * An SSD1306 over I2C on a nice!nano. The text entry has a `set` and no `get`:
+ * nothing but a write changes the screen, so there is nothing for a receiver to
+ * read back and no settings revision to advertise (PROTOCOL.md §3.1). The text
+ * is never advertised, which also keeps what is on someone's screen off the air.
  *
  * Install with:
  *   python -m tools.espruino_deploy --address <mac> \
@@ -30,9 +22,8 @@ var DISPSDA = D29;
 var DISPSCL = D2;
 
 var g;
-// What the screen is showing. A global on purpose: it is how a host can read
-// back what actually arrived, which for an object with no confirmation is the
-// only way to tell an applied write from one that vanished.
+// What the screen is showing. A global on purpose: a host can read it back over
+// the console to check what actually arrived.
 var shown = "";
 
 /* Draw `text`, wrapping it across the 128x64 panel rather than running off the
@@ -64,19 +55,15 @@ function start() {
   bw.setup({
     advertise: [
       // The nice!nano has no battery sense -- E.getBattery() is a Puck.js
-      // function -- so the device reports the nRF52's own die temperature
-      // instead. Something to say for itself, since the text it is sent can
-      // never be confirmed.
+      // function -- so the device reports the nRF52's own die temperature.
       { type: "temperature", interval: 30000, get: function () { return E.getTemperature(); } },
-      // `set` and no `get`: write-only, so it advertises an empty placeholder.
       { type: "text", set: show },
     ],
     interval: 1000,
-    // This packet needs 10 bytes of service data, and a nice!nano advertising
-    // its default "Espruino b216" leaves 7 -- the name takes 15 of the 31 and
-    // this firmware does not shorten it to make room (D-046). The device is
-    // still discovered: Home Assistant matches on the BTHome service data, not
-    // on a name.
+    // A nice!nano advertising its default "Espruino b216" measured 7 bytes of
+    // service data with the name, 22 without, on 2v29.242 (D-046). This packet
+    // needs 8. The device is still discovered: Home Assistant matches on the
+    // BTHome service data, not on a name.
     showName: false,
     onError: function (error) {
       console.log("write rejected:", error.code, error.message);
@@ -85,7 +72,7 @@ function start() {
 
   show("ready");
   console.log("advertising as", NRF.getAddress());
-  console.log("writable positions:", bw.plan().writablePositions);
+  console.log("writable entries:", bw.plan().entryIds);
   console.log("service data bytes:", bw.plan().serviceDataLength);
 }
 

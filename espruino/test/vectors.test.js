@@ -57,6 +57,25 @@ test("the vector file is the one this suite expects", () => {
   assert.ok(VECTORS.length >= 10);
   assert.equal(DOCUMENT.constants.device_info_byte_advertising, "41");
   assert.equal(DOCUMENT.constants.device_info_byte_write, "ff");
+  assert.equal(DOCUMENT.constants.device_info_byte_read, "fe");
+  assert.deepEqual(
+    [...new Set(VECTORS.map((v) => v.direction))].sort(),
+    ["advertising", "read", "write"]
+  );
+});
+
+test("a read replayed as a write fails on the nonce alone", () => {
+  /* Reads and writes share one layout (§5.2), so the bytes cannot tell them
+   * apart; only the direction byte in the nonce, 0xFE against 0xFF, does. */
+  const replayed = VECTORS.find((v) => v.name === "replay-read-as-write");
+  const original = VECTORS.find((v) => v.name === "read-target-temperature");
+  const key = Buffer.from(replayed.bindkey, "hex");
+  const { ciphertext, mic } = splitPayload(replayed);
+
+  assert.equal(decrypt(key, Buffer.from(replayed.nonce, "hex"), ciphertext, mic), null);
+  const recovered = decrypt(key, Buffer.from(original.nonce, "hex"), ciphertext, mic);
+  assert.notEqual(recovered, null);
+  assert.equal(recovered.toString("hex"), original.plaintext);
 });
 
 for (const vector of VECTORS) {
