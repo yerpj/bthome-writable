@@ -29,6 +29,10 @@ FIXTURES: dict[str, dict[str, Any]] = {
 BTHOME_UUID = "0000fcd2-0000-1000-8000-00805f9b34fb"
 DEFAULT_ADDRESS = "A4:C1:38:8E:1F:2B"
 
+# Written out rather than imported from the integration, so the tests check the
+# UUIDs against the specification (§4.1) instead of against themselves.
+UUID_TEMPLATE = "2faa{:04x}-3b0b-4b1a-9e2a-b4c2952e62f2"
+
 
 # --- Two things this suite has to switch off ---------------------------------
 #
@@ -42,7 +46,7 @@ DEFAULT_ADDRESS = "A4:C1:38:8E:1F:2B"
 # Setting up the `bluetooth` component opens a socket, and pytest-socket blocks
 # it before any fixture of ours can ask for `socket_enabled`. Nothing in this
 # suite talks to a network or a radio: the transport is faked in `radio` and
-# `mock_write`.
+# `gatt`.
 pytest_socket.disable_socket = lambda *args, **kwargs: None
 pytest_socket.enable_socket()
 
@@ -124,46 +128,87 @@ def service_info(
     )
 
 
-def with_light(fixture_name: str, on: bool, **kwargs: Any) -> BluetoothServiceInfoBleak:
-    """The same fixture with its light object flipped.
+class FakeCharacteristic:
+    def __init__(self, uuid: str, properties: list[str]) -> None:
+        self.uuid = uuid
+        self.properties = properties
 
-    Used to simulate the device confirming (or failing to confirm) a write.
+
+class FakeGattClient:
+    """A connected device, as far as the coordinator talks to one.
+
+    Holds one characteristic per declared entry, records every write as
+    `(uuid, payload)`, serves reads from `readable`, and can be told to fail a
+    given write. Everything the coordinator does over GATT goes through here,
+    so the tests see the bytes the protocol puts on the air.
     """
-    payload = bytearray(bytes.fromhex(FIXTURES[fixture_name]["service_data"]))
-    for index in range(len(payload) - 1):
-        if payload[index] == 0x1E:
-            payload[index + 1] = 1 if on else 0
-            break
-    return service_info(fixture_name, service_data=bytes(payload), **kwargs)
+
+    def __init__(self) -> None:
+        self.characteristics: dict[str, FakeCharacteristic] = {}
+        self.readable: dict[str, bytes] = {}
+        self.writes: list[tuple[str, bytes]] = []
+        self.reads: list[str] = []
+        self.fail_on_write: Exception | None = None
+        self.fail_after: int | None = None
+        self.connections = 0
+        self.disconnects = 0
+        self.cache_cleared = 0
+        self.services = self
+
+    def declare(self, entries: int, readable: dict[int, bytes] | None = None) -> None:
+        readable = readable or {}
+        for k in range(1, entries + 1):
+            uuid = UUID_TEMPLATE.format(k)
+            props = ["write", "read"] if k in readable else ["write"]
+            self.characteristics[uuid] = FakeCharacteristic(uuid, props)
+            if k in readable:
+                self.readable[uuid] = readable[k]
+
+    # `client.services.get_characteristic(uuid)`
+    def get_characteristic(self, uuid: str) -> FakeCharacteristic | None:
+        return self.characteristics.get(uuid)
+
+    async def write_gatt_char(self, characteristic, payload, response=True) -> None:
+        assert response, "PROTOCOL.md §4.2: writes are with response"
+        if self.fail_after is not None and len(self.writes) >= self.fail_after:
+            raise self.fail_on_write or RuntimeError("link dropped")
+        if self.fail_after is None and self.fail_on_write is not None:
+            raise self.fail_on_write
+        self.writes.append((characteristic.uuid, bytes(payload)))
+
+    async def read_gatt_char(self, characteristic) -> bytes:
+        self.reads.append(characteristic.uuid)
+        return self.readable[characteristic.uuid]
+
+    async def disconnect(self) -> None:
+        self.disconnects += 1
+
+    async def clear_cache(self) -> None:
+        self.cache_cleared += 1
 
 
 @pytest.fixture
-def mock_write():
-    """Capture what the integration would send, without a radio.
+def gatt():
+    """Patch the connection path so writes and reads reach a FakeGattClient."""
+    client = FakeGattClient()
 
-    Patches only the transport: the payload the test sees is the one the
-    coordinator composed, byte for byte, as PROTOCOL.md §4.2 describes it.
-    """
-    written: list[bytes] = []
+    async def connect(**_kwargs):
+        client.connections += 1
+        return client
 
-    async def _write_now(self, payload):
-        written.append(payload)
-
-    with patch(
-        "custom_components.bthome_writable.coordinator."
-        "BTHomeWritableCoordinator._write_now",
-        _write_now,
+    module = "custom_components.bthome_writable.coordinator"
+    with (
+        patch(
+            f"{module}.bluetooth.async_ble_device_from_address", return_value=object()
+        ),
+        patch(f"{module}.establish_connection", connect),
+        patch(f"{module}.WRITE_DEBOUNCE", 0.01),
     ):
-        yield written
+        yield client
 
 
 class FakeRadio:
-    """Stands in for the Bluetooth stack, so tests can time advertisements.
-
-    The confirmation model of §6 is entirely about *when* an advertisement
-    arrives relative to a write, so the tests need to drive that themselves
-    rather than hope a real scanner cooperates.
-    """
+    """Stands in for the Bluetooth stack, so tests control advertisements."""
 
     def __init__(self) -> None:
         self.last: BluetoothServiceInfoBleak | None = None
@@ -214,28 +259,24 @@ def radio():
         yield fake
 
 
-@pytest.fixture(autouse=True)
-def fast_confirmation(request):
-    """Shrink the confirmation window for every test in this module.
+async def setup_device(hass, radio, fixture_name: str, **kwargs: Any):
+    """Bring one configured device up, seeded with a first advertisement."""
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-    An entity that has written but not been confirmed keeps a task alive until
-    the ceiling, and `async_block_till_done` waits for it -- so production
-    values would make the suite wait a minute per write. The behaviour under
-    test is the ordering and the conditions, not the durations.
+    from custom_components.bthome_writable.const import DOMAIN
 
-    Opt out with `@pytest.mark.real_confirmation` where the durations are the
-    point.
-    """
-    if request.node.get_closest_marker("real_confirmation"):
-        yield
-        return
+    radio.last = service_info(fixture_name, **kwargs)
+    entry = MockConfigEntry(
+        domain=DOMAIN, unique_id=DEFAULT_ADDRESS, data={}, title="Espruino Light"
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    return entry
 
-    with (
-        patch(
-            "custom_components.bthome_writable.coordinator.CONFIRM_WINDOW_FLOOR", 0.05
-        ),
-        patch(
-            "custom_components.bthome_writable.coordinator.CONFIRM_WINDOW_CEILING", 1.0
-        ),
-    ):
-        yield
+
+async def settle(hass, seconds: float = 0.05) -> None:
+    import asyncio
+
+    await asyncio.sleep(seconds)
+    await hass.async_block_till_done()

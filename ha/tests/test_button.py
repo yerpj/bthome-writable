@@ -1,82 +1,82 @@
-"""The button platform: writable event objects.
-
-One button per value of BTHome's own vocabulary, and nothing that pretends to
-confirm — an event object's resting advertisement is "none" whatever was
-pressed, so §6 has nothing to compare against.
-"""
+"""The button platform: event entries, one button per vocabulary value."""
 
 from __future__ import annotations
-
-from unittest.mock import patch
 
 from homeassistant.core import HomeAssistant
 import pytest
 
-from custom_components.bthome_writable.protocol import event_values
+from custom_components.bthome_writable.button import event_payload
 
-from .test_switch import FAST_DEBOUNCE, settle, setup_device
+from .conftest import UUID_TEMPLATE, service_info, settle, setup_device
 
 pytestmark = pytest.mark.usefixtures("custom_integration")
 
 PRESS = "button.espruino_light_press"
-LONG_PRESS = "button.espruino_light_long_press"
-
-
-async def press(hass: HomeAssistant, entity: str) -> None:
-    with patch(
-        "custom_components.bthome_writable.coordinator.WRITE_DEBOUNCE", FAST_DEBOUNCE
-    ):
-        await hass.services.async_call(
-            "button", "press", {"entity_id": entity}, blocking=True
-        )
-        await settle(hass)
 
 
 async def test_one_button_per_value_of_the_vocabulary(
-    hass: HomeAssistant, radio
+    hass: HomeAssistant, radio, gatt
 ) -> None:
-    """Seven values, seven buttons. Choosing a favourite would make the rest
-    unreachable, which is the mistake the switch platform used to make."""
-    await setup_device(hass, radio, "writable-button")
-
-    expected = len(event_values(0x3A) or {})
-    buttons = [
-        state
-        for state in hass.states.async_all("button")
-        if state.entity_id.startswith("button.espruino_light_")
-    ]
-    assert len(buttons) == expected
-    assert hass.states.get(PRESS) is not None
-    assert hass.states.get(LONG_PRESS) is not None
+    await setup_device(hass, radio, "momentary-action")
+    for name in ("press", "double_press", "long_press", "hold_press"):
+        assert hass.states.get(f"button.espruino_light_{name}") is not None
 
 
-async def test_pressing_writes_the_value_that_button_names(
-    hass: HomeAssistant, radio, mock_write
+async def test_pressing_writes_the_event_to_its_entry(
+    hass: HomeAssistant, radio, gatt
 ) -> None:
-    """0x04 is long_press; the same bytes as the fixture's `long-press` write."""
-    await setup_device(hass, radio, "writable-button")
-    await press(hass, LONG_PRESS)
+    await setup_device(hass, radio, "momentary-action")
+    gatt.declare(1)
 
-    assert mock_write == [bytes.fromhex("3a04")]
+    await hass.services.async_call(
+        "button", "press", {"entity_id": PRESS}, blocking=True
+    )
+    await settle(hass)
+
+    assert gatt.writes == [(UUID_TEMPLATE.format(1), bytes.fromhex("3a01"))]
 
 
-async def test_a_press_does_not_wait_for_a_confirmation_that_cannot_come(
-    hass: HomeAssistant, radio, mock_write, caplog
+async def test_two_presses_are_two_writes(hass: HomeAssistant, radio, gatt) -> None:
+    """Events are never coalesced: a second press is not a repeat to drop."""
+    await setup_device(hass, radio, "momentary-action")
+    gatt.declare(1)
+
+    await hass.services.async_call("button", "press", {"entity_id": PRESS})
+    await hass.services.async_call("button", "press", {"entity_id": PRESS})
+    await settle(hass, 0.2)
+
+    assert gatt.writes == [(UUID_TEMPLATE.format(1), bytes.fromhex("3a01"))] * 2
+
+
+async def test_a_command_entry_is_offered_now_that_writes_are_per_entry(
+    hass: HomeAssistant, radio, gatt
 ) -> None:
-    """The device keeps advertising 'none'. An entity applying §6 here would
-    log a revert warning after every single press."""
-    await setup_device(hass, radio, "writable-button")
-    caplog.clear()
-    await press(hass, PRESS)
+    """Version 1 could not offer 0x3B: write-all would have sent it an `off`.
+    Version 2 writes only the entry pressed (D-048)."""
+    await setup_device(
+        hass, radio, "momentary-action", service_data=bytes.fromhex("400009ff3b")
+    )
+    gatt.declare(1)
+    assert hass.states.get("button.espruino_light_toggle") is not None
 
-    assert mock_write == [bytes.fromhex("3a01")]
-    assert "reverting" not in caplog.text
+    await hass.services.async_call(
+        "button", "press", {"entity_id": "button.espruino_light_toggle"}, blocking=True
+    )
+    await settle(hass)
+    assert gatt.writes == [(UUID_TEMPLATE.format(1), bytes.fromhex("3b0002"))]
 
 
-async def test_the_command_object_is_not_offered(hass: HomeAssistant, radio) -> None:
-    """0x3B's vocabulary has no 'none' -- its 0x00 is `off`. Until §4.3 says
-    what to send to leave it alone, a control for it would surprise people."""
-    from custom_components.bthome_writable.protocol import EVENT_NO_OP
+def test_event_payloads_follow_bthomes_encodings() -> None:
+    assert event_payload(0x3A, 0x04) == bytes([0x04])
+    assert event_payload(0x3C, 0x01) == bytes([0x01, 0x01])  # rotate left, one step
+    assert event_payload(0x3B, 0x01) == bytes([0x00, 0x01])  # on, no arguments
+    assert event_payload(0x3B, 0x03) == bytes([0x01, 0x03, 0x01])  # step up, one step
 
-    assert 0x3B not in EVENT_NO_OP
-    assert (event_values(0x3B) or {}).get(0x00) == "off"
+
+async def test_the_sensor_packet_does_not_create_buttons(
+    hass: HomeAssistant, radio, gatt
+) -> None:
+    await setup_device(hass, radio, "single-light")
+    radio.push(service_info("single-light"))
+    await hass.async_block_till_done()
+    assert not [s for s in hass.states.async_entity_ids() if s.startswith("button.")]

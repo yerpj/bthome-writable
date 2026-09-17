@@ -1,15 +1,13 @@
-"""Switch platform: BTHome binary objects declared writable.
+"""Switch platform: declared entries of a BTHome binary type.
 
-Every binary object, not a chosen few. The MVP exposed four classes -- generic,
-power, light, lock -- on the reasoning that a `motion` switch is nonsense. That
-reasoning is wrong: a device does not declare an object writable by accident,
-and one advertising a writable `garage_door` has a garage door. Refusing it made
-the device unusable in the name of protecting its owner from it. See
-spec/PLATFORMS.md.
+Every binary type, not a chosen few: a device does not declare an object
+writable by accident, and one declaring a writable `garage_door` has a garage
+door. See spec/PLATFORMS.md.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 from homeassistant.components.switch import SwitchEntity
@@ -19,25 +17,71 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from . import BTHomeWritableConfigEntry
 from .coordinator import BTHomeWritableCoordinator
 from .entity import BTHomeWritableEntity
-from .protocol import WritableObject, controllable, describe
+from .protocol import WritableEntry
 
 
-def switchable(obj: WritableObject) -> bool:
-    if not controllable(obj):
-        return False
-    kind = describe(obj.object_id)
-    return kind is not None and kind.kind == "binary"
+def is_kind(kind: str) -> Callable[[WritableEntry], bool]:
+    def check(entry: WritableEntry) -> bool:
+        described = entry.kind
+        return entry.offered and described is not None and described.kind == kind
+
+    return check
 
 
-def display_name(obj: WritableObject) -> str:
-    """The object's BTHome class, as a label: `garage_door` -> Garage door.
+def add_entities_as_declared(
+    entry: BTHomeWritableConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+    wanted: Callable[[WritableEntry], bool],
+    build: Callable[[BTHomeWritableCoordinator, WritableEntry], list[Any]],
+) -> None:
+    """Add entities for entries not seen before, on every advertisement.
 
-    Named after what the device says it is rather than a name of our own, so an
-    unusual writable object presents as itself.
+    Not once at setup: the declaration is only known once a packet has been
+    parsed, and new firmware may declare more entries.
     """
-    kind = describe(obj.object_id)
+    coordinator = entry.runtime_data
+    known: set[tuple[int, int]] = set()
+
+    @callback
+    def _sync() -> None:
+        if coordinator.declaration is None:
+            return
+        new: list[Any] = []
+        for declared in coordinator.declaration.entries:
+            key = (declared.entry, declared.object_id)
+            if key in known or not wanted(declared):
+                continue
+            known.add(key)
+            new.extend(build(coordinator, declared))
+        if new:
+            async_add_entities(new)
+
+    _sync()
+    entry.async_on_unload(coordinator.async_add_listener(_sync))
+
+
+def instance_label(
+    coordinator: BTHomeWritableCoordinator, entry: WritableEntry, name: str
+) -> str:
+    """`Light`, or `Light 2` when several entries share the type.
+
+    Numbered in entry order, the way `bthome-ble` numbers duplicate sensors, so
+    the controls and the sensors of a device follow one convention.
+    """
+    assert coordinator.declaration is not None
+    same = [
+        e for e in coordinator.declaration.entries if e.object_id == entry.object_id
+    ]
+    if len(same) < 2:
+        return name
+    return f"{name} {same.index(entry) + 1}"
+
+
+def type_label(entry: WritableEntry, fallback: str) -> str:
+    """The object's BTHome class, as a label: `garage_door` -> Garage door."""
+    kind = entry.kind
     if kind is None or not kind.device_class:
-        return "Switch"
+        return fallback
     return kind.device_class.replace("_", " ").capitalize()
 
 
@@ -46,75 +90,33 @@ async def async_setup_entry(
     entry: BTHomeWritableConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Create a switch for every writable boolean object."""
-    coordinator = entry.runtime_data
-    known: set[int] = set()
-
-    @callback
-    def _sync() -> None:
-        """Add entities for objects not seen before.
-
-        Runs on every advertisement rather than once, because the declaration
-        is only known once a packet has been parsed — and a device may start
-        advertising a longer declaration packet after a firmware update.
-        """
-        if coordinator.declaration is None:
-            return
-        new = [
-            BTHomeWritableSwitch(coordinator, obj)
-            for obj in coordinator.declaration.objects
-            if switchable(obj) and not obj.write_only and obj.position not in known
-        ]
-        if not new:
-            return
-        known.update(entity.position for entity in new)
-        async_add_entities(new)
-
-    _sync()
-    entry.async_on_unload(coordinator.async_add_listener(_sync))
+    """Create a switch for every declared binary entry."""
+    add_entities_as_declared(
+        entry,
+        async_add_entities,
+        is_kind("binary"),
+        lambda coordinator, declared: [BTHomeWritableSwitch(coordinator, declared)],
+    )
 
 
 class BTHomeWritableSwitch(BTHomeWritableEntity, SwitchEntity):
-    """One writable boolean object."""
+    """One declared binary entry."""
 
     def __init__(
-        self, coordinator: BTHomeWritableCoordinator, obj: WritableObject
+        self, coordinator: BTHomeWritableCoordinator, entry: WritableEntry
     ) -> None:
-        super().__init__(coordinator, obj)
-        name = display_name(obj)
-        suffix = _instance_suffix(coordinator, obj)
-        self._attr_name = name if suffix is None else f"{name} {suffix}"
+        super().__init__(coordinator, entry)
+        self._attr_name = instance_label(
+            coordinator, entry, type_label(entry, "Switch")
+        )
 
     @property
     def is_on(self) -> bool | None:
-        value = self._effective_value
-        if value is None:
-            return None
-        return value[0] != 0
+        value = self._value
+        return None if value is None else value[0] != 0
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         await self.async_apply(b"\x01")
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         await self.async_apply(b"\x00")
-
-
-def _instance_suffix(
-    coordinator: BTHomeWritableCoordinator, obj: WritableObject
-) -> int | None:
-    """1-based index among writable objects of the same ID, or None if unique.
-
-    Mirrors how `bthome-ble` names duplicate sensors (`light_1`, `light_2`), so
-    a device's writable switches and its read-only sensors are numbered the same
-    way in the UI rather than by two unrelated schemes.
-    """
-    if coordinator.declaration is None:
-        return None
-    same = [
-        other
-        for other in coordinator.declaration.objects
-        if other.object_id == obj.object_id
-    ]
-    if len(same) < 2:
-        return None
-    return same.index(obj) + 1

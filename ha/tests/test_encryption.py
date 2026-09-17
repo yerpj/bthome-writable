@@ -31,6 +31,8 @@ from custom_components.bthome_writable.protocol import (
     decrypt_advertising,
     is_encrypted,
     nonce,
+    open_read,
+    parse_declaration,
     seal_write,
     split_sealed,
 )
@@ -43,6 +45,7 @@ VECTORS = json.loads(
 
 ADVERTISING = [v for v in VECTORS if v["direction"] == "advertising"]
 WRITES = [v for v in VECTORS if v["direction"] == "write"]
+READS = [v for v in VECTORS if v["direction"] == "read"]
 
 
 @pytest.mark.parametrize("vector", ADVERTISING, ids=lambda v: v["name"])
@@ -69,6 +72,26 @@ def test_write_vectors(vector) -> None:
         bytes.fromhex(vector["plaintext"]), key, vector["mac"], vector["counter"]
     )
     assert sealed.hex() == vector["payload"]
+
+
+@pytest.mark.parametrize("vector", READS, ids=lambda v: v["name"])
+def test_read_vectors(vector) -> None:
+    """§4.3, §5.1: a sealed read opens under the read direction, 0xFE."""
+    key = bytes.fromhex(vector["bindkey"])
+    assert open_read(
+        bytes.fromhex(vector["payload"]), key, vector["mac"]
+    ) == bytes.fromhex(vector["plaintext"])
+
+
+def test_a_sealed_read_does_not_open_as_anything_else() -> None:
+    """The replay vector: the read's bytes, presented as a write, fail -- and a
+    write does not open as a read either."""
+    read = next(v for v in READS)
+    key = bytes.fromhex(read["bindkey"])
+    write = seal_write(
+        bytes.fromhex(read["plaintext"]), key, read["mac"], read["counter"]
+    )
+    assert open_read(write, key, read["mac"]) is None
 
 
 def test_a_write_and_an_advertisement_never_share_a_nonce() -> None:
@@ -178,7 +201,7 @@ async def test_a_keyed_device_that_advertises_in_clear_is_refused_loudly(
     coordinator.advertises_encrypted = False
 
     with pytest.raises(WriteFailed, match="advertising in clear"):
-        await coordinator._write_now(b"\x1e\x01")
+        await coordinator._write_now([(1, b"\x01", True)], [])
 
 
 async def test_a_keyed_device_still_seals_before_the_first_advertisement(
@@ -191,6 +214,7 @@ async def test_a_keyed_device_still_seals_before_the_first_advertisement(
         hass, "A4:C1:38:8E:1F:2B", bindkey=bytes(range(16))
     )
     assert coordinator.advertises_encrypted is None
+    coordinator.declaration = parse_declaration(bytes.fromhex("0009ff1e"))
 
     # Past the downgrade guard, so it fails later -- on there being no device.
     with (
@@ -201,4 +225,4 @@ async def test_a_keyed_device_still_seals_before_the_first_advertisement(
         ),
         pytest.raises(WriteFailed, match="not reachable"),
     ):
-        await coordinator._write_now(b"\x1e\x01")
+        await coordinator._write_now([(1, b"\x01", True)], [])

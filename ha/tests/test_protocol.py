@@ -1,7 +1,7 @@
-"""The protocol module, driven by the shared advertising fixtures.
+"""The protocol module, driven by the shared advertising fixtures (version 2).
 
-No Home Assistant involved: this is the wire format, and it is checked against
-the same file the Espruino suite consumes (CLAUDE.md rule 6).
+No Home Assistant involved: this is the wire format, checked against the same
+file the Espruino suite consumes (CLAUDE.md rule 7).
 """
 
 from __future__ import annotations
@@ -12,10 +12,10 @@ import pytest
 
 from custom_components.bthome_writable.protocol import (
     ProtocolError,
-    WritableObject,
-    compose_write,
-    controllable,
-    no_op_value,
+    WritableEntry,
+    characteristic_uuid,
+    decode_object,
+    encode_object,
     parse_declaration,
     split_objects,
 )
@@ -37,173 +37,107 @@ VALID_WITH_DECLARATION = [
 
 @pytest.mark.parametrize("name", VALID_WITH_DECLARATION)
 def test_declaration_matches_the_fixture(name: str) -> None:
-    """Every declared bitmask and position round-trips through the parser."""
+    """Entries, their characteristics and what is offered, as the fixture says."""
     fixture = FIXTURES[name]
     declaration = parse_declaration(objects_of(fixture))
-
     assert declaration is not None
-    assert declaration.bitmask == fixture["declaration"]["bitmask"]
-    assert list(declaration.positions) == fixture["declaration"]["writable_positions"]
+
+    expected = fixture["declaration"]
+    assert [f"{e.object_id:02x}" for e in declaration.entries] == expected["entries"]
+    assert [e.uuid for e in declaration.entries] == [
+        c["uuid"] for c in expected["characteristics"]
+    ]
+    assert [e.entry for e in declaration.offered] == expected["offered_entries"]
 
 
 @pytest.mark.parametrize("name", VALID_WITH_DECLARATION)
-def test_writable_objects_carry_the_advertised_value(name: str) -> None:
-    """A parsed object holds the bytes the packet advertised at that position."""
+def test_settings_revision_is_read_when_advertised(name: str) -> None:
     fixture = FIXTURES[name]
     declaration = parse_declaration(objects_of(fixture))
     assert declaration is not None
+    advertised = [o for o in fixture["objects"] if o["object_id"] == "65"]
+    if advertised:
+        assert declaration.settings_revision == int(advertised[0]["value"], 16)
+    else:
+        assert declaration.settings_revision is None
 
-    for obj in declaration.objects:
-        advertised = fixture["objects"][obj.position]
-        assert obj.object_id == int(advertised["object_id"], 16)
-        assert obj.value.hex() == advertised["value"]
 
-
-def test_a_plain_bthome_device_yields_no_declaration() -> None:
-    """What the config flow's not_supported abort keys on."""
+def test_an_ordinary_bthome_device_has_no_declaration() -> None:
     fixture = FIXTURES["plain-bthome-no-declaration"]
     assert parse_declaration(objects_of(fixture)) is None
 
 
-def test_rotation_sensor_packet_yields_no_declaration() -> None:
-    """§2.1: only the declaration packet carries one, and a receiver must not
-    infer writability from a device's other rotation slots."""
-    assert parse_declaration(objects_of(FIXTURES["rotation-sensor-packet"])) is None
+def test_a_sensor_packet_of_a_rotating_device_has_no_declaration() -> None:
+    fixture = FIXTURES["rotation-sensor-packet"]
+    assert parse_declaration(objects_of(fixture)) is None
 
 
-def test_declaration_object_id_is_not_confused_with_a_value_byte() -> None:
-    """A battery reading of 255 must not be mistaken for the declaration.
+def test_an_empty_declaration_offers_nothing() -> None:
+    declaration = parse_declaration(objects_of(FIXTURES["empty-declaration"]))
+    assert declaration is not None
+    assert declaration.entries == ()
 
-    A payload scan for 0xFF would find the battery value first. The parser walks
-    objects instead, which is the point of this test.
-    """
-    payload = bytes.fromhex("01ff1e01ff04")  # battery=255, light=on, declaration
+
+def test_unknown_and_forbidden_entries_are_counted_but_not_offered() -> None:
+    """§2.1: a skipped entry must not renumber the characteristics after it."""
+    declaration = parse_declaration(objects_of(FIXTURES["unknown-entry-type"]))
+    assert declaration is not None
+    assert [e.entry for e in declaration.offered] == [1, 3]
+    assert declaration.entries[2].uuid == characteristic_uuid(3)
+
+    forbidden = parse_declaration(objects_of(FIXTURES["forbidden-entry"]))
+    assert forbidden is not None
+    assert [e.entry for e in forbidden.offered] == [2]
+
+
+def test_a_value_byte_of_0xff_is_not_mistaken_for_the_declaration() -> None:
+    """The payload is walked, not scanned: a battery at 255 is not a declaration."""
+    payload = bytes.fromhex("0009" + "01ff" + "ff1e")
     declaration = parse_declaration(payload)
-
     assert declaration is not None
-    assert declaration.bitmask == 0x04
-    assert [obj.position for obj in declaration.objects] == []
-    # Bit 2 addresses nothing here (only two objects), so it is ignored (§2.2).
+    assert [e.object_id for e in declaration.entries] == [0x1E]
 
 
-def test_bitmask_bit_addressing_a_missing_object_is_ignored() -> None:
-    fixture = FIXTURES["bitmask-beyond-object-count"]
-    declaration = parse_declaration(objects_of(fixture))
-
-    assert declaration is not None
-    assert declaration.bitmask == 0b00100010
-    # Bit 1 is the light; bit 5 addresses nothing and must not become an entity.
-    assert [obj.position for obj in declaration.objects] == [1]
+def test_a_command_object_before_the_declaration_is_walked_correctly() -> None:
+    """0x3B is variable length: argument length, opcode, arguments."""
+    payload = bytes.fromhex("0001" + "3b010305" + "ff1e")
+    objects, offset = split_objects(payload)
+    assert objects[1] == (0x3B, bytes.fromhex("010305"))
+    assert offset == len(payload) - 2
 
 
-def test_declaration_marking_itself_is_ignored() -> None:
-    fixture = FIXTURES["declaration-marks-itself"]
-    declaration = parse_declaration(objects_of(fixture))
-
-    assert declaration is not None
-    assert [obj.position for obj in declaration.objects] == [1]
+def test_characteristic_numbers_are_hexadecimal() -> None:
+    assert characteristic_uuid(1) == "2faa0001-3b0b-4b1a-9e2a-b4c2952e62f2"
+    assert characteristic_uuid(10) == "2faa000a-3b0b-4b1a-9e2a-b4c2952e62f2"
 
 
-def test_declaration_not_last_is_rejected() -> None:
-    """§2.2 is a MUST, so a payload violating it is an error, not a shrug."""
-    fixture = FIXTURES["declaration-not-last"]
-    with pytest.raises(ProtocolError, match="not the last element"):
-        parse_declaration(objects_of(fixture))
+@pytest.mark.parametrize(
+    "fixture_name",
+    [n for n, f in FIXTURES.items() if f.get("writes") or f.get("reads")],
+)
+def test_writes_and_reads_round_trip_the_fixtures(fixture_name: str) -> None:
+    """§4.2, §4.3: one object, ID then value, in BTHome's own encoding."""
+    fixture = FIXTURES[fixture_name]
+    for access in fixture.get("writes", []) + fixture.get("reads", []):
+        entry = WritableEntry(
+            entry=access["entry"],
+            object_id=int(access["object"]["object_id"], 16),
+        )
+        value = bytes.fromhex(access["object"]["value"])
+        assert encode_object(entry, value).hex() == access["payload"]
+        assert decode_object(entry, bytes.fromhex(access["payload"])) == value
 
 
-def test_declaration_without_a_bitmask_byte_is_rejected() -> None:
-    with pytest.raises(ProtocolError, match="no bitmask"):
-        parse_declaration(bytes.fromhex("0161ff"))
+def test_a_read_of_the_wrong_type_is_refused() -> None:
+    """A characteristic that no longer means what the receiver thinks must not
+    be shown as state."""
+    light = WritableEntry(entry=1, object_id=0x1E)
+    with pytest.raises(ProtocolError):
+        decode_object(light, bytes.fromhex("5301" + "41"))
 
 
-def test_truncated_object_is_rejected_rather_than_guessed() -> None:
-    """A half-read packet must not produce a write composed from garbage."""
-    with pytest.raises(ProtocolError, match="truncated"):
-        split_objects(bytes.fromhex("0161 02ff".replace(" ", "")))
-
-
-@pytest.mark.parametrize("name", VALID_WITH_DECLARATION)
-def test_compose_write_matches_the_fixture_payloads(name: str) -> None:
-    """§4.2: the composed payload is byte-identical to the fixture's."""
-    fixture = FIXTURES[name]
-    declaration = parse_declaration(objects_of(fixture))
-    assert declaration is not None
-
-    for entry in fixture.get("writes", []):
-        # Reconstruct the change set the fixture's write represents.
-        changes: dict[int, bytes] = {}
-        for obj, written in zip(declaration.objects, entry["objects"], strict=True):
-            assert written["object_id"] == f"{obj.object_id:02x}"
-            changes[obj.position] = bytes.fromhex(written["value"])
-
-        assert compose_write(declaration, changes).hex() == entry["payload"]
-
-
-def test_unchanged_objects_are_resent_at_their_advertised_value() -> None:
-    """Changing one instance must not disturb the others (§4.3)."""
-    fixture = FIXTURES["espruino-multi-instance"]
-    declaration = parse_declaration(objects_of(fixture))
-    assert declaration is not None
-
-    payload = compose_write(declaration, {3: b"\x00"})
-
-    expected = fixture["writes"][0]["payload"]
-    assert payload.hex() == expected
-
-
-def test_write_only_objects_get_the_no_op_when_untouched() -> None:
-    """§4.3: a write-all must not accidentally fire a display or a buzzer."""
-    fixture = FIXTURES["multi-instance-and-display"]
-    declaration = parse_declaration(objects_of(fixture))
-    assert declaration is not None
-
-    text = declaration.objects[-1]
-    assert text.write_only is True
-
-    payload = compose_write(declaration, {2: b"\x00"})
-    assert payload.endswith(b"\x53\x00")
-
-
-def test_a_light_that_is_off_is_not_mistaken_for_a_placeholder() -> None:
-    """D-009: a fixed-length zero is a state, not a write-only marker.
-
-    Getting this wrong would expose a real switch as a stateless entity that
-    never reflects the device.
-    """
-    fixture = FIXTURES["espruino-multi-instance"]
-    declaration = parse_declaration(objects_of(fixture))
-    assert declaration is not None
-
-    off_light = next(obj for obj in declaration.objects if obj.value == b"\x00")
-    assert off_light.object_id == 0x1E
-    assert off_light.write_only is False
-
-
-def test_no_op_is_refused_for_objects_that_have_none() -> None:
-    """A fixed-length object is left alone by resending it, not by a sentinel."""
-    fixture = FIXTURES["espruino-single-light"]
-    declaration = parse_declaration(objects_of(fixture))
-    assert declaration is not None
-
-    with pytest.raises(ProtocolError, match="no no-op value"):
-        no_op_value(declaration.objects[0])
-
-
-def test_the_protocols_own_fields_never_become_controls() -> None:
-    """A malformed declaration is not hypothetical: a bitmask bit addressing the
-    packet id parses into a perfectly ordinary object, and the number platform
-    happily built a slider labelled "packet id" from one. Every platform passes
-    through this gate now (spec/PLATFORMS.md)."""
-    packet_id = WritableObject(
-        position=0, object_id=0x00, value=b"\x09", data_format="unsigned_integer"
-    )
-    declaration = WritableObject(
-        position=4, object_id=0xFF, value=b"\x04", data_format="unsigned_integer"
-    )
-    light = WritableObject(
-        position=2, object_id=0x1E, value=b"\x01", data_format="unsigned_integer"
-    )
-
-    assert not controllable(packet_id)
-    assert not controllable(declaration)
-    assert controllable(light)
+@pytest.mark.parametrize("payload", ["", "1e", "1e0100", "5305414243"])
+def test_a_read_of_the_wrong_length_is_refused(payload: str) -> None:
+    entry = WritableEntry(entry=1, object_id=0x53 if payload.startswith("53") else 0x1E)
+    with pytest.raises(ProtocolError):
+        decode_object(entry, bytes.fromhex(payload))

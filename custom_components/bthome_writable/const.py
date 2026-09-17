@@ -11,44 +11,26 @@ DOMAIN: Final = "bthome_writable"
 # without a declaration so users never see plain BTHome devices offered twice.
 BTHOME_SERVICE_UUID: Final = "0000fcd2-0000-1000-8000-00805f9b34fb"
 
-# --- Protocol constants (see spec/PROTOCOL.md) -------------------------------
-# Object ID carrying the writability declaration inside the BTHome service data.
+# --- Protocol constants (see spec/PROTOCOL.md, version 2) --------------------
 DECLARATION_OBJECT_ID: Final = 0xFF
+"""The declaration: 0xFF followed by the writable entries' object IDs (§2.1)."""
 
-#: BTHome's packet counter. Like the declaration it is the protocol's own
-#: bookkeeping rather than anything a user should be offered control of.
 PACKET_ID_OBJECT_ID: Final = 0x00
 
-# GATT service and characteristic (§4.1, decisions.md D-001). Provisional until
-# the first public release, frozen permanently after it.
-SERVICE_UUID: Final = "2faa0001-3b0b-4b1a-9e2a-b4c2952e62f2"
-WRITE_CHARACTERISTIC_UUID: Final = "2faa0002-3b0b-4b1a-9e2a-b4c2952e62f2"
+SETTINGS_REVISION_OBJECT_ID: Final = 0x65
+"""BTHome's settings revision. A device advertising it has writable values that
+can change by themselves, and readable characteristics to fetch them (§3.2)."""
 
-# BTHome device-information byte used in the AES-CCM nonce (§5.1).
-# 0x41 is the advertising value; writes use 0xFF so a captured advertisement can
-# never validate as a write. Used from Phase 3 onwards.
+# GATT (§4.1, decisions.md D-001, D-048). One base; the second group is 0000 for
+# the service and the entry number, in hexadecimal, for each entry. Provisional
+# until the first public release, frozen permanently after it.
+UUID_TEMPLATE: Final = "2faa{:04x}-3b0b-4b1a-9e2a-b4c2952e62f2"
+SERVICE_UUID: Final = UUID_TEMPLATE.format(0)
+
+# The direction, carried in the AES-CCM nonce's device-information byte (§5.1).
 DEVICE_INFO_BYTE_ADVERTISING: Final = 0x41
 DEVICE_INFO_BYTE_WRITE: Final = 0xFF
-
-# --- Confirmation model (§6, decisions.md D-007 and D-011) -------------------
-# The window is adaptive: a floor, and two of the device's observed advertising
-# intervals, so slowly advertising devices do not produce spurious reverts.
-CONFIRM_WINDOW_FLOOR: Final = 5.0
-CONFIRM_WINDOW_INTERVALS: Final = 2
-CONFIRM_WINDOW_CEILING: Final = 60.0
-"""An upper bound, so a device seen twice an hour cannot pin an entity
-optimistically for half an hour."""
-
-CONFIRM_ADVERTISEMENTS: Final = 2
-"""How many advertisements must arrive after a write before an unconfirmed
-value may be reverted.
-
-Time alone is not enough. A host with a single Bluetooth adapter cannot scan
-while it is connected, and takes seconds to resume afterwards, so the window
-can expire without the receiver having heard the device even once — reverting
-on the strength of having listened to nothing. Requiring a couple of actual
-advertisements makes the rule what it was always meant to be: the device was
-given two chances to say so and did not (D-011)."""
+DEVICE_INFO_BYTE_READ: Final = 0xFE
 
 # --- Connection handling -----------------------------------------------------
 CONF_MAX_CONNECTIONS: Final = "max_connections"
@@ -60,28 +42,21 @@ MIN_MTU: Final = 64
 DEFAULT_MTU_PAYLOAD: Final = 20
 """What fits in a write at BLE's default 23-byte MTU. Most writes are a couple
 of bytes, so the MTU is only worth asking about above this."""
+
 WRITE_DEBOUNCE: Final = 0.25
-"""Seconds to coalesce rapid changes -- a slider drag must produce one write,
-not one per pixel."""
+"""Seconds to let rapid changes pile up behind a write in flight -- a slider drag
+must produce one follow-up write, not one per pixel."""
 
 CONF_BINDKEY: Final = "bindkey"
 CONF_WRITE_COUNTER: Final = "write_counter"
 
 COUNTER_STRIDE: Final = 64
-"""How far ahead of the write counter the persisted mark sits (section 5.2).
+"""How far ahead of the write counter the persisted mark sits (§5.3).
 
 Saving on every write would mean a config-entry update per command. Saving a
 mark ahead of it and resuming *from the mark* gives up the values in between
 rather than reusing them, which is the requirement: never send a counter the
 device may already have accepted."""
-
-RESYNC_AFTER: Final = 2
-"""Consecutive unconfirmed writes before resynchronising the counter.
-
-Two rather than one, because a single unconfirmed write has ordinary
-explanations -- a device out of range for a moment, a stale GATT table. Two in a
-row on an encrypted device is the shape of a counter the receiver has fallen
-behind on, and that one never recovers on its own."""
 
 RESYNC_JUMP: Final = 100_000
 """How far a resynchronisation moves the counter.

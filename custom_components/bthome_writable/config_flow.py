@@ -118,9 +118,9 @@ class BTHomeWritableConfigFlow(ConfigFlow, domain=DOMAIN):
         if declaration is None:
             return self.async_abort(reason="not_supported")
 
-        if not declaration.objects:
-            # A declaration whose bitmask marks nothing, or marks only objects
-            # that are not in the packet. Nothing to expose.
+        if not declaration.offered:
+            # A declaration with no entries, or only entries this receiver
+            # cannot offer (unknown or forbidden types). Nothing to expose.
             return self.async_abort(reason="nothing_writable")
 
         self._declaration = declaration
@@ -150,7 +150,7 @@ class BTHomeWritableConfigFlow(ConfigFlow, domain=DOMAIN):
                 declaration = declaration_from(self._discovery, bindkey)
                 if declaration is None:
                     errors["base"] = "wrong_bindkey"
-                elif not declaration.objects:
+                elif not declaration.offered:
                     return self.async_abort(reason="nothing_writable")
                 else:
                     self._bindkey = bindkey
@@ -187,7 +187,7 @@ class BTHomeWritableConfigFlow(ConfigFlow, domain=DOMAIN):
             description_placeholders={
                 "name": self._discovery.name,
                 "address": self._discovery.address,
-                "count": str(len(self._declaration.objects)),
+                "count": str(len(self._declaration.offered)),
             },
         )
 
@@ -218,7 +218,7 @@ class BTHomeWritableConfigFlow(ConfigFlow, domain=DOMAIN):
                 return await self.async_step_bindkey()
 
             declaration = declaration_from(discovery)
-            if declaration is None or not declaration.objects:
+            if declaration is None or not declaration.offered:
                 return self.async_abort(reason="not_supported")
 
             self._declaration = declaration
@@ -238,7 +238,7 @@ class BTHomeWritableConfigFlow(ConfigFlow, domain=DOMAIN):
                 self._candidates[discovery.address] = discovery
                 continue
             declaration = declaration_from(discovery)
-            if declaration is not None and declaration.objects:
+            if declaration is not None and declaration.offered:
                 self._candidates[discovery.address] = discovery
 
         if not self._candidates:

@@ -1,8 +1,8 @@
 """The BTHome Writable integration.
 
-Downlink companion to the core BTHome integration: devices declare writable
-objects in their advertising, this integration writes new values back over a
-short GATT connection. See spec/PROTOCOL.md.
+Downlink companion to the core BTHome integration: devices declare the object
+types they accept writes for, this integration writes values back over a short
+GATT connection, one characteristic per entry. See spec/PROTOCOL.md.
 """
 
 from __future__ import annotations
@@ -106,11 +106,12 @@ async def async_setup_entry(
         # once: anyone within radio range can write to an actuator that is not
         # sealed, and the user cannot tell from the interface that this is so.
         _LOGGER.warning(
-            "%s exposes %d writable object(s) without encryption: any device in "
+            "%s exposes %d writable entr%s without encryption: any device in "
             "radio range can operate them. Set a bindkey on the device and "
             "reconfigure it here to seal both directions (PROTOCOL.md section 5)",
             entry.title,
-            len(coordinator.declaration.objects),
+            len(coordinator.declaration.offered),
+            "y" if len(coordinator.declaration.offered) == 1 else "ies",
         )
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)

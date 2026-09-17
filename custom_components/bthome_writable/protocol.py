@@ -1,4 +1,4 @@
-"""Wire-format handling for the BTHome Writable protocol.
+"""Wire-format handling for the BTHome Writable protocol, version 2.
 
 Everything that reads or writes protocol bytes lives here, and nothing here
 touches Home Assistant. Two reasons: the logic is meant to be proposed upstream
@@ -7,9 +7,9 @@ asks for declaration parsing to sit behind a single function so the container
 can change at the cost of that one function.
 
 Parsing of the BTHome objects themselves is deliberately *not* reimplemented —
-`bthome-ble` owns that. This module only reads the parts of the payload that
-`bthome-ble` does not know about: the declaration, and the positions it refers
-to. See spec/PROTOCOL.md.
+`bthome-ble` owns that. This module only reads what `bthome-ble` does not know
+about: the declaration, the settings revision's role, and the one-object writes
+and reads of §4. See spec/PROTOCOL.md.
 """
 
 from __future__ import annotations
@@ -20,63 +20,32 @@ from typing import Final
 from .const import (
     DECLARATION_OBJECT_ID,
     DEVICE_INFO_BYTE_ADVERTISING,
+    DEVICE_INFO_BYTE_READ,
     DEVICE_INFO_BYTE_WRITE,
     PACKET_ID_OBJECT_ID,
+    SETTINGS_REVISION_OBJECT_ID,
+    UUID_TEMPLATE,
 )
 
-# Objects whose value is preceded by a length byte. Every other object has a
-# width fixed by its ID, which `bthome-ble`'s table knows and we look up rather
-# than duplicate.
-VARIABLE_LENGTH_FORMATS: Final = frozenset({"raw", "string"})
+# `bthome-ble` format names of objects whose width is not fixed by their ID.
+LENGTH_PREFIXED_FORMATS: Final = frozenset({"raw", "string"})
+COMMAND_FORMAT: Final = "command"  # <arg length, low 5 bits> <opcode> <args>
 
-
-@dataclass(frozen=True)
-class WritableObject:
-    """One object a device has declared writable."""
-
-    position: int
-    object_id: int
-    value: bytes
-    """The last advertised value, used to compose no-change writes (§4.3).
-
-    For a variable-length object this includes the leading length byte, so it
-    can be concatenated into a write unchanged.
-    """
-
-    data_format: str
-    """`bthome-ble`'s format name for this object ID."""
-
-    @property
-    def is_variable_length(self) -> bool:
-        return self.data_format in VARIABLE_LENGTH_FORMATS
-
-    @property
-    def write_only(self) -> bool:
-        """Whether this is the write-only placeholder of §3.
-
-        Only detectable for variable-length objects, where a length of 0 is
-        unambiguous. A fixed-length object advertising zero is indistinguishable
-        from one whose value legitimately is zero — a light that is off
-        advertises `1E 00` — so the pattern does not apply to them. This is
-        narrower than §3's "empty or zero value" wording; see decisions.md D-009.
-        """
-        return self.is_variable_length and self.value == b"\x00"
-
-
-@dataclass(frozen=True)
-class Declaration:
-    """A parsed writability declaration and the objects it points at."""
-
-    bitmask: int
-    objects: tuple[WritableObject, ...]
-
-    @property
-    def positions(self) -> tuple[int, ...]:
-        return tuple(obj.position for obj in self.objects)
+#: Entries a declaration may not list (§2.1): BTHome's packet id, the
+#: declaration itself, and device information. A receiver counts them, so the
+#: entries after keep their characteristic numbers, but never offers them.
+FORBIDDEN_ENTRIES: Final = frozenset(
+    {PACKET_ID_OBJECT_ID, DECLARATION_OBJECT_ID, 0xF0, 0xF1, 0xF2}
+)
 
 
 class ProtocolError(Exception):
     """The payload does not follow spec/PROTOCOL.md."""
+
+
+def characteristic_uuid(entry: int) -> str:
+    """Entry k, counted from 1, lives at 2FAAkkkk, k in hexadecimal (§4.1)."""
+    return UUID_TEMPLATE.format(entry)
 
 
 def _object_table() -> dict[int, tuple[str, int]]:
@@ -111,6 +80,7 @@ class ObjectKind:
     factor: float
     unit: str | None
     device_class: str | None
+    data_format: str = ""
 
     @property
     def step(self) -> float:
@@ -121,7 +91,7 @@ class ObjectKind:
         """The smallest value the encoding can carry, not what a device accepts.
 
         BTHome gives a device no way to narrow its own range, so a dimmer that
-        stops at 100 still advertises an object that can hold 655.35. A receiver
+        stops at 100 still declares an object that can hold 655.35. A receiver
         cannot know better; the device is entitled to reject the write (§4.2).
         """
         if not self.signed:
@@ -133,42 +103,11 @@ class ObjectKind:
         bits = 8 * self.length - (1 if self.signed else 0)
         return (2**bits - 1) * self.factor
 
-
-# Event objects whose vocabulary defines 0x00 as "nothing happened", and which
-# therefore have the no-op §4.3 assumes every event object has. `0x3B command`
-# is deliberately absent: its 0x00 means `off`, a real command.
-EVENT_NO_OP: Final = frozenset({0x3A, 0x3C})
-
-
-#: The protocol's own fields. A declaration naming one of these is malformed
-#: rather than a device offering a control, and no platform may build an entity
-#: for it: a packet counter presented as a slider is nonsense, and a writable
-#: declaration would let a user rewrite the layout the write parser checks
-#: against. See spec/PLATFORMS.md.
-NEVER_CONTROLS: Final = frozenset({PACKET_ID_OBJECT_ID, DECLARATION_OBJECT_ID})
-
-
-def controllable(obj: WritableObject) -> bool:
-    """Whether a platform may offer an entity for this object at all.
-
-    The one gate every platform passes through, so the rule lives once. It
-    exists because a malformed declaration is not hypothetical: a bitmask bit
-    that addresses the packet id produces a perfectly parseable object, and
-    without this the number platform builds a slider labelled "packet id".
-    """
-    return obj.object_id not in NEVER_CONTROLS
-
-
-def event_values(object_id: int) -> dict[int, str] | None:
-    """The event vocabulary for an object id, from `bthome-ble`'s own table."""
-    from bthome_ble.event import BUTTON_EVENTS, COMMAND_EVENTS, DIMMER_EVENTS
-
-    table = {0x3A: BUTTON_EVENTS, 0x3B: COMMAND_EVENTS, 0x3C: DIMMER_EVENTS}.get(
-        object_id
-    )
-    if table is None:
-        return None
-    return {code: name for code, name in table.items() if name is not None}
+    @property
+    def variable(self) -> bool:
+        return self.data_format in LENGTH_PREFIXED_FORMATS or (
+            self.data_format == COMMAND_FORMAT
+        )
 
 
 def describe(object_id: int) -> ObjectKind | None:
@@ -184,7 +123,7 @@ def describe(object_id: int) -> ObjectKind | None:
     # The width tests come first. `bthome-ble` gives text and raw an ordinary
     # sensor description, so classifying by description type alone calls them
     # numeric -- and a text box would then be offered as a slider.
-    if meas.data_format in VARIABLE_LENGTH_FORMATS:
+    if meas.data_format in LENGTH_PREFIXED_FORMATS:
         kind = "raw" if meas.data_format == "raw" else "string"
     elif name == "BaseBinarySensorDescription":
         kind = "binary"
@@ -206,7 +145,20 @@ def describe(object_id: int) -> ObjectKind | None:
         factor=getattr(meas, "factor", 1) or 1,
         unit=getattr(unit, "value", unit),
         device_class=getattr(device_class, "value", device_class),
+        data_format=meas.data_format,
     )
+
+
+def event_values(object_id: int) -> dict[int, str] | None:
+    """The event vocabulary for an object id, from `bthome-ble`'s own table."""
+    from bthome_ble.event import BUTTON_EVENTS, COMMAND_EVENTS, DIMMER_EVENTS
+
+    table = {0x3A: BUTTON_EVENTS, 0x3B: COMMAND_EVENTS, 0x3C: DIMMER_EVENTS}.get(
+        object_id
+    )
+    if table is None:
+        return None
+    return {code: name for code, name in table.items() if name is not None}
 
 
 def encode_scaled(value: float, kind: ObjectKind) -> bytes:
@@ -219,201 +171,174 @@ def decode_scaled(value: bytes, kind: ObjectKind) -> float:
     return int.from_bytes(value, "little", signed=kind.signed) * kind.factor
 
 
-def split_objects(payload: bytes) -> list[tuple[int, int, bytes, str]]:
-    """Split BTHome service data into (position, object_id, value, format) tuples.
+@dataclass(frozen=True)
+class WritableEntry:
+    """One entry of a declaration: an object type written on its own
+    characteristic."""
+
+    entry: int
+    """Counted from 1, in declaration order. Also the characteristic number."""
+
+    object_id: int
+
+    @property
+    def uuid(self) -> str:
+        return characteristic_uuid(self.entry)
+
+    @property
+    def kind(self) -> ObjectKind | None:
+        return describe(self.object_id)
+
+    @property
+    def offered(self) -> bool:
+        """Whether a receiver may build an entity for this entry (§2.1).
+
+        False for forbidden IDs, for IDs `bthome-ble` does not know, and for
+        device-information objects. Such entries are still counted.
+        """
+        if self.object_id in FORBIDDEN_ENTRIES:
+            return False
+        kind = self.kind
+        return kind is not None and kind.kind != "meta"
+
+
+@dataclass(frozen=True)
+class Declaration:
+    """A parsed declaration, and the settings revision beside it."""
+
+    entries: tuple[WritableEntry, ...]
+    settings_revision: int | None
+    """The advertised `0x65`, or None if the device does not advertise one --
+    which means its writable values change only when written (§3.1)."""
+
+    @property
+    def offered(self) -> tuple[WritableEntry, ...]:
+        return tuple(entry for entry in self.entries if entry.offered)
+
+    @property
+    def layout(self) -> tuple[int, ...]:
+        """The entry object IDs, which is what identifies a firmware's layout."""
+        return tuple(entry.object_id for entry in self.entries)
+
+
+def _value_length(payload: bytes, offset: int, data_format: str, fixed: int) -> int:
+    """How many value bytes follow the object ID at `offset`."""
+    if data_format in LENGTH_PREFIXED_FORMATS:
+        if offset + 1 >= len(payload):
+            raise ProtocolError(f"no length byte for object 0x{payload[offset]:02X}")
+        return 1 + payload[offset + 1]
+    if data_format == COMMAND_FORMAT:
+        if offset + 1 >= len(payload):
+            raise ProtocolError("no argument length for a command object")
+        return 2 + (payload[offset + 1] & 0x1F)
+    return fixed
+
+
+def split_objects(payload: bytes) -> tuple[list[tuple[int, bytes]], int | None]:
+    """Walk BTHome service data: ([(object_id, value)], declaration offset).
 
     `payload` is the service data *without* the device-information byte, and
-    decrypted if the device is encrypted — i.e. exactly what `bthome-ble` feeds
-    its own object loop.
-
-    Stops at the declaration, which is by definition the last element (§2.2).
-    Raises ProtocolError on a payload that cannot be walked, which for a write
-    composition means "do not write" rather than "write something plausible".
+    decrypted if the device is encrypted — exactly what `bthome-ble` feeds its
+    own object loop. The walk stops at the declaration, or at the first ID
+    `bthome-ble` does not know, as upstream does: anything after an unknown ID is
+    unreachable for every BTHome receiver.
     """
     table = _object_table()
-    objects: list[tuple[int, int, bytes, str]] = []
+    objects: list[tuple[int, bytes]] = []
     offset = 0
-    position = 0
-
     while offset < len(payload):
         object_id = payload[offset]
-
         if object_id == DECLARATION_OBJECT_ID:
-            break
-
+            return objects, offset
         if object_id not in table:
-            # Same rule as upstream: an unknown ID ends the walk. Anything
-            # after it is unreachable for every BTHome receiver, so there is
-            # nothing sensible to recover.
-            break
-
-        data_format, fixed_length = table[object_id]
-        if data_format in VARIABLE_LENGTH_FORMATS:
-            if offset + 1 >= len(payload):
-                raise ProtocolError(
-                    f"truncated payload: no length byte for object "
-                    f"0x{object_id:02X} at position {position}"
-                )
-            length = payload[offset + 1]
-            start = offset + 1  # the length byte belongs to the value
-            end = offset + 2 + length
-        else:
-            length = fixed_length
-            start = offset + 1
-            end = offset + 1 + length
-
+            return objects, None
+        data_format, fixed = table[object_id]
+        length = _value_length(payload, offset, data_format, fixed)
+        end = offset + 1 + length
         if end > len(payload):
             raise ProtocolError(
-                f"truncated payload: object 0x{object_id:02X} at position "
-                f"{position} needs {length} value bytes"
+                f"truncated payload: object 0x{object_id:02X} needs {length} bytes"
             )
-
-        objects.append((position, object_id, payload[start:end], data_format))
+        objects.append((object_id, payload[offset + 1 : end]))
         offset = end
-        position += 1
-
-    return objects
+    return objects, None
 
 
 def parse_declaration(payload: bytes) -> Declaration | None:
-    """Read the writability declaration out of BTHome service data.
+    """Read the declaration out of BTHome service data (§2).
 
-    This is the single function §2.5 asks for: if the declaration ever moves to
-    a manufacturer-data container, only this changes.
+    This is the single function §2.5 asks for. `payload` is the service data
+    without the device-information byte. Returns None for an ordinary BTHome
+    device — which is what the config flow's `not_supported` abort keys on.
 
-    `payload` is the service data without the device-information byte. Returns
-    None for an ordinary BTHome device — which is what the config flow's
-    `not_supported` abort keys on, so that plain BTHome devices are never
-    offered to the user.
+    A naive search for 0xFF would match a value byte — a battery at 255, say —
+    which is why the payload is walked rather than scanned.
     """
     if not payload:
         return None
-
-    declaration_offset = _find_declaration(payload)
-    if declaration_offset is None:
+    objects, offset = split_objects(payload)
+    if offset is None:
         return None
 
-    if declaration_offset + 1 >= len(payload):
-        raise ProtocolError("declaration object carries no bitmask byte")
-
-    bitmask = payload[declaration_offset + 1]
-    if declaration_offset + 2 != len(payload):
-        raise ProtocolError(
-            "declaration is not the last element: "
-            f"{len(payload) - declaration_offset - 2} trailing bytes"
-        )
-
-    by_position = {
-        position: (object_id, value, data_format)
-        for position, object_id, value, data_format in split_objects(payload)
-    }
-
-    objects: list[WritableObject] = []
-    for bit in range(8):
-        if not bitmask & (1 << bit):
-            continue
-        if bit not in by_position:
-            # §2.2: a bit addressing no object is malformed. Ignore it rather
-            # than invent an entity the device cannot accept a write for.
-            continue
-        object_id, value, data_format = by_position[bit]
-        objects.append(
-            WritableObject(
-                position=bit,
-                object_id=object_id,
-                value=value,
-                data_format=data_format,
-            )
-        )
-
-    return Declaration(bitmask=bitmask, objects=tuple(objects))
-
-
-def _find_declaration(payload: bytes) -> int | None:
-    """Offset of the declaration object, walking objects rather than scanning.
-
-    A naive `payload.index(0xFF)` would match a value byte — a battery at 255,
-    say — so the payload has to be walked properly even though the declaration
-    is known to be last.
-    """
-    table = _object_table()
-    offset = 0
-
-    while offset < len(payload):
-        object_id = payload[offset]
-        if object_id == DECLARATION_OBJECT_ID:
-            return offset
-        if object_id not in table:
-            return None
-
-        data_format, fixed_length = table[object_id]
-        if data_format in VARIABLE_LENGTH_FORMATS:
-            if offset + 1 >= len(payload):
-                return None
-            offset += 2 + payload[offset + 1]
-        else:
-            offset += 1 + fixed_length
-
-    return None
-
-
-def compose_write(
-    declaration: Declaration, changes: dict[int, bytes] | None = None
-) -> bytes:
-    """Build a write payload: every writable object, in packet order (§4.2).
-
-    `changes` maps a position to its new *value* bytes. Positions not mentioned
-    are resent at their last advertised value; write-only objects not mentioned
-    get the no-op of §4.3.
-    """
-    changes = changes or {}
-    payload = bytearray()
-
-    for obj in declaration.objects:
-        payload.append(obj.object_id)
-        if obj.position in changes:
-            payload += changes[obj.position]
-        elif obj.write_only:
-            payload += no_op_value(obj)
-        else:
-            payload += obj.value
-
-    return bytes(payload)
-
-
-def no_op_value(obj: WritableObject) -> bytes:
-    """The "do not modify" encoding for an object (§4.3).
-
-    Variable-length objects use a length of 0. Event objects use their "none"
-    value, which is all-zero — but only the ones that have a "none" at all.
-    `0x3B command` does not: its 0x00 is `off`, a real command, so there is no
-    way to leave it alone in a write that touches something else. That is a gap
-    in §4.3 rather than in this function; see spec/for-gordon.md.
-
-    A fixed-length, non-event object has no no-op either: the way to leave it
-    alone is to resend its last advertised value, which `compose_write` does.
-    Reaching here with one is a bug, not a payload to guess at.
-    """
-    if obj.is_variable_length:
-        return b"\x00"
-    if obj.object_id in EVENT_NO_OP:
-        # All-zero however wide: a dimmer's second byte is a step count, and
-        # zero steps is nothing happening.
-        kind = describe(obj.object_id)
-        return bytes(kind.length if kind else 1)
-    raise ProtocolError(
-        f"object 0x{obj.object_id:02X} ({obj.data_format}) has no no-op value; "
-        "resend its last advertised value instead"
+    entries = tuple(
+        WritableEntry(entry=k, object_id=object_id)
+        for k, object_id in enumerate(payload[offset + 1 :], start=1)
     )
+    revision = next(
+        (
+            value[0]
+            for object_id, value in objects
+            if object_id == SETTINGS_REVISION_OBJECT_ID
+        ),
+        None,
+    )
+    return Declaration(entries=entries, settings_revision=revision)
+
+
+def encode_object(entry: WritableEntry, value: bytes) -> bytes:
+    """A write's plaintext: one BTHome object, ID then value (§4.2).
+
+    `value` is in BTHome's own encoding, including the length byte of a
+    variable-length object.
+    """
+    return bytes([entry.object_id]) + value
+
+
+def decode_object(entry: WritableEntry, payload: bytes) -> bytes:
+    """The value out of a read (§4.3), checked the way a device checks a write.
+
+    Raises ProtocolError for a wrong object ID, a wrong length, or trailing
+    bytes: a read from a characteristic that no longer means what the receiver
+    thinks must not be shown as state.
+    """
+    if not payload:
+        raise ProtocolError("empty read")
+    if payload[0] != entry.object_id:
+        raise ProtocolError(
+            f"entry {entry.entry}: read object 0x{payload[0]:02X}, "
+            f"expected 0x{entry.object_id:02X}"
+        )
+    table = _object_table()
+    if entry.object_id not in table:
+        raise ProtocolError(
+            f"entry {entry.entry}: unknown object 0x{entry.object_id:02X}"
+        )
+    data_format, fixed = table[entry.object_id]
+    length = _value_length(payload, 0, data_format, fixed)
+    if len(payload) != 1 + length:
+        raise ProtocolError(
+            f"entry {entry.entry}: read is {len(payload) - 1} value bytes, "
+            f"expected {length}"
+        )
+    return payload[1:]
 
 
 # --- Encryption (§5) ---------------------------------------------------------
 #
-# BTHome v2's AES-CCM, unchanged, with one delta: a write's nonce carries 0xFF
-# as its device-information byte where advertising carries 0x41. That single
-# substitution is the whole of the direction separation — a captured
-# advertisement cannot verify as a write, and vice versa, with nothing extra on
-# the wire (§5.1).
+# BTHome v2's AES-CCM, unchanged, with one delta: the device-information byte of
+# the nonce carries the direction -- 0x41 advertising, 0xFF write, 0xFE read. A
+# captured advertisement, write or read cannot verify as either of the others,
+# with nothing extra on the wire (§5.1).
 
 MIC_LENGTH: Final = 4
 COUNTER_LENGTH: Final = 4
@@ -444,9 +369,9 @@ def is_encrypted(payload: bytes) -> bool:
 
 
 def split_sealed(payload: bytes) -> tuple[bytes, int, bytes]:
-    """(ciphertext, counter, mic) out of `ciphertext || counter || mic` (§5.3).
+    """(ciphertext, counter, mic) out of `ciphertext || counter || mic` (§5.2).
 
-    Both directions share this framing; advertising merely carries a leading
+    Every direction shares this framing; advertising merely carries a leading
     device-information byte, which the caller strips.
     """
     if len(payload) <= SEAL_OVERHEAD:
@@ -458,6 +383,21 @@ def split_sealed(payload: bytes) -> tuple[bytes, int, bytes]:
     return body, counter, payload[-MIC_LENGTH:]
 
 
+def _open(
+    payload: bytes, bindkey: bytes, address: str, device_info: int
+) -> bytes | None:
+    from cryptography.exceptions import InvalidTag
+    from cryptography.hazmat.primitives.ciphers.aead import AESCCM
+
+    ciphertext, counter, mic = split_sealed(payload)
+    try:
+        return AESCCM(bindkey, tag_length=MIC_LENGTH).decrypt(
+            nonce(address, device_info, counter), ciphertext + mic, None
+        )
+    except InvalidTag:
+        return None
+
+
 def decrypt_advertising(payload: bytes, bindkey: bytes, address: str) -> bytes | None:
     """The object stream inside encrypted service data, or None if it will not
     authenticate.
@@ -466,28 +406,29 @@ def decrypt_advertising(payload: bytes, bindkey: bytes, address: str) -> bytes |
     user mistyped it, or the device is not the one we think — not a programming
     error.
     """
-    from cryptography.exceptions import InvalidTag
-    from cryptography.hazmat.primitives.ciphers.aead import AESCCM
-
     if not is_encrypted(payload):
         raise ProtocolError("this payload does not announce itself as encrypted")
-
-    ciphertext, counter, mic = split_sealed(payload[1:])
-    cipher = AESCCM(bindkey, tag_length=MIC_LENGTH)
-    try:
-        seal = nonce(address, DEVICE_INFO_BYTE_ADVERTISING, counter)
-        return cipher.decrypt(seal, ciphertext + mic, None)
-    except InvalidTag:
-        return None
+    return _open(payload[1:], bindkey, address, DEVICE_INFO_BYTE_ADVERTISING)
 
 
-def seal_write(plaintext: bytes, bindkey: bytes, address: str, counter: int) -> bytes:
-    """A write sealed as §5.3 frames it, with §5.1's write nonce."""
+def seal(
+    plaintext: bytes, bindkey: bytes, address: str, device_info: int, counter: int
+) -> bytes:
+    """`plaintext` sealed as §5.2 frames it, under direction `device_info`."""
     from cryptography.hazmat.primitives.ciphers.aead import AESCCM
 
-    cipher = AESCCM(bindkey, tag_length=MIC_LENGTH)
-    sealed = cipher.encrypt(
-        nonce(address, DEVICE_INFO_BYTE_WRITE, counter), plaintext, None
+    sealed = AESCCM(bindkey, tag_length=MIC_LENGTH).encrypt(
+        nonce(address, device_info, counter), plaintext, None
     )
     body, mic = sealed[:-MIC_LENGTH], sealed[-MIC_LENGTH:]
     return body + counter.to_bytes(COUNTER_LENGTH, "little") + mic
+
+
+def seal_write(plaintext: bytes, bindkey: bytes, address: str, counter: int) -> bytes:
+    """A write sealed under the write direction (§5.1)."""
+    return seal(plaintext, bindkey, address, DEVICE_INFO_BYTE_WRITE, counter)
+
+
+def open_read(payload: bytes, bindkey: bytes, address: str) -> bytes | None:
+    """A sealed read's plaintext object, or None if it will not authenticate."""
+    return _open(payload, bindkey, address, DEVICE_INFO_BYTE_READ)
