@@ -27,6 +27,9 @@ A write is anything else, and the list is longer than it looks:
 - connecting to the Puck or the nice!nano at all — a BLE connection is
   exclusive, and so is the adapter
 - deploying anything to either Espruino device
+- changing a device's advertising interval (`tools.set_adv_interval`,
+  `tools.latency_sweep`) — this one outlives the lock, so put it back when you
+  are done
 - touching `COM8` / the 3V3 rail
 
 ## Why it has to be a lock and not good manners

@@ -46,6 +46,10 @@ standardisation dossier for the BTHome maintainers.
   for what this actually does. Also as a
   [PDF](docs/first-use-case.pdf), regenerated with
   `python -m tools.md_to_pdf docs/first-use-case.md`.
+- [`docs/measurements.md`](docs/measurements.md) — every number this project
+  has measured, with the command that produces it again: response time against
+  advertising interval, write and rejection timings, advertising budgets per
+  board, text limits, the cost of encryption on the device.
 - `spec/PROTOCOL.md` — the protocol. Normative.
 - `spec/decisions.md` — every resolved question, with the measurement or the
   ruling that resolved it.
