@@ -86,7 +86,8 @@ def svg(datasets: list[dict]) -> str:
     while value <= top:
         y = y_of(value, top)
         parts.append(
-            f'<line class="grid" x1="{LEFT}" y1="{y:.1f}" x2="{LEFT + PLOT_W}" y2="{y:.1f}"/>'
+            f'<line class="grid" x1="{LEFT}" y1="{y:.1f}"'
+            f' x2="{LEFT + PLOT_W}" y2="{y:.1f}"/>'
         )
         parts.append(
             f'<text class="tick y" x="{LEFT - 12}" y="{y + 4:.1f}">{value} s</text>'
@@ -97,7 +98,8 @@ def svg(datasets: list[dict]) -> str:
         x = x_of(interval)
         label = f"{interval} ms" if interval < 1000 else f"{interval // 1000} s"
         parts.append(
-            f'<line class="grid v" x1="{x:.1f}" y1="{TOP}" x2="{x:.1f}" y2="{TOP + PLOT_H}"/>'
+            f'<line class="grid v" x1="{x:.1f}" y1="{TOP}"'
+            f' x2="{x:.1f}" y2="{TOP + PLOT_H}"/>'
         )
         parts.append(
             f'<text class="tick x" x="{x:.1f}" y="{TOP + PLOT_H + 24}">{label}</text>'
@@ -172,7 +174,10 @@ def render(datasets: list[dict]) -> str:
   .tick.y {{ text-anchor: end; }}
   .tick.x {{ text-anchor: middle; }}
   .axis-label {{ fill: #5b6570; font-size: 12.5px; text-anchor: middle; }}
-  .legend {{ position: absolute; left: {LEFT + PLOT_W + 34}px; top: {TOP + 6}px; width: {RIGHT - 60}px; }}
+  .legend {{
+    position: absolute; left: {LEFT + PLOT_W + 34}px;
+    top: {TOP + 6}px; width: {RIGHT - 60}px;
+  }}
   .key {{ margin-bottom: 14px; font-size: 12.5px; line-height: 1.45; }}
   .key b {{ font-weight: 600; }}
   .muted {{ color: #5b6570; }}
