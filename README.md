@@ -45,6 +45,8 @@ and the standardisation dossier for the BTHome maintainers.
 - `spec/decisions.md` — every resolved question, with the measurement or the
   ruling that resolved it.
 - `spec/for-gordon.md` — what still needs Gordon in espruino#8013.
+- `spec/bthome-dossier.md` — material for the eventual submission to the
+  BTHome maintainers: prior art, the actuator proposal, objections and evidence.
 - `SPEC-WORKING-DOCUMENT.md` — the original design rationale and task
   breakdown. Superseded by `spec/PROTOCOL.md` wherever the two differ.
 

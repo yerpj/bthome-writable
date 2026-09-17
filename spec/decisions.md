@@ -1768,6 +1768,15 @@ firmware, and installing an application answers a different one.
 
 ## D-046 — This firmware drops the service-data UUID, and the name is not free  [INCIDENT]
 
+> **Superseded in part, 2026-09-17.** Gordon pointed out that `2v29.242` was an
+> intermediate build and that current master is fine. Verified on the same
+> nice!nano reflashed to `2v29.396`: `NRF.getAdvertisingData({0x180F:[1,2,3]},
+> {showName:false})` returns `2 1 6 6 22 15 24 1 2 3`, UUID present. So the UUID
+> finding below was a transient bug, not a property of master, and "appears
+> unreported" was wrong — it was already fixed. The raw-form workaround is not
+> needed. **Not yet re-measured on 396:** whether the local name is still refused
+> rather than shortened; the byte budget table below is for `.242` only.
+
 **Status:** measured on the nice!nano, 2v29.242, board `NICENANO`, 2026-09-16.
 Two separate findings, both from one failed deployment. The first is ours to
 work around; the second is not ours at all.
