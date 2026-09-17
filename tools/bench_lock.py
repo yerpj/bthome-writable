@@ -69,6 +69,12 @@ def read_lock(path: str) -> dict[str, Any] | None:
         with open(path, encoding="utf-8") as handle:
             raw = handle.read()
     except FileNotFoundError:
+        # Absent means free only if the place it would be is reachable. An
+        # unmounted share also raises FileNotFoundError, and reporting that as a
+        # free bench is exactly the silent wrong answer this tool exists to
+        # prevent.
+        if not os.path.isdir(os.path.dirname(path)):
+            raise OSError("the directory holding the lock is unreachable") from None
         return None
     try:
         return json.loads(raw)
@@ -239,7 +245,20 @@ def main(argv: list[str] | None = None) -> int:
     p.set_defaults(func=cmd_release)
 
     args = parser.parse_args(argv)
-    return args.func(args)
+    try:
+        return args.func(args)
+    except OSError as error:
+        # The share lives on the Home Assistant host, so it disappears when the
+        # host is down, when its Samba add-on has not started, or when this
+        # machine has lost the mount -- all three seen on 2026-09-17. A bare
+        # traceback there reads like a bug in the lock; this says what to fix.
+        print(
+            f"bench lock unavailable: cannot reach {lock_path()} ({error}).\n"
+            "Check that Home Assistant is up, that its Samba add-on is started, "
+            "and that the share is mounted on this machine.",
+            file=sys.stderr,
+        )
+        return 2
 
 
 if __name__ == "__main__":
