@@ -22,3 +22,6 @@ npm-debug.log*
 Thumbs.db
 .ha-env
 .module-cache/
+
+# Owner-side working notes, not part of the repository
+spec/for-gordon.md

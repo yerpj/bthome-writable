@@ -1920,3 +1920,70 @@ keeps a device audible to anyone listening.
 `tools/closed_loop.py`, and annotated rather than rewritten in D-010,
 D-015, and `docs/first-use-case.md` §5.4, so the
 record shows what was believed and when it stopped being.
+
+## D-048 — Protocol v2: a list of writable types, one characteristic each, no advertised state  [SPEC, agreed with Gordon]
+
+**Status:** agreed in espruino#8013 on 2026-09-17/18, written into
+`PROTOCOL.md` 2.0-draft.1.
+
+### How it was reached
+
+1. Gordon asked whether events should be writable at all, since `0x3B command`
+   has no "none" value and version 1's write-all forced one onto it.
+2. The owner proposed four generic actuator objects (switch, level, action,
+   text). Gordon declined, rightly: typed objects — icon, unit, zero
+   configuration — are what BTHome is for, a thermostat target belongs in °C, and
+   one object ID is easier to obtain than four. The proposal also used IDs
+   `0xF0`–`0xF2`, which are taken; the free-ID check had covered only the
+   measurement table.
+3. Gordon proposed instead: one GATT characteristic per writable entity, and a
+   `0xFF` object listing the writable object IDs, with no advertised values and
+   the write response as validation.
+4. Agreed with two additions from the owner's side: the object ID stays in each
+   write as a desync guard, and BTHome's existing settings revision (`0x65`) plus
+   readable characteristics cover devices whose values change by themselves. A
+   read-after-write was proposed and dropped at Gordon's suggestion: write with
+   response already says the write was delivered, and applying it is the
+   device's job.
+
+### What changed from version 1
+
+| Version 1 | Version 2 |
+|---|---|
+| `FF <bitmask>` marking positions of advertised objects | `FF <id> <id> …` listing writable types |
+| Writable values advertised; advertising confirms a write | Not advertised; write response is the evidence |
+| One characteristic, write-all in packet order | One characteristic per entry, one object per write |
+| No-op values (§4.3), write-only rules (§3) | Gone: only the entry written is touched |
+| Events not safely writable (`0x3B`) | Events writable: a write triggers only its own entry |
+| Confirmation window and revert (§6) | Assumed state, or read state via `0x65` |
+| Up to 8 writable objects | Limited only by advertising space |
+
+Gone with them: the packet-id shift in the bitmask, the fixed-length write-only
+ambiguity, and the `0x3B` no-op problem.
+
+### Choices made while writing it
+
+Not discussed in the thread; implementation-level, recorded so they can be
+questioned:
+
+- **UUIDs.** Service `2FAA0000-…`, entry *k* at `2FAAkkkk-…`, as Gordon sketched.
+- **Values keep BTHome's own encoding**, including the length byte of
+  variable-length objects, even though a write's length is known. One encoder per
+  side for advertising and writes, and "no new data format" stays literally true.
+- **Reads are sealed too**, with device-information byte `0xFE` in the nonce, so a
+  read, a write and an advertisement can never be replayed as one another.
+- **No automatic resend of an acknowledged write**, because toggle and step are
+  not idempotent.
+- **A device must not bump `0x65` for a write it received**, so writing does not
+  trigger a pointless re-read.
+- **Entries a receiver does not know are still counted**, so the characteristic
+  numbers of the entries after them do not shift.
+
+### What it costs
+
+The version 1 implementations, tests, vectors and several documents are
+obsolete. Worth it: the receiver loses its most intricate machinery (the
+confirmation window, D-010/D-011; redundancy suppression, D-020; no-op
+composition), and the device loses write-all parsing and the capacity limit of
+eight. What is lost is the observation of state by listening, which §3 of the
+specification replaces for the devices that need it.

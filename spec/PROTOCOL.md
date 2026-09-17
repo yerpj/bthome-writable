@@ -1,20 +1,23 @@
 # BTHome Writable — protocol specification
 
-**Version:** 1.0-draft.1 · **Status:** DRAFT, nothing frozen · **License:** MIT
+**Version:** 2.0-draft.1 · **Status:** DRAFT, nothing frozen · **License:** MIT
 
 BTHome standardizes a BLE **uplink**: a device broadcasts its state in
 advertising, a receiver parses it. It has no **downlink**. This document
-specifies a minimal extension by which a device declares, inside its ordinary
-BTHome advertising, that some of the objects it advertises may be *written*, and
-by which a receiver writes new values to them over a short GATT connection.
+specifies a minimal extension by which a device lists, inside its ordinary
+BTHome advertising, the BTHome object types it accepts writes for, and by which a
+receiver writes values to them over a short GATT connection — one characteristic
+per writable entry.
 
 The extension deliberately introduces **no new data format**: written values are
-encoded exactly as BTHome encodes them in advertising, and encrypted exactly as
-BTHome encrypts advertising.
+BTHome objects encoded exactly as BTHome encodes them in advertising, and
+encrypted exactly as BTHome encrypts advertising. It asks BTHome for a single
+object ID.
 
 Designed publicly with Gordon Williams (Espruino) in
-[espruino#8013](https://github.com/orgs/espruino/discussions/8013). Object IDs
-used here are **not yet reserved** by the BTHome project; see §9.
+[espruino#8013](https://github.com/orgs/espruino/discussions/8013). Version 2
+replaces version 1's positional bitmask, write-all payload and advertising-based
+confirmation; the reasons are in [`decisions.md` D-048](decisions.md).
 
 The key words MUST, MUST NOT, SHOULD, SHOULD NOT and MAY are to be interpreted
 as in RFC 2119.
@@ -27,153 +30,148 @@ as in RFC 2119.
 |---|---|
 | **Device** | The BLE peripheral advertising BTHome service data. |
 | **Receiver** | The central parsing that advertising and issuing writes (Home Assistant, in the reference implementation). |
-| **Object** | One BTHome measurement element: an object ID byte followed by its value bytes. |
-| **Declaration** | The object introduced by this spec that marks which objects of the same packet are writable (§2). |
-| **Declaration packet** | The single advertising payload containing the declaration and every writable object (§2.1). |
-| **Position** | The 0-based index of an object within the declaration packet, counting objects, not bytes, and excluding the device-information byte. |
-| **Write** | One GATT write to the characteristic of §4, carrying new values for every writable object. |
+| **Object** | One BTHome element: an object ID byte followed by its value bytes. |
+| **Declaration** | The object introduced by this specification, listing the writable object types (§2). |
+| **Entry** | One object ID in the declaration. Entries are numbered from 1 in the order they appear. |
+| **Writable characteristic** | The GATT characteristic of an entry (§4). |
+| **Write** | One GATT write to one writable characteristic, carrying one object. |
 
 This specification targets **BTHome v2** and its 16-bit service data UUID
 `0xFCD2`. BTHome v1 is out of scope.
 
 ---
 
-## 2. Writability declaration
+## 2. Declaration
 
-### 2.1 The same-packet rule
+### 2.1 Format
 
-> A device MUST place the declaration and **every** object it declares writable
-> inside **one** advertising payload — the declaration packet.
-
-Devices that rotate several advertising payloads MAY do so freely for their
-non-writable sensors, but the declaration packet MUST always be complete in
-itself.
-
-This single rule resolves two problems at once:
-
-- **Rotation.** A receiver never has to correlate objects seen across different
-  payloads to know what is writable.
-- **Multiple instances of the same object type.** A device with ten lights
-  advertises ten `0x1E` objects; the declaration and the write order (§4.2) both
-  address them by *position* within the packet, so instances are unambiguous
-  without inventing per-instance identifiers.
-
-Position, not object ID, is therefore the addressing primitive throughout this
-specification.
-
-### 2.2 Format and placement
-
-The declaration is one BTHome object:
+The declaration is one element of the BTHome service data:
 
 ```
-0xFF <bitmask u8>
+0xFF <objectID_1> <objectID_2> ... <objectID_n>
 ```
 
-- Object ID `0xFF` (unassigned in BTHome as of `bthome-ble` 3.24.0, whose highest
-  assigned ID is `0xF2`).
-- Bit *n* of the bitmask set to 1 means the object at **position *n*** of this
-  same packet is writable. **Bit 0 is the first object.**
-- A bitmask of `0x00` is legal and means "nothing writable"; a device SHOULD then
-  omit the declaration entirely.
+- `0xFF` is the declaration's object ID. It is **not yet assigned** by BTHome
+  (§9); `bthome-ble`'s highest assigned ID is `0xF2`.
+- Each following byte is a **BTHome object ID**. Entry *k* says: "this device
+  accepts writes of this object type on writable characteristic *k*" (§4.1).
+- The entry's object ID alone determines the value's format, length, unit and
+  meaning, from BTHome's own object table. Nothing else is declared.
+- The same object ID MAY appear several times: `FF 1E 1E` is a device with two
+  writable lights. Instances are distinguished by entry number, which is also how
+  a receiver numbers them in its user interface.
+- A declaration with no entries is legal and means "nothing writable"; a device
+  SHOULD then omit it.
 
-> **Positions count every object in the packet, including BTHome's own.** A
-> device that emits the packet-id object (`0x00`) — as most do, and as the
-> Espruino BTHome module always does — puts it at **position 0**, so its first
-> sensor is at position 1 and every bitmask bit shifts by one. This is
-> well-defined but easy to get wrong when reading the worked examples of §8,
-> which omit the packet id for brevity. §8.4 shows the same device both ways.
+Entries MUST NOT be `0x00` (packet id), `0xFF`, or the device-information objects
+(`0xF0`–`0xF2`). A receiver MUST NOT offer an entry whose object ID it does not
+know, but MUST still count it, so that later entries keep their characteristic
+numbers.
 
-**The declaration MUST be the last element of the BTHome service data.** This is
-normative, not stylistic: the reference BTHome parser stops at the first object
-ID it does not recognise, so any object placed *after* the declaration is
-silently dropped for every existing BTHome installation. Placing it last also
-satisfies BTHome's ascending-object-ID convention for free, since `0xFF` is above
-every assigned ID. Measured behaviour and method are recorded in
-[`decisions.md` D-005](decisions.md).
+### 2.2 Placement
 
-### 2.3 Capacity
+**The declaration MUST be the last element of the BTHome service data**, and its
+entries run to the end of that data. This is normative, not stylistic: the
+reference BTHome parser stops at the first object ID it does not recognise, so
+anything placed after the declaration would be silently dropped for every
+existing BTHome installation (`decisions.md` D-005). For encrypted advertising,
+"end of the service data" means end of the plaintext, before counter and MIC.
 
-The declaration and all writable objects MUST fit, together with the rest of the
-declaration packet, in a single legacy BLE advertising payload. Devices MUST
-enforce this at configuration time and fail loudly rather than truncate.
+A device that rotates several advertising payloads MUST include the declaration
+in each of them, or in a payload it broadcasts at least as often as any other.
 
-A legacy advertising payload is 31 bytes, but BTHome objects do not get all of
-them. The usable budget is:
+### 2.3 Writable values are not advertised
 
-```
-31   advertising payload
- -3  Flags AD structure (02 01 06), for connectable undirected advertising
- -4  Service Data AD header: length byte, type 0x16, 16-bit UUID 0xFCD2
- --
- 24  BTHome service data
- -1  device-information byte
- --
- 23  bytes available for objects, declaration included
-```
+A device MUST NOT advertise the current value of an entry. The declaration says
+what can be written; it carries no state.
 
-Devices advertising anything else in the same payload — a complete local name,
-for instance — have correspondingly less. Implementations SHOULD put such
-elements in the scan response rather than spend the declaration packet on them.
+An object in the same packet with the same ID as an entry is an ordinary sensor
+and unrelated to it. A thermostat advertising `02 C4 09` (temperature 25.00 °C)
+and declaring `FF 57` (a writable temperature) reports a measured temperature and
+accepts a target; the two are never confused, because the target is never in the
+packet.
 
-This is not a practical restriction: writable objects are actuators, and devices
-have few of them. Eight writable one-byte objects plus the declaration come to
-18 bytes. It is stated explicitly so implementations agree on the limit, and the
-arithmetic is spelled out because "31 bytes" alone is not actionable.
+State, where a device has any worth reporting, is read over GATT (§3).
 
-### 2.4 Extension headroom
+### 2.4 Capacity
 
-Version 1 of this specification uses a one-byte bitmask and therefore supports at
-most **8 writable objects** per device. A future version MAY extend the bitmask
-by adding bytes; a receiver determines the bitmask width from the declaration's
-length, so the extension is backward-compatible by construction.
+The declaration costs `1 + n` bytes for `n` entries. It MUST fit, with the rest
+of the service data, in a single legacy advertising payload; devices MUST check
+this at configuration time and fail loudly rather than truncate.
+
+The 31 bytes of a legacy payload are not all available to BTHome objects. Flags
+(3 bytes), the service data header (4) and the device-information byte (1) always
+come out, and in practice so do other elements: Espruino always advertises its
+manufacturer ID (4 bytes), and a local name costs `2 +` its length. Measured on
+real devices, between 7 and 22 bytes remain for objects (`decisions.md` D-030,
+D-046). Implementations SHOULD move the local name to the scan response when
+space is short.
 
 ### 2.5 Container fallback (contingency, not in use)
 
 Should a future BTHome parser reject unknown object IDs rather than skip them,
-the identical `<tag> <bitmask>` payload can be carried in a manufacturer-data AD
-element instead of the service data. Implementations SHOULD keep declaration
-parsing behind a single function per codebase so that the container can change at
-the cost of that one function.
-
-This path is **not currently needed** (D-005) and its details — company ID and
-tag byte — remain unspecified.
+the identical entry list could be carried in a manufacturer-data element instead.
+Implementations SHOULD keep declaration parsing behind one function per codebase.
+This path is not needed today (D-005) and remains unspecified.
 
 ---
 
-## 3. Write-only objects
+## 3. State and settings revision
 
-Some actuators have no meaningful state to report back: a text display whose
-content exceeds the advertising budget, a buzzer, a trigger.
+Writable values are not advertised (§2.3), so a receiver does not observe state
+by listening. How it learns state depends on the device.
 
-A device declares such an object by advertising it with an **empty or zero
-value** — for a variable-length object, a length of 0 — and setting its
-writability bit as usual.
+### 3.1 Devices whose writable values change only when written
 
-- The device MUST NOT advertise the value that was written to a write-only
-  object. The advertised value stays empty for the device's lifetime.
-- Receivers MUST expose write-only objects as **stateless** entities and MUST NOT
-  apply the confirm/revert model of §6 to them.
+A relay or a display that only ever changes because a receiver wrote to it needs
+nothing more. The receiver knows what it wrote; that is the state.
 
-A zero-length object is skipped by the reference BTHome parser without error and
-produces no sensor entity, so the placeholder costs nothing to existing BTHome
-receivers (D-005).
+Receivers SHOULD present such entries as **assumed state** — shown as last set,
+with the controls for every value always available, as for infrared or RF
+devices.
+
+### 3.2 Devices whose writable values can change by themselves
+
+A thermostat with a local knob, a switch with a physical button, a schedule, a
+safety cutoff, a reboot to defaults: the value changes without a write, and the
+receiver cannot know.
+
+Such a device MUST:
+
+1. make each writable characteristic **readable** (§4.3), and
+2. advertise BTHome's **settings revision** object (`0x65`, uint8), and change its
+   value whenever any writable value changes other than by a write.
+
+`0x65` exists in BTHome for exactly this: a device notifying observers that its
+configuration changed, so they re-read it out of band over GATT. It does not say
+what changed.
+
+A receiver that sees `0x65` take a value different from the last one it saw
+SHOULD connect and read every writable characteristic of the device. It SHOULD
+also read them the first time it sees the device, and after it restarts, so that
+it starts from the real state. A device's own restart typically changes its
+settings revision too, which triggers the same re-read.
+
+A device MUST NOT change `0x65` in response to a write it received: the receiver
+already knows that value.
 
 ---
 
-## 4. The write characteristic
+## 4. GATT
 
-### 4.1 GATT
-
-One primary service with one characteristic:
+### 4.1 Service and characteristics
 
 ```
-Service                2FAA0001-3B0B-4B1A-9E2A-B4C2952E62F2
-  Write characteristic 2FAA0002-3B0B-4B1A-9E2A-B4C2952E62F2   (write, write-no-response)
+Service                      2FAA0000-3B0B-4B1A-9E2A-B4C2952E62F2
+  Writable characteristic 1  2FAA0001-3B0B-4B1A-9E2A-B4C2952E62F2
+  Writable characteristic 2  2FAA0002-3B0B-4B1A-9E2A-B4C2952E62F2
+  ...
+  Writable characteristic k  2FAAkkkk-3B0B-4B1A-9E2A-B4C2952E62F2
 ```
 
-One randomly generated 128-bit base, with only the second 16-bit group varying
-per characteristic. This is the ordinary Bluetooth convention and it is cheaper
-on the device, which stores one base rather than two unrelated UUIDs.
+One randomly generated 128-bit base; the second 16-bit group is `0000` for the
+service and the entry number *k*, in hexadecimal, for entry *k*. There is exactly
+one writable characteristic per entry, and none for anything else.
 
 > **Provisional.** These UUIDs freeze permanently at the first public release.
 > Until then they may still change (D-001).
@@ -181,271 +179,226 @@ on the device, which stores one base rather than two unrelated UUIDs.
 The device MUST advertise connectably at all times, and MUST expose this service
 whether or not encryption is in use.
 
-**The service UUID MUST NOT be advertised.** A 128-bit UUID costs 18 of the 31
-bytes of an advertising payload, which together with the Flags structure and the
-BTHome service data does not fit (§2.3) — and it buys nothing: a receiver finds
-the device by its BTHome service data, connects by address, and discovers this
-service over GATT afterwards.
+**The service UUID MUST NOT be advertised.** A 128-bit UUID would cost 18 bytes of
+a 31-byte payload and buys nothing: a receiver finds the device by its BTHome
+service data, connects by address, and discovers the service over GATT.
 
-There is no acknowledgement characteristic, no notification, and no readable
-state: the device's refreshed advertising is the sole confirmation channel (§6).
+### 4.2 Writes
 
-### 4.2 Write-all in packet order
-
-A write is the concatenation of `<object ID> <value>` for **every** writable
-object of the declaration packet, in **the same order** as those objects appear
-in that packet:
+A write to writable characteristic *k* carries **one BTHome object**:
 
 ```
-<objectID_0> <value_0> <objectID_1> <value_1> ... <objectID_k> <value_k>
+<objectID> <value>
 ```
 
-Values are encoded exactly as BTHome encodes them in advertising, including the
-length byte of variable-length objects.
+encoded exactly as BTHome encodes it in advertising, including the length byte of
+variable-length objects (text `0x53`, raw `0x54`, command `0x3B`).
 
-The object IDs are redundant — position already determines which object is
-addressed — but they are transmitted anyway for two reasons: the payload stays in
-pure BTHome format, and they act as a desync guard.
+- **Write with response.** Receivers MUST write with response, and devices MUST
+  support it. The response is the receiver's evidence that the write was
+  delivered; applying it is the device's responsibility.
+- **Desync guard.** The device MUST reject a write whose object ID differs from
+  entry *k*'s, or whose length does not match what that object ID requires. This
+  catches a receiver still holding the layout of firmware the device no longer
+  runs.
+- **No trailing bytes.** A write carries exactly one object; anything after it is
+  an error.
+- **Events are writable.** A button (`0x3A`), dimmer (`0x3C`) or command (`0x3B`)
+  write means "perform this now". Because only the entry written is touched, a
+  write never triggers an event on another entry.
+- **No automatic resend.** A receiver MUST NOT resend a write that was
+  acknowledged. Values such as toggle or step are not idempotent.
 
-> The device MUST verify each object ID against the one it expects at that
-> position, and MUST reject the **entire** write on any mismatch.
+A device SHOULD reject a write with an ATT error when its platform allows it.
+Some do not (Espruino acknowledges before application code runs); a rejected write
+is then silent, which is why §3 exists for devices whose state matters.
 
-This catches the case where the device has been reflashed with a different
-object layout while the receiver still holds the old one.
+### 4.3 Reads
 
-The device MUST also reject a write that is shorter than expected, or that
-carries trailing bytes beyond the last expected object. Unlike advertising
-parsing, which is permissive by design, writes are a closed format: strictness
-here is a safety property, not pedantry.
+A readable writable characteristic returns the entry's **current value**, as one
+BTHome object in exactly the format of a write: `<objectID> <value>`.
 
-A write MUST be applied atomically: either every value is accepted and applied,
-or none is.
-
-### 4.3 No-op values
-
-Because a write always carries every writable object, a receiver that wants to
-change one object needs a way of saying "leave this one alone" for the others.
-For read-write objects the answer is simply to resend the last advertised value.
-Write-only objects have no such value, so this specification defines:
-
-| Object class | No-op encoding |
-|---|---|
-| Variable-length (text, raw) | Length byte `0x00` — "do not modify". |
-| Event / trigger-like | BTHome's existing "none" event value, `0x00`. |
-
-Both reuse BTHome's own semantics rather than inventing a sentinel.
+Readability is required by §3.2 and optional otherwise. A receiver MUST NOT read a
+characteristic after writing it merely to confirm the write; the write response
+already does that.
 
 ### 4.4 MTU and long writes
 
-Receivers SHOULD negotiate an ATT MTU of at least 64 bytes. Devices SHOULD
-support queued (long) writes so that text payloads are not limited by the MTU.
-
-At the default MTU of 23 a single write carries 20 payload bytes. A device that
-supports neither a larger MTU nor long writes is therefore limited to writable
-objects totalling 20 bytes, which excludes most text objects. Implementations
-MUST document this limit rather than silently truncate.
+Receivers SHOULD negotiate an ATT MTU of at least 64 bytes. Devices SHOULD support
+queued (long) writes so that text is not limited by the MTU. At the default MTU of
+23 a write carries at most 20 bytes, which excludes most text; implementations
+MUST document the limit rather than silently truncate.
 
 ---
 
 ## 5. Encryption
 
-Writes reuse BTHome v2's AES-CCM unchanged: same bindkey, same 4-byte MIC, same
-13-byte nonce construction, with two deltas.
+Writes and reads reuse BTHome v2's AES-CCM unchanged: same bindkey, same 4-byte
+MIC, same 13-byte nonce construction, with one delta — the direction.
 
-### 5.1 Direction separation via the device-information byte
-
-The BTHome nonce already contains the device-information byte:
+### 5.1 Direction in the nonce
 
 ```
 nonce = MAC (6 bytes, natural order) || 0xD2 0xFC || <device-info byte> || <counter u32 LE>
 ```
 
-Advertising uses the device-information byte it transmits (`0x41` for encrypted
-BTHome v2). **Writes MUST use `0xFF` as the device-information byte of their
-nonce.**
+| Direction | Device-information byte in the nonce |
+|---|---|
+| Advertising | as transmitted (`0x41` for encrypted BTHome v2) |
+| Write (receiver → device) | `0xFF` |
+| Read (device → receiver) | `0xFE` |
 
-A captured encrypted advertisement therefore can never validate as a write, and a
-captured write can never validate as an advertisement — cryptographically, with
-zero additional fields on the wire. The value `0xFF` is not transmitted in a
-write; it is implicit in the direction.
+The write and read values are not transmitted; they are implicit in the
+operation. A captured advertisement therefore never validates as a write or a
+read, and a captured read never validates as a write — cryptographically, with no
+extra field on the wire.
 
-> **Naming caution for implementers.** The `0xFF` of this section is a
-> *device-information byte value*; the `0xFF` of §2.2 is an *object ID*. Two
-> different fields that happen to share a numeric value. There is no technical
-> conflict, but keep the names distinct in code and prose.
+> **Naming caution.** The `0xFF` above is a device-information byte value; the
+> `0xFF` of §2.1 is an object ID. Different fields sharing a number.
 
-Note that direction separation alone is what makes cross-direction replay
-impossible. The intuition that "a replayed advertisement would not parse as a
-write because it contains the `0xFF` declaration" is **not** a defense: a
-permissive write parser would skip the unknown object and apply the rest. §4.2's
-strictness and this section's nonce split are the actual mitigations, and both
-are required.
+### 5.2 Sealed payload
 
-### 5.2 Independent counters per direction
-
-The device-information split closes *cross*-direction replay. Replaying an old
-**write** as a write is closed separately, by a counter:
-
-- The device MUST track the highest write counter it has accepted, independently
-  of its own advertising counter, and MUST reject any write whose counter is less
-  than or equal to it.
-- The device MUST accept forward jumps, so that a receiver which lost its state
-  (reinstall, restore from backup) can resume without a factory reset.
-- The device SHOULD persist the counter to non-volatile storage periodically
-  rather than on every write, and on resume MUST continue from a value strictly
-  greater than any it may have accepted before the last persist.
-- The receiver MUST persist its write counter across restarts and SHOULD offer a
-  resynchronisation step when writes start failing authentication.
-
-### 5.3 Encrypted write payload
+A sealed write or read is
 
 ```
 <ciphertext> <counter u32 LE> <MIC 4>
 ```
 
-where the ciphertext is the AES-CCM encryption of the plaintext of §4.2.
+where the ciphertext is the AES-CCM encryption of the plaintext object of §4.2 or
+§4.3. This is byte-for-byte BTHome's encrypted advertising layout minus the
+device-information byte, so both sides share one framing routine for every
+direction (D-008).
 
-This is byte-for-byte the layout BTHome uses for encrypted advertising, minus
-the device-information byte (which for writes is implicit, §5.1). Both
-directions therefore share the same framing code on both sides — which matters
-on a constrained device that must both build encrypted advertising and parse
-encrypted writes (D-008).
+### 5.3 Counters
 
-Unencrypted devices remain permitted, consistent with BTHome policy. A receiver
-SHOULD warn the user when a device exposes actuator-class writable objects
-without encryption.
+- **Writes.** The receiver keeps one write counter per device, across all its
+  characteristics, and MUST persist it across restarts. The device MUST track the
+  highest write counter it has accepted and MUST reject any write whose counter is
+  less than or equal to it; it MUST accept forward jumps, so a receiver that lost
+  its state can resume. The device SHOULD persist its counter periodically and on
+  resume MUST continue strictly above anything it may have accepted.
+- **Reads.** The device seals each read with a counter it never reuses under the
+  read device-information byte. It MAY use its advertising counter; the nonces
+  differ by direction.
 
-### 5.4 Test vectors
+The receiver SHOULD offer a resynchronisation step when writes start failing
+authentication.
+
+### 5.4 Unencrypted devices
+
+Remain permitted, consistent with BTHome policy. A receiver SHOULD warn once per
+device that exposes writable entries without encryption.
+
+### 5.5 Test vectors
 
 `test-vectors/test-vectors.json` is the normative contract between
-implementations: bindkey, MAC, device-information byte, counter, plaintext,
-ciphertext and MIC for both directions, including cross-direction replay negative
-cases. Both reference implementations consume it. A change to that file is a
-change to this specification.
+implementations: bindkey, MAC, direction, counter, plaintext, sealed payload, for
+advertising, writes and reads, including cross-direction negative cases. Both
+reference implementations consume it. A change to that file is a change to this
+specification.
 
 ---
 
-## 6. Confirmation model
+## 6. Receiver behaviour
 
-1. The receiver writes, then disconnects.
-2. The device applies the values and MUST refresh its advertising data
-   **immediately**, without waiting for the next scheduled advertising interval
-   boundary where the radio stack allows it.
-3. The receiver reads the new state from the next advertisement. That
-   advertisement is the confirmation; there is no acknowledgement.
-4. Until confirmation arrives, the receiver MAY display the written value
-   optimistically. If no confirming advertisement arrives within its confirmation
-   window, the receiver MUST revert its state to the last advertised value and
-   SHOULD surface a warning.
-5. Write-only objects (§3) are excluded from steps 3–5.
-
-Advertising is the single source of truth for state. A receiver MUST NOT treat a
-successful GATT write as evidence that the value was applied.
-
-The reference receiver derives its confirmation window from the device's observed
-advertising interval — `max(5 s, 2 × interval)` — rather than using a fixed value,
-so that slowly advertising devices do not produce spurious reverts (D-007). The
-window is an implementation choice, not a normative constant.
+- **Discovery.** A device is writable if its BTHome service data ends with a
+  declaration of at least one known entry. The receiver discovers the GATT
+  service by connecting; it MUST NOT rely on a cached GATT table across a change
+  of declaration, since a changed layout usually means new firmware and a rebuilt
+  table.
+- **Writing.** Connect, write with response to the entry's characteristic,
+  disconnect. Several writes to one device SHOULD share a connection.
+- **Failure.** A write that is not acknowledged MUST be reported to the user and
+  MUST NOT be shown as applied.
+- **State.** Assumed state for §3.1 devices; read state for §3.2 devices.
+- **Availability.** From advertising presence, exactly as for any BTHome device.
 
 ---
 
 ## 7. Device requirements
 
 - **Static BLE address.** A resolvable private address breaks receiver-side
-  device identity and merging. Devices implementing this specification MUST use a
-  static address.
+  identity and merging with the core BTHome device.
 - **Connectable advertising** at all times (§4.1).
-- **Immediate advertising refresh** after applying a write (§6.2).
-- **Capacity enforcement** at configuration time (§2.3).
-- **Strict write validation**: object IDs, length, no trailing bytes (§4.2).
+- **Capacity check** at configuration time (§2.4).
+- **Strict write validation**: object ID, length, no trailing bytes (§4.2).
+- **Settings revision and readable characteristics** when writable values can
+  change by themselves (§3.2).
 
 ---
 
 ## 8. Worked examples
 
-### 8.1 One battery-powered light
+### 8.1 One light
 
 Advertising service data for `0xFCD2` (BTHome v2, unencrypted):
 
 ```
-40 01 61 1E 01 FF 02
+40 00 09 01 61 FF 1E
 |  |     |     |
-|  |     |     +-- declaration: bitmask 0b00000010 -> position 1 is writable
-|  |     +-------- position 1: 0x1E light = on
-|  +-------------- position 0: 0x01 battery = 97 %
-+----------------- device-information byte, BTHome v2, unencrypted
+|  |     |     +-- declaration: entry 1 = 0x1E light
+|  |     +-------- 0x01 battery = 97 %
+|  +-------------- 0x00 packet id = 9
++----------------- device-information byte
 ```
 
-To switch the light off, the receiver writes:
+To switch the light on, the receiver writes `1E 01` to characteristic
+`2FAA0001-…` and receives the write response. The light has no local control, so
+the device needs no settings revision and the receiver shows it as assumed state.
+
+### 8.2 Thermostat with a local knob
 
 ```
-1E 00
+40 00 09 02 C4 09 65 03 FF 10 57
+         |        |     |
+         |        |     +-- entries: 1 = 0x10 power, 2 = 0x57 temperature (target)
+         |        +-------- 0x65 settings revision = 3
+         +----------------- 0x02 temperature = 25.00 °C (measured, a sensor)
 ```
 
-Battery is not writable, so it does not appear in the write. The device applies
-it, re-advertises `40 01 61 1E 00 FF 02`, and the receiver confirms.
+- Target 22 °C: write `57 16` to characteristic `2FAA0002-…`.
+- Someone turns the knob to 20 °C: the device advertises `65 04`. The receiver
+  sees the revision change, connects, reads characteristic 1 (`10 01`) and
+  characteristic 2 (`57 14`), and shows heating on, target 20 °C.
+- The device does not change `0x65` after the 22 °C write: the receiver already
+  knows.
 
-### 8.2 Three lights and a display
-
-```
-40 01 61 1E 01 1E 00 1E 01 53 00 FF 1E
-         |     |     |     |     |
-         |     |     |     |     +-- bitmask 0b00011110 -> positions 1,2,3,4
-         |     |     |     +-------- position 4: 0x53 text, length 0 (write-only)
-         +-----+-----+-------------- positions 1-3: three light instances
-```
-
-Turning off only the second light, leaving the display untouched:
+### 8.3 Two lights and a display
 
 ```
-1E 01 1E 00 1E 01 53 00
-|     |     |     |
-|     |     |     +-- text, length 0 = no-op (§4.3)
-|     |     +-------- unchanged, resent from the last advertisement
-|     +-------------- the change
-+-------------------- unchanged, resent from the last advertisement
+40 00 09 FF 1E 1E 53
+            |  |  |
+            |  |  +-- entry 3: 0x53 text -> characteristic 2FAA0003
+            |  +----- entry 2: 0x1E light -> characteristic 2FAA0002
+            +-------- entry 1: 0x1E light -> characteristic 2FAA0001
 ```
 
-### 8.3 The same device with a packet-id object
+Turning off the second light writes `1E 00` to characteristic 2 and nothing else.
+Showing "Hello" writes `53 05 48 65 6C 6C 6F` to characteristic 3.
 
-What §8.1's device actually broadcasts once it emits BTHome's packet-id object,
-which is what the Espruino reference implementation does:
+### 8.4 A momentary action
 
 ```
-40 00 09 01 61 1E 01 FF 04
-|  |     |     |     |
-|  |     |     |     +-- declaration: bitmask 0b00000100 -> position 2
-|  |     |     +-------- position 2: 0x1E light = on
-|  |     +-------------- position 1: 0x01 battery = 97 %
-|  +-------------------- position 0: 0x00 packet id = 9
-+----------------------- device-information byte
+40 00 09 FF 3A
 ```
 
-Same device, same writable object, different bitmask — `0x04` rather than
-`0x02` — because the packet id occupies position 0. The write itself is
-unchanged (`1E 00`): §4.2 carries only the writable objects.
-
-### 8.4 Rotation
-
-A weather station advertising temperature and humidity in one payload and
-pressure and illuminance in another MAY rotate them freely, provided the payload
-carrying its writable heater relay also carries the declaration and is broadcast
-on its own rotation slot. Non-writable sensors in other payloads are unaffected.
+Writing `3A 01` (button, press) to characteristic 1 opens a gate. There is nothing
+to confirm and nothing to read: the write response is the whole interaction.
 
 ---
 
 ## 9. Status and open items
 
-Nothing in this document is frozen. At the first public release, the following
-freeze permanently and must never change afterwards: the service and
-characteristic UUIDs, the declaration object ID and bitmask format, the write
-payload layout, and the no-op conventions.
+Nothing in this document is frozen. At the first public release the following
+freeze permanently: the service and characteristic UUID scheme, the declaration
+object ID and format, the write and read payload layout, and the direction bytes
+of §5.1.
 
 Open items:
 
-1. **`0xFF` is not reserved.** The BTHome project has not assigned this object
-   ID. Reserving it — ideally merging this specification — is the goal of the
-   standardization step, to be pursued once a working proof of concept exists.
-2. **UUIDs are provisional** pending review in espruino#8013 (D-001).
-3. **Manufacturer-data fallback** details remain unspecified (§2.5), pending a
-   need that does not currently exist.
+1. **`0xFF` is not reserved.** Asking BTHome to reserve this one object ID is the
+   standardization step (`bthome-dossier.md`), pursued once a working
+   implementation exists.
+2. **UUIDs are provisional** (D-001).
+3. **Settings revision in the Espruino module.** The upstream `BTHome` module has
+   no type for `0x65` yet; devices use its `raw` escape hatch until it does.
