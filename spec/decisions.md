@@ -1774,8 +1774,11 @@ firmware, and installing an application answers a different one.
 > {showName:false})` returns `2 1 6 6 22 15 24 1 2 3`, UUID present. So the UUID
 > finding below was a transient bug, not a property of master, and "appears
 > unreported" was wrong — it was already fixed. The raw-form workaround is not
-> needed. **Not yet re-measured on 396:** whether the local name is still refused
-> rather than shortened; the byte budget table below is for `.242` only.
+> needed. **Re-measured on 396 (2026-09-17, D-049):** the name is still refused
+> rather than shortened. Service data accepted: 5 bytes with the name
+> ("Espruino b216"), 20 without -- two fewer than on `.242` in both cases, the
+> two bytes of the UUID that `.396` emits again. `showName: false` stays
+> necessary on this board.
 
 **Status:** measured on the nice!nano, 2v29.242, board `NICENANO`, 2026-09-16.
 Two separate findings, both from one failed deployment. The first is ours to
@@ -2026,3 +2029,10 @@ module plus a sketch leaves 1834 blocks free. The tool now sends `reset()`.
 
 **Not yet on hardware:** an encrypted device on v2 (sealed write, sealed read
 under 0xFE). Both sides consume the same vectors, including the read direction.
+
+**Afterwards (same day).** The v1 entity-registry rows left in Home Assistant
+(25 of them, unavailable or restored-only) were removed, and the v2 entities
+renamed to the old IDs, so the `Puck illuminance -> OLED` automation reaches the
+nice!nano again: the sketch reported `shown = "Lux 102.47"`. The nice!nano runs
+`oled-text.js` from flash on 2v29.396, 8 bytes of service data, 10974 blocks free.
+The name budget on 396 is recorded under D-046.
