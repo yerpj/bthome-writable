@@ -1,623 +1,699 @@
 {
-  "spec_version": "1.0-draft.1",
+  "spec_version": "2.0-draft.1",
   "generated_by": "tools/gen_advertising_fixtures.py",
-  "description": "Advertising fixtures for bthome-writable, consumed by both test suites. Service data is the full BTHome v2 payload including the device-information byte; write payloads follow PROTOCOL.md \u00a74.2.",
+  "description": "Advertising fixtures for bthome-writable, consumed by both test suites. Service data is the full BTHome v2 payload including the device-information byte; writes and reads follow PROTOCOL.md \u00a74.",
   "budget": {
     "advertising_payload_bytes": 31,
     "ad_flags_bytes": 3,
     "ad_service_data_header_bytes": 4,
     "service_data_budget": 24,
-    "object_budget": 23,
-    "note": "The 31 bytes of a legacy advertising payload are not all available to BTHome objects: the Flags AD structure and the Service Data header come out first, and the device-information byte after that. See PROTOCOL.md \u00a72.3."
+    "note": "A theoretical ceiling. Real devices spend more of the 31 bytes: Espruino always advertises its manufacturer ID, and a local name costs 2 + its length. Measured object budgets were 7 to 22 bytes (PROTOCOL.md \u00a72.4, decisions.md D-030, D-046)."
   },
   "fixtures": [
     {
       "name": "single-light",
-      "description": "PROTOCOL.md \u00a78.1: battery plus one writable light.",
+      "description": "PROTOCOL.md \u00a78.1: packet id, battery, one writable light. The light's state is not advertised (\u00a72.3).",
       "valid": true,
       "device_info_byte": "40",
-      "service_data": "4001611e01ff02",
+      "service_data": "4000090161ff1e",
       "service_data_length": 7,
       "objects": [
         {
-          "object_id": "01",
-          "value": "61",
-          "name": "battery",
-          "position": 0
+          "object_id": "00",
+          "value": "09",
+          "name": "packet_id"
         },
         {
-          "object_id": "1e",
-          "value": "01",
-          "name": "light",
-          "position": 1
+          "object_id": "01",
+          "value": "61",
+          "name": "battery"
         },
         {
           "object_id": "ff",
-          "value": "02",
-          "name": "declaration",
-          "position": 2
+          "value": "1e",
+          "name": "declaration"
         }
       ],
       "declaration": {
-        "bitmask": 2,
-        "bitmask_hex": "02",
-        "writable_positions": [
+        "entries": [
+          "1e"
+        ],
+        "characteristics": [
+          {
+            "entry": 1,
+            "object_id": "1e",
+            "uuid": "2faa0001-3b0b-4b1a-9e2a-b4c2952e62f2"
+          }
+        ],
+        "offered_entries": [
           1
         ],
         "is_last_element": true
       },
       "expected_sensors": {
-        "battery": 97,
-        "light": true
+        "packet_id": 9,
+        "battery": 97
       },
       "writes": [
-        {
-          "name": "light-off",
-          "description": "The only writable object, set to off.",
-          "objects": [
-            {
-              "object_id": "1e",
-              "value": "00",
-              "name": "light"
-            }
-          ],
-          "payload": "1e00"
-        },
         {
           "name": "light-on",
-          "description": "And back on.",
-          "objects": [
-            {
-              "object_id": "1e",
-              "value": "01",
-              "name": "light"
-            }
-          ],
+          "description": "Switch the light on.",
+          "entry": 1,
+          "uuid": "2faa0001-3b0b-4b1a-9e2a-b4c2952e62f2",
+          "object": {
+            "object_id": "1e",
+            "value": "01",
+            "name": "light"
+          },
           "payload": "1e01"
+        },
+        {
+          "name": "light-off",
+          "description": "And off.",
+          "entry": 1,
+          "uuid": "2faa0001-3b0b-4b1a-9e2a-b4c2952e62f2",
+          "object": {
+            "object_id": "1e",
+            "value": "00",
+            "name": "light"
+          },
+          "payload": "1e00"
         }
       ]
     },
     {
-      "name": "multi-instance-and-display",
-      "description": "PROTOCOL.md \u00a78.2: three light instances and a write-only display. Positions disambiguate the instances; no per-instance ID is needed.",
+      "name": "thermostat",
+      "description": "PROTOCOL.md \u00a78.2: a measured temperature (a sensor), settings revision, and two entries -- power and a target temperature. The measured 0x02 and the writable 0x57 never collide, because the target is not in the packet.",
       "valid": true,
       "device_info_byte": "40",
-      "service_data": "4001611e011e001e015300ff1e",
-      "service_data_length": 13,
-      "objects": [
-        {
-          "object_id": "01",
-          "value": "61",
-          "name": "battery",
-          "position": 0
-        },
-        {
-          "object_id": "1e",
-          "value": "01",
-          "name": "light",
-          "position": 1
-        },
-        {
-          "object_id": "1e",
-          "value": "00",
-          "name": "light",
-          "position": 2
-        },
-        {
-          "object_id": "1e",
-          "value": "01",
-          "name": "light",
-          "position": 3
-        },
-        {
-          "object_id": "53",
-          "value": "00",
-          "name": "text",
-          "write_only": true,
-          "position": 4
-        },
-        {
-          "object_id": "ff",
-          "value": "1e",
-          "name": "declaration",
-          "position": 5
-        }
-      ],
-      "declaration": {
-        "bitmask": 30,
-        "bitmask_hex": "1e",
-        "writable_positions": [
-          1,
-          2,
-          3,
-          4
-        ],
-        "is_last_element": true
-      },
-      "expected_sensors": {
-        "battery": 97,
-        "light_1": true,
-        "light_2": false,
-        "light_3": true
-      },
-      "writes": [
-        {
-          "name": "second-light-off",
-          "description": "Change one instance. The other two are resent from the last advertisement, and the display carries the no-op.",
-          "objects": [
-            {
-              "object_id": "1e",
-              "value": "01",
-              "name": "light"
-            },
-            {
-              "object_id": "1e",
-              "value": "00",
-              "name": "light"
-            },
-            {
-              "object_id": "1e",
-              "value": "01",
-              "name": "light"
-            },
-            {
-              "object_id": "53",
-              "value": "00",
-              "name": "text",
-              "note": "length 0 = no-op (\u00a74.3)"
-            }
-          ],
-          "payload": "1e011e001e015300"
-        },
-        {
-          "name": "display-hello",
-          "description": "Write text without touching any light.",
-          "objects": [
-            {
-              "object_id": "1e",
-              "value": "01",
-              "name": "light"
-            },
-            {
-              "object_id": "1e",
-              "value": "00",
-              "name": "light"
-            },
-            {
-              "object_id": "1e",
-              "value": "01",
-              "name": "light"
-            },
-            {
-              "object_id": "53",
-              "value": "0568656c6c6f",
-              "name": "text"
-            }
-          ],
-          "payload": "1e011e001e01530568656c6c6f"
-        }
-      ]
-    },
-    {
-      "name": "espruino-single-light",
-      "description": "PROTOCOL.md \u00a78.3: \u00a78.1's device as the Espruino module emits it, with the packet-id object at position 0.",
-      "valid": true,
-      "device_info_byte": "40",
-      "service_data": "40000901611e01ff04",
-      "service_data_length": 9,
+      "service_data": "40000902c4096503ff1057",
+      "service_data_length": 11,
       "objects": [
         {
           "object_id": "00",
           "value": "09",
-          "name": "packet_id",
-          "position": 0
+          "name": "packet_id"
         },
         {
-          "object_id": "01",
-          "value": "61",
-          "name": "battery",
-          "position": 1
+          "object_id": "02",
+          "value": "c409",
+          "name": "temperature"
         },
         {
-          "object_id": "1e",
-          "value": "01",
-          "name": "light",
-          "position": 2
+          "object_id": "65",
+          "value": "03",
+          "name": "settings_revision"
         },
         {
           "object_id": "ff",
-          "value": "04",
-          "name": "declaration",
-          "position": 3
+          "value": "1057",
+          "name": "declaration"
         }
       ],
       "declaration": {
-        "bitmask": 4,
-        "bitmask_hex": "04",
-        "writable_positions": [
+        "entries": [
+          "10",
+          "57"
+        ],
+        "characteristics": [
+          {
+            "entry": 1,
+            "object_id": "10",
+            "uuid": "2faa0001-3b0b-4b1a-9e2a-b4c2952e62f2"
+          },
+          {
+            "entry": 2,
+            "object_id": "57",
+            "uuid": "2faa0002-3b0b-4b1a-9e2a-b4c2952e62f2"
+          }
+        ],
+        "offered_entries": [
+          1,
           2
         ],
         "is_last_element": true
       },
       "expected_sensors": {
         "packet_id": 9,
-        "battery": 97,
-        "light": true
+        "temperature": 25.0,
+        "settings_revision": 3
       },
       "writes": [
         {
-          "name": "light-off",
-          "description": "Identical to \u00a78.1's write: only writable objects travel.",
-          "objects": [
-            {
-              "object_id": "1e",
-              "value": "00",
-              "name": "light"
-            }
-          ],
-          "payload": "1e00"
+          "name": "target-22",
+          "description": "Target 22 \u00b0C.",
+          "entry": 2,
+          "uuid": "2faa0002-3b0b-4b1a-9e2a-b4c2952e62f2",
+          "object": {
+            "object_id": "57",
+            "value": "16",
+            "name": "temperature"
+          },
+          "payload": "5716"
+        },
+        {
+          "name": "heating-on",
+          "description": "Power on.",
+          "entry": 1,
+          "uuid": "2faa0001-3b0b-4b1a-9e2a-b4c2952e62f2",
+          "object": {
+            "object_id": "10",
+            "value": "01",
+            "name": "power"
+          },
+          "payload": "1001"
+        }
+      ],
+      "reads": [
+        {
+          "name": "read-power",
+          "description": "After a revision change: heating on.",
+          "entry": 1,
+          "uuid": "2faa0001-3b0b-4b1a-9e2a-b4c2952e62f2",
+          "object": {
+            "object_id": "10",
+            "value": "01",
+            "name": "power"
+          },
+          "payload": "1001"
+        },
+        {
+          "name": "read-target",
+          "description": "After a revision change: target 20 \u00b0C.",
+          "entry": 2,
+          "uuid": "2faa0002-3b0b-4b1a-9e2a-b4c2952e62f2",
+          "object": {
+            "object_id": "57",
+            "value": "14",
+            "name": "temperature"
+          },
+          "payload": "5714"
         }
       ]
     },
     {
-      "name": "espruino-multi-instance",
-      "description": "The multi-instance device as the Espruino module emits it. Three light instances keep their declared order through the packet's ascending-object-id sort, which must therefore be stable.",
+      "name": "two-lights-and-display",
+      "description": "PROTOCOL.md \u00a78.3: two entries of one type and a text entry. Instances are told apart by entry number, which is also their characteristic number.",
       "valid": true,
       "device_info_byte": "40",
-      "service_data": "40000a01611e011e001e01ff1c",
-      "service_data_length": 13,
+      "service_data": "400009ff1e1e53",
+      "service_data_length": 7,
       "objects": [
         {
           "object_id": "00",
-          "value": "0a",
-          "name": "packet_id",
-          "position": 0
-        },
-        {
-          "object_id": "01",
-          "value": "61",
-          "name": "battery",
-          "position": 1
-        },
-        {
-          "object_id": "1e",
-          "value": "01",
-          "name": "light",
-          "position": 2
-        },
-        {
-          "object_id": "1e",
-          "value": "00",
-          "name": "light",
-          "position": 3
-        },
-        {
-          "object_id": "1e",
-          "value": "01",
-          "name": "light",
-          "position": 4
+          "value": "09",
+          "name": "packet_id"
         },
         {
           "object_id": "ff",
-          "value": "1c",
-          "name": "declaration",
-          "position": 5
+          "value": "1e1e53",
+          "name": "declaration"
         }
       ],
       "declaration": {
-        "bitmask": 28,
-        "bitmask_hex": "1c",
-        "writable_positions": [
+        "entries": [
+          "1e",
+          "1e",
+          "53"
+        ],
+        "characteristics": [
+          {
+            "entry": 1,
+            "object_id": "1e",
+            "uuid": "2faa0001-3b0b-4b1a-9e2a-b4c2952e62f2"
+          },
+          {
+            "entry": 2,
+            "object_id": "1e",
+            "uuid": "2faa0002-3b0b-4b1a-9e2a-b4c2952e62f2"
+          },
+          {
+            "entry": 3,
+            "object_id": "53",
+            "uuid": "2faa0003-3b0b-4b1a-9e2a-b4c2952e62f2"
+          }
+        ],
+        "offered_entries": [
+          1,
           2,
-          3,
-          4
+          3
         ],
         "is_last_element": true
       },
       "expected_sensors": {
-        "packet_id": 10,
-        "battery": 97,
-        "light_1": true,
-        "light_2": false,
-        "light_3": true
+        "packet_id": 9
       },
       "writes": [
         {
           "name": "second-light-off",
-          "description": "Positions address the instances; no per-instance ID exists.",
-          "objects": [
-            {
-              "object_id": "1e",
-              "value": "01",
-              "name": "light"
-            },
-            {
-              "object_id": "1e",
-              "value": "00",
-              "name": "light"
-            },
-            {
-              "object_id": "1e",
-              "value": "01",
-              "name": "light"
-            }
-          ],
-          "payload": "1e011e001e01"
+          "description": "Touches entry 2 and nothing else.",
+          "entry": 2,
+          "uuid": "2faa0002-3b0b-4b1a-9e2a-b4c2952e62f2",
+          "object": {
+            "object_id": "1e",
+            "value": "00",
+            "name": "light"
+          },
+          "payload": "1e00"
+        },
+        {
+          "name": "display-hello",
+          "description": "Text keeps BTHome's length byte.",
+          "entry": 3,
+          "uuid": "2faa0003-3b0b-4b1a-9e2a-b4c2952e62f2",
+          "object": {
+            "object_id": "53",
+            "value": "0548656c6c6f",
+            "name": "text"
+          },
+          "payload": "530548656c6c6f"
         }
       ]
     },
     {
-      "name": "writable-setpoint",
-      "description": "A writable numeric object: the shape of a dimmer level or a setpoint. Its range and step are the encoding's, derived from the object's width and factor -- BTHome gives a device no way to say its own limits are narrower (spec/PLATFORMS.md).",
+      "name": "momentary-action",
+      "description": "PROTOCOL.md \u00a78.4: a writable button. A write triggers only its own entry, so events are safe to write in version 2.",
       "valid": true,
       "device_info_byte": "40",
-      "service_data": "4000030158149a10ff04",
-      "service_data_length": 10,
+      "service_data": "400009ff3a",
+      "service_data_length": 5,
       "objects": [
         {
           "object_id": "00",
-          "value": "03",
-          "name": "packet_id",
-          "position": 0
-        },
-        {
-          "object_id": "01",
-          "value": "58",
-          "name": "battery",
-          "position": 1
-        },
-        {
-          "object_id": "14",
-          "value": "9a10",
-          "name": "moisture",
-          "position": 2
+          "value": "09",
+          "name": "packet_id"
         },
         {
           "object_id": "ff",
-          "value": "04",
-          "name": "declaration",
-          "position": 3
+          "value": "3a",
+          "name": "declaration"
         }
       ],
       "declaration": {
-        "bitmask": 4,
-        "bitmask_hex": "04",
-        "writable_positions": [
-          2
+        "entries": [
+          "3a"
+        ],
+        "characteristics": [
+          {
+            "entry": 1,
+            "object_id": "3a",
+            "uuid": "2faa0001-3b0b-4b1a-9e2a-b4c2952e62f2"
+          }
+        ],
+        "offered_entries": [
+          1
         ],
         "is_last_element": true
       },
       "expected_sensors": {
-        "packet_id": 3,
-        "battery": 88,
-        "moisture": 42.5
+        "packet_id": 9
       },
       "writes": [
         {
-          "name": "setpoint-to-60",
-          "description": "6000 little-endian is 0x1770 = 6000, which is 60.00%.",
-          "objects": [
-            {
-              "object_id": "14",
-              "value": "7017",
-              "name": "moisture"
-            }
-          ],
-          "payload": "147017"
-        }
-      ]
-    },
-    {
-      "name": "writable-button",
-      "description": "A writable event object. Its resting value is 'none', so it is stateless by construction: there is nothing for \u00a76 to confirm, and a receiver offers one button per value of the vocabulary (spec/PLATFORMS.md).",
-      "valid": true,
-      "device_info_byte": "40",
-      "service_data": "400004014d3a00ff04",
-      "service_data_length": 9,
-      "objects": [
-        {
-          "object_id": "00",
-          "value": "04",
-          "name": "packet_id",
-          "position": 0
+          "name": "press",
+          "description": "0x01 is press in BTHome's button vocabulary.",
+          "entry": 1,
+          "uuid": "2faa0001-3b0b-4b1a-9e2a-b4c2952e62f2",
+          "object": {
+            "object_id": "3a",
+            "value": "01",
+            "name": "button"
+          },
+          "payload": "3a01"
         },
-        {
-          "object_id": "01",
-          "value": "4d",
-          "name": "battery",
-          "position": 1
-        },
-        {
-          "object_id": "3a",
-          "value": "00",
-          "name": "button",
-          "write_only": true,
-          "position": 2
-        },
-        {
-          "object_id": "ff",
-          "value": "04",
-          "name": "declaration",
-          "position": 3
-        }
-      ],
-      "declaration": {
-        "bitmask": 4,
-        "bitmask_hex": "04",
-        "writable_positions": [
-          2
-        ],
-        "is_last_element": true
-      },
-      "expected_sensors": {
-        "packet_id": 4,
-        "battery": 77
-      },
-      "writes": [
         {
           "name": "long-press",
-          "description": "0x04 is long_press in BTHome's button vocabulary.",
-          "objects": [
-            {
-              "object_id": "3a",
-              "value": "04",
-              "name": "button"
-            }
-          ],
+          "description": "0x04 is long_press.",
+          "entry": 1,
+          "uuid": "2faa0001-3b0b-4b1a-9e2a-b4c2952e62f2",
+          "object": {
+            "object_id": "3a",
+            "value": "04",
+            "name": "button"
+          },
           "payload": "3a04"
         }
       ]
     },
     {
-      "name": "write-only-display",
-      "description": "A device whose only writable object is a write-only text: it advertises the placeholder and never the written value (\u00a73).",
+      "name": "writable-level",
+      "description": "A writable numeric entry: the shape of a dimmer level or a setpoint. Range and step come from the object's width and factor.",
       "valid": true,
       "device_info_byte": "40",
-      "service_data": "4001585300ff02",
+      "service_data": "4000030158ff14",
       "service_data_length": 7,
       "objects": [
         {
-          "object_id": "01",
-          "value": "58",
-          "name": "battery",
-          "position": 0
+          "object_id": "00",
+          "value": "03",
+          "name": "packet_id"
         },
         {
-          "object_id": "53",
-          "value": "00",
-          "name": "text",
-          "write_only": true,
-          "position": 1
+          "object_id": "01",
+          "value": "58",
+          "name": "battery"
         },
         {
           "object_id": "ff",
-          "value": "02",
-          "name": "declaration",
-          "position": 2
+          "value": "14",
+          "name": "declaration"
         }
       ],
       "declaration": {
-        "bitmask": 2,
-        "bitmask_hex": "02",
-        "writable_positions": [
+        "entries": [
+          "14"
+        ],
+        "characteristics": [
+          {
+            "entry": 1,
+            "object_id": "14",
+            "uuid": "2faa0001-3b0b-4b1a-9e2a-b4c2952e62f2"
+          }
+        ],
+        "offered_entries": [
           1
         ],
         "is_last_element": true
       },
       "expected_sensors": {
+        "packet_id": 3,
         "battery": 88
       },
       "writes": [
         {
-          "name": "display-hello",
-          "description": "Fire-and-forget: the advertising will not change.",
-          "objects": [
-            {
-              "object_id": "53",
-              "value": "0568656c6c6f",
-              "name": "text"
-            }
-          ],
-          "payload": "530568656c6c6f"
+          "name": "level-60",
+          "description": "6000 = 0x1770 is 60.00 %.",
+          "entry": 1,
+          "uuid": "2faa0001-3b0b-4b1a-9e2a-b4c2952e62f2",
+          "object": {
+            "object_id": "14",
+            "value": "7017",
+            "name": "moisture"
+          },
+          "payload": "147017"
+        }
+      ]
+    },
+    {
+      "name": "twelve-lights",
+      "description": "More entries than version 1's bitmask allowed, and characteristic numbers past 9: entry 10 is 2faa000a, written in hexadecimal.",
+      "valid": true,
+      "device_info_byte": "40",
+      "service_data": "400001ff1e1e1e1e1e1e1e1e1e1e1e1e",
+      "service_data_length": 16,
+      "objects": [
+        {
+          "object_id": "00",
+          "value": "01",
+          "name": "packet_id"
         },
         {
-          "name": "display-noop",
-          "description": "Length 0: do not modify the display.",
-          "objects": [
-            {
-              "object_id": "53",
-              "value": "00",
-              "name": "text",
-              "note": "length 0 = no-op (\u00a74.3)"
-            }
-          ],
-          "payload": "5300"
+          "object_id": "ff",
+          "value": "1e1e1e1e1e1e1e1e1e1e1e1e",
+          "name": "declaration"
+        }
+      ],
+      "declaration": {
+        "entries": [
+          "1e",
+          "1e",
+          "1e",
+          "1e",
+          "1e",
+          "1e",
+          "1e",
+          "1e",
+          "1e",
+          "1e",
+          "1e",
+          "1e"
+        ],
+        "characteristics": [
+          {
+            "entry": 1,
+            "object_id": "1e",
+            "uuid": "2faa0001-3b0b-4b1a-9e2a-b4c2952e62f2"
+          },
+          {
+            "entry": 2,
+            "object_id": "1e",
+            "uuid": "2faa0002-3b0b-4b1a-9e2a-b4c2952e62f2"
+          },
+          {
+            "entry": 3,
+            "object_id": "1e",
+            "uuid": "2faa0003-3b0b-4b1a-9e2a-b4c2952e62f2"
+          },
+          {
+            "entry": 4,
+            "object_id": "1e",
+            "uuid": "2faa0004-3b0b-4b1a-9e2a-b4c2952e62f2"
+          },
+          {
+            "entry": 5,
+            "object_id": "1e",
+            "uuid": "2faa0005-3b0b-4b1a-9e2a-b4c2952e62f2"
+          },
+          {
+            "entry": 6,
+            "object_id": "1e",
+            "uuid": "2faa0006-3b0b-4b1a-9e2a-b4c2952e62f2"
+          },
+          {
+            "entry": 7,
+            "object_id": "1e",
+            "uuid": "2faa0007-3b0b-4b1a-9e2a-b4c2952e62f2"
+          },
+          {
+            "entry": 8,
+            "object_id": "1e",
+            "uuid": "2faa0008-3b0b-4b1a-9e2a-b4c2952e62f2"
+          },
+          {
+            "entry": 9,
+            "object_id": "1e",
+            "uuid": "2faa0009-3b0b-4b1a-9e2a-b4c2952e62f2"
+          },
+          {
+            "entry": 10,
+            "object_id": "1e",
+            "uuid": "2faa000a-3b0b-4b1a-9e2a-b4c2952e62f2"
+          },
+          {
+            "entry": 11,
+            "object_id": "1e",
+            "uuid": "2faa000b-3b0b-4b1a-9e2a-b4c2952e62f2"
+          },
+          {
+            "entry": 12,
+            "object_id": "1e",
+            "uuid": "2faa000c-3b0b-4b1a-9e2a-b4c2952e62f2"
+          }
+        ],
+        "offered_entries": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12
+        ],
+        "is_last_element": true
+      },
+      "expected_sensors": {
+        "packet_id": 1
+      },
+      "writes": [
+        {
+          "name": "tenth-on",
+          "description": "Characteristic 2faa000a.",
+          "entry": 10,
+          "uuid": "2faa000a-3b0b-4b1a-9e2a-b4c2952e62f2",
+          "object": {
+            "object_id": "1e",
+            "value": "01",
+            "name": "light"
+          },
+          "payload": "1e01"
+        },
+        {
+          "name": "twelfth-on",
+          "description": "Characteristic 2faa000c.",
+          "entry": 12,
+          "uuid": "2faa000c-3b0b-4b1a-9e2a-b4c2952e62f2",
+          "object": {
+            "object_id": "1e",
+            "value": "01",
+            "name": "light"
+          },
+          "payload": "1e01"
+        }
+      ]
+    },
+    {
+      "name": "unknown-entry-type",
+      "description": "Entry 2 is an object ID the receiver does not know. It is not offered, but it is counted: the light after it stays on characteristic 3 (\u00a72.1).",
+      "valid": true,
+      "device_info_byte": "40",
+      "service_data": "400005ff1e991e",
+      "service_data_length": 7,
+      "objects": [
+        {
+          "object_id": "00",
+          "value": "05",
+          "name": "packet_id"
+        },
+        {
+          "object_id": "ff",
+          "value": "1e991e",
+          "name": "declaration"
+        }
+      ],
+      "declaration": {
+        "entries": [
+          "1e",
+          "99",
+          "1e"
+        ],
+        "characteristics": [
+          {
+            "entry": 1,
+            "object_id": "1e",
+            "uuid": "2faa0001-3b0b-4b1a-9e2a-b4c2952e62f2"
+          },
+          {
+            "entry": 2,
+            "object_id": "99",
+            "uuid": "2faa0002-3b0b-4b1a-9e2a-b4c2952e62f2"
+          },
+          {
+            "entry": 3,
+            "object_id": "1e",
+            "uuid": "2faa0003-3b0b-4b1a-9e2a-b4c2952e62f2"
+          }
+        ],
+        "offered_entries": [
+          1,
+          3
+        ],
+        "is_last_element": true
+      },
+      "expected_sensors": {
+        "packet_id": 5
+      },
+      "writes": [
+        {
+          "name": "third-entry-on",
+          "description": "Characteristic 3, not 2.",
+          "entry": 3,
+          "uuid": "2faa0003-3b0b-4b1a-9e2a-b4c2952e62f2",
+          "object": {
+            "object_id": "1e",
+            "value": "01",
+            "name": "light"
+          },
+          "payload": "1e01"
         }
       ]
     },
     {
       "name": "rotation-declaration-packet",
-      "description": "A rotating device, packet 1 of 2. The same-packet rule (\u00a72.1) requires the declaration and every writable object to be here.",
+      "description": "A rotating device, packet 1 of 2, carrying the declaration.",
       "valid": true,
       "device_info_byte": "40",
-      "service_data": "40014a1e00ff02",
+      "service_data": "400001014aff1e",
       "service_data_length": 7,
       "objects": [
         {
-          "object_id": "01",
-          "value": "4a",
-          "name": "battery",
-          "position": 0
+          "object_id": "00",
+          "value": "01",
+          "name": "packet_id"
         },
         {
-          "object_id": "1e",
-          "value": "00",
-          "name": "light",
-          "position": 1
+          "object_id": "01",
+          "value": "4a",
+          "name": "battery"
         },
         {
           "object_id": "ff",
-          "value": "02",
-          "name": "declaration",
-          "position": 2
+          "value": "1e",
+          "name": "declaration"
         }
       ],
       "declaration": {
-        "bitmask": 2,
-        "bitmask_hex": "02",
-        "writable_positions": [
+        "entries": [
+          "1e"
+        ],
+        "characteristics": [
+          {
+            "entry": 1,
+            "object_id": "1e",
+            "uuid": "2faa0001-3b0b-4b1a-9e2a-b4c2952e62f2"
+          }
+        ],
+        "offered_entries": [
           1
         ],
         "is_last_element": true
       },
       "expected_sensors": {
-        "battery": 74,
-        "light": false
+        "packet_id": 1,
+        "battery": 74
       },
       "writes": [
         {
           "name": "light-on",
           "description": "Turn the relay on.",
-          "objects": [
-            {
-              "object_id": "1e",
-              "value": "01",
-              "name": "light"
-            }
-          ],
+          "entry": 1,
+          "uuid": "2faa0001-3b0b-4b1a-9e2a-b4c2952e62f2",
+          "object": {
+            "object_id": "1e",
+            "value": "01",
+            "name": "light"
+          },
           "payload": "1e01"
         }
       ]
     },
     {
       "name": "rotation-sensor-packet",
-      "description": "The same device, packet 2 of 2: read-only sensors that rotate freely. No declaration, and a receiver must not infer one.",
+      "description": "The same device, packet 2 of 2: sensors only. A receiver that has seen the declaration MUST NOT drop the device's entries because this packet lacks one (\u00a72.2).",
       "valid": true,
       "device_info_byte": "40",
-      "service_data": "4002a208037c15",
-      "service_data_length": 7,
+      "service_data": "40000202a208037c15",
+      "service_data_length": 9,
       "objects": [
+        {
+          "object_id": "00",
+          "value": "02",
+          "name": "packet_id"
+        },
         {
           "object_id": "02",
           "value": "a208",
-          "name": "temperature",
-          "position": 0
+          "name": "temperature"
         },
         {
           "object_id": "03",
           "value": "7c15",
-          "name": "humidity",
-          "position": 1
+          "name": "humidity"
         }
       ],
       "expected_sensors": {
+        "packet_id": 2,
         "temperature": 22.1,
         "humidity": 55.0
       }
     },
     {
       "name": "plain-bthome-no-declaration",
-      "description": "An ordinary BTHome device. The integration MUST abort discovery with not_supported rather than offer it (\u00a75 of the design).",
+      "description": "An ordinary BTHome device. A receiver MUST NOT offer it as writable.",
       "valid": true,
       "device_info_byte": "40",
       "service_data": "40013202d007",
@@ -626,14 +702,12 @@
         {
           "object_id": "01",
           "value": "32",
-          "name": "battery",
-          "position": 0
+          "name": "battery"
         },
         {
           "object_id": "02",
           "value": "d007",
-          "name": "temperature",
-          "position": 1
+          "name": "temperature"
         }
       ],
       "expected_sensors": {
@@ -642,389 +716,334 @@
       }
     },
     {
-      "name": "empty-bitmask",
-      "description": "A declaration marking nothing writable. Legal, but a device SHOULD omit the declaration instead (\u00a72.2).",
+      "name": "empty-declaration",
+      "description": "A declaration with no entries: legal, means nothing writable, and a device SHOULD omit it instead (\u00a72.1).",
       "valid": true,
       "device_info_byte": "40",
-      "service_data": "40013cff00",
-      "service_data_length": 5,
+      "service_data": "400001013cff",
+      "service_data_length": 6,
       "objects": [
+        {
+          "object_id": "00",
+          "value": "01",
+          "name": "packet_id"
+        },
         {
           "object_id": "01",
           "value": "3c",
-          "name": "battery",
-          "position": 0
+          "name": "battery"
         },
         {
           "object_id": "ff",
-          "value": "00",
-          "name": "declaration",
-          "position": 1
+          "value": "",
+          "name": "declaration"
         }
       ],
       "declaration": {
-        "bitmask": 0,
-        "bitmask_hex": "00",
-        "writable_positions": [],
+        "entries": [],
+        "characteristics": [],
+        "offered_entries": [],
         "is_last_element": true
       },
       "expected_sensors": {
+        "packet_id": 1,
         "battery": 60
       },
       "writes": []
     },
     {
-      "name": "eight-writables-maximum",
-      "description": "The most a one-byte bitmask can address (\u00a72.4). Bit 7 is set, which catches an implementation using a signed byte.",
-      "valid": true,
-      "device_info_byte": "40",
-      "service_data": "401e001e011e001e011e001e011e001e01ffff",
-      "service_data_length": 19,
-      "objects": [
-        {
-          "object_id": "1e",
-          "value": "00",
-          "name": "light",
-          "position": 0
-        },
-        {
-          "object_id": "1e",
-          "value": "01",
-          "name": "light",
-          "position": 1
-        },
-        {
-          "object_id": "1e",
-          "value": "00",
-          "name": "light",
-          "position": 2
-        },
-        {
-          "object_id": "1e",
-          "value": "01",
-          "name": "light",
-          "position": 3
-        },
-        {
-          "object_id": "1e",
-          "value": "00",
-          "name": "light",
-          "position": 4
-        },
-        {
-          "object_id": "1e",
-          "value": "01",
-          "name": "light",
-          "position": 5
-        },
-        {
-          "object_id": "1e",
-          "value": "00",
-          "name": "light",
-          "position": 6
-        },
-        {
-          "object_id": "1e",
-          "value": "01",
-          "name": "light",
-          "position": 7
-        },
-        {
-          "object_id": "ff",
-          "value": "ff",
-          "name": "declaration",
-          "position": 8
-        }
-      ],
-      "declaration": {
-        "bitmask": 255,
-        "bitmask_hex": "ff",
-        "writable_positions": [
-          0,
-          1,
-          2,
-          3,
-          4,
-          5,
-          6,
-          7
-        ],
-        "is_last_element": true
-      },
-      "expected_sensors": {
-        "light_1": false,
-        "light_2": true,
-        "light_3": false,
-        "light_4": true,
-        "light_5": false,
-        "light_6": true,
-        "light_7": false,
-        "light_8": true
-      },
-      "writes": [
-        {
-          "name": "all-off",
-          "description": "Every writable object at once.",
-          "objects": [
-            {
-              "object_id": "1e",
-              "value": "00",
-              "name": "light"
-            },
-            {
-              "object_id": "1e",
-              "value": "00",
-              "name": "light"
-            },
-            {
-              "object_id": "1e",
-              "value": "00",
-              "name": "light"
-            },
-            {
-              "object_id": "1e",
-              "value": "00",
-              "name": "light"
-            },
-            {
-              "object_id": "1e",
-              "value": "00",
-              "name": "light"
-            },
-            {
-              "object_id": "1e",
-              "value": "00",
-              "name": "light"
-            },
-            {
-              "object_id": "1e",
-              "value": "00",
-              "name": "light"
-            },
-            {
-              "object_id": "1e",
-              "value": "00",
-              "name": "light"
-            }
-          ],
-          "payload": "1e001e001e001e001e001e001e001e00"
-        }
-      ]
-    },
-    {
       "name": "declaration-not-last",
-      "description": "The declaration placed first. Every object after it is silently dropped by existing BTHome receivers (D-005), so \u00a72.2 forbids it.",
+      "description": "The declaration placed before a sensor. A receiver cannot detect it: the entries run to the end of the data, so the battery bytes would read as two more entries, and existing BTHome receivers drop the battery. A device MUST make this impossible (\u00a72.2).",
       "valid": false,
       "device_info_byte": "40",
-      "service_data": "40ff0401611e01",
+      "service_data": "400001ff1e0161",
       "service_data_length": 7,
       "objects": [
         {
+          "object_id": "00",
+          "value": "01",
+          "name": "packet_id"
+        },
+        {
           "object_id": "ff",
-          "value": "04",
-          "name": "declaration",
-          "position": 0
+          "value": "1e",
+          "name": "declaration"
         },
         {
           "object_id": "01",
           "value": "61",
-          "name": "battery",
-          "position": 1
-        },
-        {
-          "object_id": "1e",
-          "value": "01",
-          "name": "light",
-          "position": 2
+          "name": "battery"
         }
       ],
       "declaration": {
-        "bitmask": 4,
-        "bitmask_hex": "04",
-        "writable_positions": [
-          2
+        "entries": [
+          "1e"
+        ],
+        "characteristics": [
+          {
+            "entry": 1,
+            "object_id": "1e",
+            "uuid": "2faa0001-3b0b-4b1a-9e2a-b4c2952e62f2"
+          }
+        ],
+        "offered_entries": [
+          1
         ],
         "is_last_element": false
       },
-      "violates": "declaration_not_last",
-      "expected_sensors": {}
+      "violates": "declaration_not_last"
     },
     {
-      "name": "bitmask-beyond-object-count",
-      "description": "Bit 5 set, but the packet holds three objects. A receiver MUST ignore bits that address nothing rather than invent an entity.",
+      "name": "forbidden-entry",
+      "description": "Entry 1 lists the packet id, which \u00a72.1 forbids. A receiver MUST NOT offer it, and MUST still count it.",
       "valid": false,
       "device_info_byte": "40",
-      "service_data": "4001611e01ff22",
-      "service_data_length": 7,
+      "service_data": "400001ff001e",
+      "service_data_length": 6,
       "objects": [
         {
-          "object_id": "01",
-          "value": "61",
-          "name": "battery",
-          "position": 0
-        },
-        {
-          "object_id": "1e",
+          "object_id": "00",
           "value": "01",
-          "name": "light",
-          "position": 1
+          "name": "packet_id"
         },
         {
           "object_id": "ff",
-          "value": "22",
-          "name": "declaration",
-          "position": 2
+          "value": "001e",
+          "name": "declaration"
         }
       ],
       "declaration": {
-        "bitmask": 34,
-        "bitmask_hex": "22",
-        "writable_positions": [],
+        "entries": [
+          "00",
+          "1e"
+        ],
+        "characteristics": [
+          {
+            "entry": 1,
+            "object_id": "00",
+            "uuid": "2faa0001-3b0b-4b1a-9e2a-b4c2952e62f2"
+          },
+          {
+            "entry": 2,
+            "object_id": "1e",
+            "uuid": "2faa0002-3b0b-4b1a-9e2a-b4c2952e62f2"
+          }
+        ],
+        "offered_entries": [
+          2
+        ],
         "is_last_element": true
       },
-      "violates": "bitmask_addresses_missing_object",
+      "violates": "forbidden_entry",
       "expected_sensors": {
-        "battery": 97,
-        "light": true
-      }
-    },
-    {
-      "name": "declaration-marks-itself",
-      "description": "Bit 2 addresses the declaration object itself. Nonsensical; a receiver MUST ignore it.",
-      "valid": false,
-      "device_info_byte": "40",
-      "service_data": "4001611e01ff06",
-      "service_data_length": 7,
-      "objects": [
-        {
-          "object_id": "01",
-          "value": "61",
-          "name": "battery",
-          "position": 0
-        },
-        {
-          "object_id": "1e",
-          "value": "01",
-          "name": "light",
-          "position": 1
-        },
-        {
-          "object_id": "ff",
-          "value": "06",
-          "name": "declaration",
-          "position": 2
-        }
-      ],
-      "declaration": {
-        "bitmask": 6,
-        "bitmask_hex": "06",
-        "writable_positions": [],
-        "is_last_element": true
-      },
-      "violates": "bitmask_addresses_declaration",
-      "expected_sensors": {
-        "battery": 97,
-        "light": true
+        "packet_id": 1
       }
     },
     {
       "name": "capacity-overflow",
-      "description": "Over the advertising budget of \u00a72.3. A device MUST refuse this configuration at setup rather than truncate.",
+      "description": "Over the theoretical advertising budget of \u00a72.4. A device MUST refuse this configuration at setup rather than truncate.",
       "valid": false,
       "device_info_byte": "40",
-      "service_data": "4001611e011e011e011e011e011e011e011e011e011e011e01fffe",
-      "service_data_length": 27,
+      "service_data": "4000010161ff1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e",
+      "service_data_length": 31,
       "objects": [
+        {
+          "object_id": "00",
+          "value": "01",
+          "name": "packet_id"
+        },
         {
           "object_id": "01",
           "value": "61",
-          "name": "battery",
-          "position": 0
-        },
-        {
-          "object_id": "1e",
-          "value": "01",
-          "name": "light",
-          "position": 1
-        },
-        {
-          "object_id": "1e",
-          "value": "01",
-          "name": "light",
-          "position": 2
-        },
-        {
-          "object_id": "1e",
-          "value": "01",
-          "name": "light",
-          "position": 3
-        },
-        {
-          "object_id": "1e",
-          "value": "01",
-          "name": "light",
-          "position": 4
-        },
-        {
-          "object_id": "1e",
-          "value": "01",
-          "name": "light",
-          "position": 5
-        },
-        {
-          "object_id": "1e",
-          "value": "01",
-          "name": "light",
-          "position": 6
-        },
-        {
-          "object_id": "1e",
-          "value": "01",
-          "name": "light",
-          "position": 7
-        },
-        {
-          "object_id": "1e",
-          "value": "01",
-          "name": "light",
-          "position": 8
-        },
-        {
-          "object_id": "1e",
-          "value": "01",
-          "name": "light",
-          "position": 9
-        },
-        {
-          "object_id": "1e",
-          "value": "01",
-          "name": "light",
-          "position": 10
-        },
-        {
-          "object_id": "1e",
-          "value": "01",
-          "name": "light",
-          "position": 11
+          "name": "battery"
         },
         {
           "object_id": "ff",
-          "value": "fe",
-          "name": "declaration",
-          "position": 12
+          "value": "1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e",
+          "name": "declaration"
         }
       ],
       "declaration": {
-        "bitmask": 254,
-        "bitmask_hex": "fe",
-        "writable_positions": [
+        "entries": [
+          "1e",
+          "1e",
+          "1e",
+          "1e",
+          "1e",
+          "1e",
+          "1e",
+          "1e",
+          "1e",
+          "1e",
+          "1e",
+          "1e",
+          "1e",
+          "1e",
+          "1e",
+          "1e",
+          "1e",
+          "1e",
+          "1e",
+          "1e",
+          "1e",
+          "1e",
+          "1e",
+          "1e",
+          "1e"
+        ],
+        "characteristics": [
+          {
+            "entry": 1,
+            "object_id": "1e",
+            "uuid": "2faa0001-3b0b-4b1a-9e2a-b4c2952e62f2"
+          },
+          {
+            "entry": 2,
+            "object_id": "1e",
+            "uuid": "2faa0002-3b0b-4b1a-9e2a-b4c2952e62f2"
+          },
+          {
+            "entry": 3,
+            "object_id": "1e",
+            "uuid": "2faa0003-3b0b-4b1a-9e2a-b4c2952e62f2"
+          },
+          {
+            "entry": 4,
+            "object_id": "1e",
+            "uuid": "2faa0004-3b0b-4b1a-9e2a-b4c2952e62f2"
+          },
+          {
+            "entry": 5,
+            "object_id": "1e",
+            "uuid": "2faa0005-3b0b-4b1a-9e2a-b4c2952e62f2"
+          },
+          {
+            "entry": 6,
+            "object_id": "1e",
+            "uuid": "2faa0006-3b0b-4b1a-9e2a-b4c2952e62f2"
+          },
+          {
+            "entry": 7,
+            "object_id": "1e",
+            "uuid": "2faa0007-3b0b-4b1a-9e2a-b4c2952e62f2"
+          },
+          {
+            "entry": 8,
+            "object_id": "1e",
+            "uuid": "2faa0008-3b0b-4b1a-9e2a-b4c2952e62f2"
+          },
+          {
+            "entry": 9,
+            "object_id": "1e",
+            "uuid": "2faa0009-3b0b-4b1a-9e2a-b4c2952e62f2"
+          },
+          {
+            "entry": 10,
+            "object_id": "1e",
+            "uuid": "2faa000a-3b0b-4b1a-9e2a-b4c2952e62f2"
+          },
+          {
+            "entry": 11,
+            "object_id": "1e",
+            "uuid": "2faa000b-3b0b-4b1a-9e2a-b4c2952e62f2"
+          },
+          {
+            "entry": 12,
+            "object_id": "1e",
+            "uuid": "2faa000c-3b0b-4b1a-9e2a-b4c2952e62f2"
+          },
+          {
+            "entry": 13,
+            "object_id": "1e",
+            "uuid": "2faa000d-3b0b-4b1a-9e2a-b4c2952e62f2"
+          },
+          {
+            "entry": 14,
+            "object_id": "1e",
+            "uuid": "2faa000e-3b0b-4b1a-9e2a-b4c2952e62f2"
+          },
+          {
+            "entry": 15,
+            "object_id": "1e",
+            "uuid": "2faa000f-3b0b-4b1a-9e2a-b4c2952e62f2"
+          },
+          {
+            "entry": 16,
+            "object_id": "1e",
+            "uuid": "2faa0010-3b0b-4b1a-9e2a-b4c2952e62f2"
+          },
+          {
+            "entry": 17,
+            "object_id": "1e",
+            "uuid": "2faa0011-3b0b-4b1a-9e2a-b4c2952e62f2"
+          },
+          {
+            "entry": 18,
+            "object_id": "1e",
+            "uuid": "2faa0012-3b0b-4b1a-9e2a-b4c2952e62f2"
+          },
+          {
+            "entry": 19,
+            "object_id": "1e",
+            "uuid": "2faa0013-3b0b-4b1a-9e2a-b4c2952e62f2"
+          },
+          {
+            "entry": 20,
+            "object_id": "1e",
+            "uuid": "2faa0014-3b0b-4b1a-9e2a-b4c2952e62f2"
+          },
+          {
+            "entry": 21,
+            "object_id": "1e",
+            "uuid": "2faa0015-3b0b-4b1a-9e2a-b4c2952e62f2"
+          },
+          {
+            "entry": 22,
+            "object_id": "1e",
+            "uuid": "2faa0016-3b0b-4b1a-9e2a-b4c2952e62f2"
+          },
+          {
+            "entry": 23,
+            "object_id": "1e",
+            "uuid": "2faa0017-3b0b-4b1a-9e2a-b4c2952e62f2"
+          },
+          {
+            "entry": 24,
+            "object_id": "1e",
+            "uuid": "2faa0018-3b0b-4b1a-9e2a-b4c2952e62f2"
+          },
+          {
+            "entry": 25,
+            "object_id": "1e",
+            "uuid": "2faa0019-3b0b-4b1a-9e2a-b4c2952e62f2"
+          }
+        ],
+        "offered_entries": [
           1,
           2,
           3,
           4,
           5,
           6,
-          7
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25
         ],
         "is_last_element": true
       },

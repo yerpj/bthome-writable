@@ -33,6 +33,6 @@ def service_data(*objects: Obj, device_info: int = DEVICE_INFO_ADV_PLAIN) -> byt
     return bytes([device_info]) + b"".join(obj.encode() for obj in objects)
 
 
-def declaration(bitmask: int, object_id: int = 0xFF) -> Obj:
-    """The writability declaration object: <object_id> <bitmask u8>."""
-    return Obj(object_id, bytes([bitmask]))
+def declaration(*entries: int, object_id: int = 0xFF) -> Obj:
+    """The declaration object of PROTOCOL.md §2.1: <object_id> <entry IDs...>."""
+    return Obj(object_id, bytes(entries))

@@ -1,9 +1,9 @@
-"""T0.4 — verify `spec/advertising-fixtures.json` against the real BTHome parser.
+"""Verify `spec/advertising-fixtures.json` against itself and the real parser.
 
 The fixtures are the shared advertising test data. Here they are checked for
 internal consistency and, more importantly, fed to `bthome-ble` so that a
-fixture claiming "this yields a battery and three lights" is actually true of
-the library Home Assistant uses.
+fixture claiming "this yields a packet id and a battery" is actually true of the
+library Home Assistant uses — with the version 2 declaration at the end.
 """
 
 from __future__ import annotations
@@ -18,14 +18,16 @@ import pytest
 
 from tools.gen_advertising_fixtures import (
     DECLARATION_OBJECT_ID,
-    MAX_WRITABLE,
     OUTPUT,
     SERVICE_DATA_BUDGET,
+    uuid,
 )
 from tools.tests.test_bthome_ble_tolerance import make_service_info
 
 DOCUMENT: dict[str, Any] = json.loads(OUTPUT.read_text(encoding="utf-8"))
 FIXTURES: list[dict[str, Any]] = DOCUMENT["fixtures"]
+DECLARATION_HEX = f"{DECLARATION_OBJECT_ID:02x}"
+FORBIDDEN_ENTRIES = {0x00, 0xFF, 0xF0, 0xF1, 0xF2}  # PROTOCOL.md §2.1
 
 
 def ids(fixtures: list[dict[str, Any]]) -> list[str]:
@@ -48,24 +50,26 @@ def parse_with_bthome_ble(service_data: bytes) -> dict[str, Any]:
 VALID = [f for f in FIXTURES if f["valid"]]
 WITH_SENSORS = [f for f in FIXTURES if "expected_sensors" in f]
 WITH_DECLARATION = [f for f in FIXTURES if "declaration" in f]
+WITH_ACCESS = [f for f in FIXTURES if f.get("writes") or f.get("reads")]
 
 
-def test_fixtures_cover_the_cases_the_task_asks_for() -> None:
-    """T0.4's acceptance criteria, restated as an assertion."""
+def test_fixtures_cover_the_cases_the_spec_describes() -> None:
     names = {f["name"] for f in FIXTURES}
-    assert {"single-light", "multi-instance-and-display"} <= names
-    assert {"write-only-display"} <= names
+    assert {"single-light", "thermostat", "two-lights-and-display"} <= names
+    assert {"momentary-action", "twelve-lights", "unknown-entry-type"} <= names
     assert {"rotation-declaration-packet", "rotation-sensor-packet"} <= names
-    assert {"plain-bthome-no-declaration"} <= names
+    assert {"plain-bthome-no-declaration", "empty-declaration"} <= names
     violations = {f.get("violates") for f in FIXTURES}
-    assert "declaration_not_last" in violations
-    assert "capacity_exceeded" in violations
-    assert any(not f["valid"] for f in FIXTURES)
+    assert {
+        "declaration_not_last",
+        "forbidden_entry",
+        "capacity_exceeded",
+    } <= violations
 
 
 @pytest.mark.parametrize("fixture", FIXTURES, ids=ids(FIXTURES))
 def test_service_data_matches_its_objects(fixture: dict[str, Any]) -> None:
-    """The hex payload is exactly the declared objects, concatenated."""
+    """The hex payload is exactly the listed objects, concatenated."""
     rebuilt = bytes.fromhex(fixture["device_info_byte"]) + b"".join(
         bytes.fromhex(o["object_id"]) + bytes.fromhex(o["value"])
         for o in fixture["objects"]
@@ -74,47 +78,54 @@ def test_service_data_matches_its_objects(fixture: dict[str, Any]) -> None:
     assert len(rebuilt) == fixture["service_data_length"]
 
 
-@pytest.mark.parametrize("fixture", FIXTURES, ids=ids(FIXTURES))
-def test_positions_are_consecutive_from_zero(fixture: dict[str, Any]) -> None:
-    """§1: position is the 0-based index of an object in the packet."""
-    assert [o["position"] for o in fixture["objects"]] == list(
-        range(len(fixture["objects"]))
-    )
+@pytest.mark.parametrize("fixture", WITH_DECLARATION, ids=ids(WITH_DECLARATION))
+def test_declaration_value_is_its_entries(fixture: dict[str, Any]) -> None:
+    """§2.1: 0xFF followed by the entries' object IDs, one byte each."""
+    declarations = [o for o in fixture["objects"] if o["object_id"] == DECLARATION_HEX]
+    assert len(declarations) == 1
+    assert declarations[0]["value"] == "".join(fixture["declaration"]["entries"])
 
 
 @pytest.mark.parametrize("fixture", WITH_DECLARATION, ids=ids(WITH_DECLARATION))
-def test_declaration_bitmask_matches_its_positions(fixture: dict[str, Any]) -> None:
-    """§2.2: bit n set means position n is writable, bit 0 = first object."""
-    declaration = fixture["declaration"]
-    from_bits = [
-        bit for bit in range(MAX_WRITABLE) if declaration["bitmask"] & (1 << bit)
-    ]
-    if declaration["writable_positions"]:
-        assert from_bits == declaration["writable_positions"]
-    assert declaration["bitmask"] <= 0xFF
-
-
-@pytest.mark.parametrize("fixture", WITH_DECLARATION, ids=ids(WITH_DECLARATION))
-def test_declaration_object_is_present_and_placed_as_claimed(
+def test_characteristics_are_numbered_from_one_in_entry_order(
     fixture: dict[str, Any],
 ) -> None:
-    """§2.2: the declaration MUST be the last element — the invalid one is not."""
-    declarations = [
-        o
-        for o in fixture["objects"]
-        if o["object_id"] == f"{DECLARATION_OBJECT_ID:02x}"
-    ]
-    assert len(declarations) == 1
+    """§4.1: entry k lives at 2FAAkkkk, k counted from 1, in hexadecimal."""
+    declaration = fixture["declaration"]
+    for k, (entry, characteristic) in enumerate(
+        zip(declaration["entries"], declaration["characteristics"], strict=True),
+        start=1,
+    ):
+        assert characteristic["entry"] == k
+        assert characteristic["object_id"] == entry
+        assert characteristic["uuid"] == uuid(k)
+        assert characteristic["uuid"] == f"2faa{k:04x}-3b0b-4b1a-9e2a-b4c2952e62f2"
 
-    is_last = declarations[0]["position"] == len(fixture["objects"]) - 1
+
+@pytest.mark.parametrize("fixture", WITH_DECLARATION, ids=ids(WITH_DECLARATION))
+def test_declaration_is_last_when_valid(fixture: dict[str, Any]) -> None:
+    """§2.2: the declaration MUST be the last element of the service data."""
+    is_last = fixture["objects"][-1]["object_id"] == DECLARATION_HEX
     assert is_last == fixture["declaration"]["is_last_element"]
     if fixture["valid"]:
-        assert is_last, "a valid fixture must place the declaration last"
+        assert is_last
+
+
+@pytest.mark.parametrize("fixture", WITH_DECLARATION, ids=ids(WITH_DECLARATION))
+def test_forbidden_and_unknown_entries_are_not_offered_but_counted(
+    fixture: dict[str, Any],
+) -> None:
+    """§2.1: a receiver skips entries it cannot offer, keeping later numbers."""
+    declaration = fixture["declaration"]
+    for k in declaration["offered_entries"]:
+        assert int(declaration["entries"][k - 1], 16) not in FORBIDDEN_ENTRIES
+    for k, entry in enumerate(declaration["entries"], start=1):
+        if int(entry, 16) in FORBIDDEN_ENTRIES:
+            assert k not in declaration["offered_entries"]
 
 
 @pytest.mark.parametrize("fixture", VALID, ids=ids(VALID))
-def test_valid_fixtures_fit_the_advertising_budget(fixture: dict[str, Any]) -> None:
-    """§2.3, with the arithmetic spelled out in the fixture file's `budget`."""
+def test_valid_fixtures_fit_the_theoretical_budget(fixture: dict[str, Any]) -> None:
     assert fixture["service_data_length"] <= SERVICE_DATA_BUDGET
 
 
@@ -124,82 +135,62 @@ def test_the_capacity_fixture_really_overflows() -> None:
     assert fixture["service_data_length"] > SERVICE_DATA_BUDGET
 
 
-def test_the_budget_arithmetic_is_self_consistent() -> None:
-    budget = DOCUMENT["budget"]
-    assert (
-        budget["advertising_payload_bytes"]
-        - budget["ad_flags_bytes"]
-        - budget["ad_service_data_header_bytes"]
-        == budget["service_data_budget"]
-    )
-    assert budget["service_data_budget"] - 1 == budget["object_budget"]
-
-
 @pytest.mark.parametrize("fixture", WITH_SENSORS, ids=ids(WITH_SENSORS))
 def test_bthome_ble_yields_the_expected_sensors(fixture: dict[str, Any]) -> None:
     """The load-bearing check: real parser, real payload, claimed entities.
 
-    This is what makes the fixtures trustworthy rather than merely plausible —
-    including `declaration-not-last`, which claims to yield *nothing* and does.
+    Every fixture with a declaration also proves D-005 still holds for the list
+    form: the parser stops at 0xFF, whatever follows it, and loses nothing
+    before it. None of the declared entries produce a sensor.
     """
     parsed = parse_with_bthome_ble(bytes.fromhex(fixture["service_data"]))
     assert parsed == pytest.approx(fixture["expected_sensors"])
 
 
-def test_plain_bthome_device_carries_no_declaration() -> None:
-    """The integration's not_supported abort depends on this being detectable."""
-    fixture = next(f for f in FIXTURES if f["name"] == "plain-bthome-no-declaration")
-    assert "declaration" not in fixture
-    assert all(
-        o["object_id"] != f"{DECLARATION_OBJECT_ID:02x}" for o in fixture["objects"]
-    )
+def test_the_writable_target_is_not_the_measured_temperature() -> None:
+    """§2.3: a declared 0x57 adds no temperature sensor; only the measured 0x02
+    appears, so a setpoint can never be mistaken for a reading."""
+    fixture = next(f for f in FIXTURES if f["name"] == "thermostat")
+    parsed = parse_with_bthome_ble(bytes.fromhex(fixture["service_data"]))
+    assert parsed["temperature"] == pytest.approx(25.0)
+    assert "57" in fixture["declaration"]["entries"]
 
 
-def test_rotation_pair_obeys_the_same_packet_rule() -> None:
-    """§2.1: the declaration packet is self-contained; the other one is not it."""
+def test_rotation_sensor_packet_carries_no_declaration() -> None:
+    """§2.2: a packet without the declaration must not be read as 'nothing
+    writable' -- which a fixture can only state, and the receiver tests enforce."""
+    sensor_packet = next(f for f in FIXTURES if f["name"] == "rotation-sensor-packet")
     declaration_packet = next(
         f for f in FIXTURES if f["name"] == "rotation-declaration-packet"
     )
-    sensor_packet = next(f for f in FIXTURES if f["name"] == "rotation-sensor-packet")
-
-    writable = declaration_packet["declaration"]["writable_positions"]
-    assert writable, "the declaration packet must actually declare something"
-    # Every writable position exists in this packet, not somewhere in the rotation.
-    for position in writable:
-        assert position < len(declaration_packet["objects"])
-
     assert "declaration" not in sensor_packet
+    assert declaration_packet["declaration"]["entries"]
 
 
-@pytest.mark.parametrize(
-    "fixture",
-    [f for f in FIXTURES if f.get("writes")],
-    ids=ids([f for f in FIXTURES if f.get("writes")]),
-)
-def test_write_payloads_carry_every_writable_object_in_order(
+@pytest.mark.parametrize("fixture", WITH_ACCESS, ids=ids(WITH_ACCESS))
+def test_each_write_and_read_is_one_object_of_its_entrys_type(
     fixture: dict[str, Any],
 ) -> None:
-    """§4.2: write-all in packet order, with the object IDs matching positions."""
-    expected_ids = [
-        fixture["objects"][position]["object_id"]
-        for position in fixture["declaration"]["writable_positions"]
-    ]
-    for entry in fixture["writes"]:
-        assert [o["object_id"] for o in entry["objects"]] == expected_ids
-        rebuilt = b"".join(
-            bytes.fromhex(o["object_id"]) + bytes.fromhex(o["value"])
-            for o in entry["objects"]
+    """§4.2, §4.3: one BTHome object per access, matching the entry's type."""
+    entries = fixture["declaration"]["entries"]
+    for access in fixture.get("writes", []) + fixture.get("reads", []):
+        k = access["entry"]
+        assert 1 <= k <= len(entries)
+        assert access["uuid"] == uuid(k)
+        assert access["object"]["object_id"] == entries[k - 1]
+        rebuilt = bytes.fromhex(access["object"]["object_id"]) + bytes.fromhex(
+            access["object"]["value"]
         )
-        assert rebuilt.hex() == entry["payload"]
+        assert rebuilt.hex() == access["payload"]
 
 
-def test_no_op_conventions_appear_in_the_write_fixtures() -> None:
-    """§4.3: length 0 on a variable-length object means 'do not modify'."""
-    fixture = next(f for f in FIXTURES if f["name"] == "multi-instance-and-display")
-    no_op = next(w for w in fixture["writes"] if w["name"] == "second-light-off")
-    text = no_op["objects"][-1]
-    assert text["object_id"] == "53"
-    assert text["value"] == "00", "the text object must carry the length-0 no-op"
+def test_variable_length_writes_keep_bthomes_length_byte() -> None:
+    """D-048: values keep BTHome's own encoding, length byte included."""
+    fixture = next(f for f in FIXTURES if f["name"] == "two-lights-and-display")
+    text = next(w for w in fixture["writes"] if w["name"] == "display-hello")
+    payload = bytes.fromhex(text["payload"])
+    assert payload[0] == 0x53
+    assert payload[1] == len(payload) - 2
 
 
 def test_generator_is_deterministic() -> None:

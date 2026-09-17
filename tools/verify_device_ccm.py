@@ -42,7 +42,7 @@ VECTORS = ROOT / "test-vectors" / "test-vectors.json"
 
 # From spec/PROTOCOL.md §5.1. The direction lives in the nonce, which is why a
 # recorded advertisement cannot be replayed as a write.
-DEVICE_INFO = {"advertising": 0x41, "write": 0xFF}
+DEVICE_INFO = {"advertising": 0x41, "write": 0xFF, "read": 0xFE}
 
 NOISE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]|[\x00-\x08\x0b\x0c\x0e-\x1f]")
 

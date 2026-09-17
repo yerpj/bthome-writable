@@ -1,12 +1,13 @@
 """Generate `spec/advertising-fixtures.json` — shared advertising test data.
 
-The fixtures cover declaration placement, multi-instance objects, the write-only
-pattern, rotation under the same-packet rule, the capacity limit, and the
-matching write payloads. Both test suites consume the file (CLAUDE.md rule 6).
+The fixtures cover the declaration of PROTOCOL.md §2 (a list of writable object
+types), its placement, multiple entries of one type, characteristic numbering,
+settings revision, rotation, the capacity limit, and the writes and reads each
+device accepts. Both test suites consume the file (CLAUDE.md rule 7).
 
 Fixtures are self-describing: every object carries its value bytes explicitly,
-so a consumer can verify a payload by concatenation without needing BTHome's
-object-length table. That keeps the JS side honest — a device knows its own
+so a consumer can verify a payload by concatenation without BTHome's
+object-length table. That keeps the JS side honest -- a device knows its own
 layout and never has to parse an arbitrary BTHome packet.
 
     python -m tools.gen_advertising_fixtures
@@ -20,30 +21,28 @@ from typing import Any
 
 OUTPUT = Path(__file__).resolve().parent.parent / "spec" / "advertising-fixtures.json"
 
-SPEC_VERSION = "1.0-draft.1"
+SPEC_VERSION = "2.0-draft.1"
 
 DECLARATION_OBJECT_ID = 0xFF
 DEVICE_INFO_PLAIN = 0x40  # BTHome v2, unencrypted
-MAX_WRITABLE = 8
+UUID_TEMPLATE = "2faa{:04x}-3b0b-4b1a-9e2a-b4c2952e62f2"  # PROTOCOL.md §4.1
 
-# --- Advertising budget arithmetic (PROTOCOL.md §2.3) ------------------------
-# A legacy BLE advertising payload is 31 bytes of AD structures. A BTHome
-# device spends them like this:
+# --- Advertising budget arithmetic (PROTOCOL.md §2.4) ------------------------
+# The theoretical ceiling. Real devices take less -- Espruino's manufacturer
+# data, a local name -- and the measured figures are in decisions.md D-030 and
+# D-046. The fixtures only use this as an upper bound for sanity checks.
 ADV_PAYLOAD_BYTES = 31
-AD_FLAGS_BYTES = 3  # 02 01 06 — connectable undirected advertising
+AD_FLAGS_BYTES = 3  # 02 01 06
 AD_SERVICE_DATA_HEADER_BYTES = 4  # length + type 0x16 + 16-bit UUID 0xFCD2
-# ... which leaves this for the BTHome service data itself:
 SERVICE_DATA_BUDGET = ADV_PAYLOAD_BYTES - AD_FLAGS_BYTES - AD_SERVICE_DATA_HEADER_BYTES
-# ... of which one byte is the device-information byte:
-OBJECT_BUDGET = SERVICE_DATA_BUDGET - 1
+
+
+def uuid(entry: int) -> str:
+    return UUID_TEMPLATE.format(entry)
 
 
 def obj(object_id: int, value: bytes, name: str, **extra: Any) -> dict[str, Any]:
-    entry = {
-        "object_id": f"{object_id:02x}",
-        "value": value.hex(),
-        "name": name,
-    }
+    entry = {"object_id": f"{object_id:02x}", "value": value.hex(), "name": name}
     entry.update(extra)
     return entry
 
@@ -54,55 +53,39 @@ def encode(objects: list[dict[str, Any]]) -> bytes:
     )
 
 
-def bitmask(positions: list[int]) -> int:
-    mask = 0
-    for position in positions:
-        mask |= 1 << position
-    return mask
-
-
 def fixture(
     name: str,
     description: str,
     objects: list[dict[str, Any]],
     *,
-    writable_positions: list[int] | None = None,
-    declaration_position: int | None = None,
+    entries: list[int] | None = None,
+    declaration_index: int | None = None,
     valid: bool = True,
     violates: str | None = None,
     expected_sensors: dict[str, Any] | None = None,
+    offered_entries: list[int] | None = None,
     writes: list[dict[str, Any]] | None = None,
-    declaration_bitmask: int | None = None,
+    reads: list[dict[str, Any]] | None = None,
     device_info: int = DEVICE_INFO_PLAIN,
 ) -> dict[str, Any]:
     """Assemble one fixture.
 
-    `declaration_position` places the declaration somewhere other than last, for
-    the negative placement fixture. `declaration_bitmask` overrides the mask
-    computed from `writable_positions`, for the malformed-mask fixtures.
+    `entries` are the declaration's object IDs, in order; None means no
+    declaration. `declaration_index` places the declaration somewhere other than
+    last, for the negative placement fixture. `offered_entries` lists the entry
+    numbers a receiver should offer, when that differs from all of them.
     """
-    positions = writable_positions or []
-    mask = (
-        declaration_bitmask if declaration_bitmask is not None else bitmask(positions)
-    )
-
-    # Copy: the object constants below are shared between fixtures, and this
-    # function stamps a `position` into each one.
     body = [dict(o) for o in objects]
-    declaration = obj(DECLARATION_OBJECT_ID, bytes([mask]), "declaration")
-    if writable_positions is not None or declaration_bitmask is not None:
-        if declaration_position is None:
+    declaration = None
+    if entries is not None:
+        declaration = obj(DECLARATION_OBJECT_ID, bytes(entries), "declaration")
+        if declaration_index is None:
             body.append(declaration)
         else:
-            body.insert(declaration_position, declaration)
-
-    # Positions are assigned over the objects as they appear on the wire.
-    for index, entry in enumerate(body):
-        entry["position"] = index
+            body.insert(declaration_index, declaration)
 
     service_data = bytes([device_info]) + encode(body)
-
-    entry: dict[str, Any] = {
+    result: dict[str, Any] = {
         "name": name,
         "description": description,
         "valid": valid,
@@ -111,45 +94,72 @@ def fixture(
         "service_data_length": len(service_data),
         "objects": body,
     }
-    if writable_positions is not None or declaration_bitmask is not None:
-        entry["declaration"] = {
-            "bitmask": mask,
-            "bitmask_hex": f"{mask:02x}",
-            "writable_positions": positions,
+    if entries is not None:
+        numbered = list(range(1, len(entries) + 1))
+        result["declaration"] = {
+            "entries": [f"{e:02x}" for e in entries],
+            "characteristics": [
+                {"entry": k, "object_id": f"{e:02x}", "uuid": uuid(k)}
+                for k, e in zip(numbered, entries, strict=True)
+            ],
+            "offered_entries": offered_entries
+            if offered_entries is not None
+            else numbered,
             "is_last_element": body[-1] is declaration,
         }
     if violates is not None:
-        entry["violates"] = violates
+        result["violates"] = violates
     if expected_sensors is not None:
-        entry["expected_sensors"] = expected_sensors
+        result["expected_sensors"] = expected_sensors
     if writes is not None:
-        entry["writes"] = writes
-    return entry
+        result["writes"] = writes
+    if reads is not None:
+        result["reads"] = reads
+    return result
 
 
-def write(name: str, description: str, objects: list[dict[str, Any]]) -> dict[str, Any]:
-    """A write payload: every writable object, in packet order (§4.2)."""
+def access(
+    name: str, description: str, entry: int, value: dict[str, Any]
+) -> dict[str, Any]:
+    """One write or read: a single BTHome object on entry `entry` (§4.2, §4.3)."""
     return {
         "name": name,
         "description": description,
-        "objects": objects,
-        "payload": encode(objects).hex(),
+        "entry": entry,
+        "uuid": uuid(entry),
+        "object": value,
+        "payload": encode([value]).hex(),
     }
 
 
+PACKET_ID = lambda n: obj(0x00, bytes([n]), "packet_id")  # noqa: E731
 BATTERY = lambda pct: obj(0x01, bytes([pct]), "battery")  # noqa: E731
 LIGHT = lambda on: obj(0x1E, bytes([1 if on else 0]), "light")  # noqa: E731
-PACKET_ID = lambda n: obj(0x00, bytes([n]), "packet_id")  # noqa: E731
-# BTHome moisture: unsigned 16-bit, factor 0.01, so the wire value is
-# percent * 100. A writable one is the shape of a setpoint or a dimmer level.
+POWER = lambda on: obj(0x10, bytes([1 if on else 0]), "power")  # noqa: E731
+TEMPERATURE = lambda c: obj(  # noqa: E731
+    0x02, round(c * 100).to_bytes(2, "little", signed=True), "temperature"
+)
+# 0x57: temperature, sint8, whole degrees -- the shape of a thermostat target.
+TEMPERATURE_SINT8 = lambda c: obj(  # noqa: E731
+    0x57, int(c).to_bytes(1, "little", signed=True), "temperature"
+)
+SETTINGS_REVISION = lambda n: obj(0x65, bytes([n]), "settings_revision")  # noqa: E731
+# BTHome moisture: uint16, factor 0.01 -- the shape of a level or a setpoint.
 MOISTURE = lambda pct: obj(  # noqa: E731
     0x14, round(pct * 100).to_bytes(2, "little"), "moisture"
 )
-# BTHome button event: one byte, 0x00 meaning "nothing happened". A writable
-# one is a device offering to have its button pressed remotely.
-BUTTON_NONE = obj(0x3A, bytes([0]), "button", write_only=True)
-TEXT_EMPTY = obj(0x53, bytes([0]), "text", write_only=True)
-TEXT_NOOP = obj(0x53, bytes([0]), "text", note="length 0 = no-op (§4.3)")
+BUTTON = lambda event: obj(0x3A, bytes([event]), "button")  # noqa: E731
+TEXT = lambda s: obj(0x53, bytes([len(s)]) + s, "text")  # noqa: E731
+
+LIGHT_ID, POWER_ID, TEMP8_ID, MOISTURE_ID, BUTTON_ID, TEXT_ID = (
+    0x1E,
+    0x10,
+    0x57,
+    0x14,
+    0x3A,
+    0x53,
+)
+UNKNOWN_ID = 0x99  # unassigned in BTHome: a type a receiver does not know yet
 
 
 def build_fixtures() -> list[dict[str, Any]]:
@@ -159,161 +169,136 @@ def build_fixtures() -> list[dict[str, Any]]:
     fixtures.append(
         fixture(
             "single-light",
-            "PROTOCOL.md §8.1: battery plus one writable light.",
-            [BATTERY(97), LIGHT(True)],
-            writable_positions=[1],
-            expected_sensors={"battery": 97, "light": True},
+            "PROTOCOL.md §8.1: packet id, battery, one writable light. The "
+            "light's state is not advertised (§2.3).",
+            [PACKET_ID(9), BATTERY(97)],
+            entries=[LIGHT_ID],
+            expected_sensors={"packet_id": 9, "battery": 97},
             writes=[
-                write(
-                    "light-off",
-                    "The only writable object, set to off.",
-                    [LIGHT(False)],
-                ),
-                write("light-on", "And back on.", [LIGHT(True)]),
+                access("light-on", "Switch the light on.", 1, LIGHT(True)),
+                access("light-off", "And off.", 1, LIGHT(False)),
             ],
         )
     )
 
     fixtures.append(
         fixture(
-            "multi-instance-and-display",
-            "PROTOCOL.md §8.2: three light instances and a write-only display. "
-            "Positions disambiguate the instances; no per-instance ID is needed.",
-            [BATTERY(97), LIGHT(True), LIGHT(False), LIGHT(True), TEXT_EMPTY],
-            writable_positions=[1, 2, 3, 4],
+            "thermostat",
+            "PROTOCOL.md §8.2: a measured temperature (a sensor), settings "
+            "revision, and two entries -- power and a target temperature. The "
+            "measured 0x02 and the writable 0x57 never collide, because the "
+            "target is not in the packet.",
+            [PACKET_ID(9), TEMPERATURE(25.00), SETTINGS_REVISION(3)],
+            entries=[POWER_ID, TEMP8_ID],
             expected_sensors={
-                "battery": 97,
-                "light_1": True,
-                "light_2": False,
-                "light_3": True,
+                "packet_id": 9,
+                "temperature": 25.0,
+                "settings_revision": 3,
             },
             writes=[
-                write(
+                access("target-22", "Target 22 °C.", 2, TEMPERATURE_SINT8(22)),
+                access("heating-on", "Power on.", 1, POWER(True)),
+            ],
+            reads=[
+                access(
+                    "read-power", "After a revision change: heating on.", 1, POWER(True)
+                ),
+                access(
+                    "read-target",
+                    "After a revision change: target 20 °C.",
+                    2,
+                    TEMPERATURE_SINT8(20),
+                ),
+            ],
+        )
+    )
+
+    fixtures.append(
+        fixture(
+            "two-lights-and-display",
+            "PROTOCOL.md §8.3: two entries of one type and a text entry. "
+            "Instances are told apart by entry number, which is also their "
+            "characteristic number.",
+            [PACKET_ID(9)],
+            entries=[LIGHT_ID, LIGHT_ID, TEXT_ID],
+            expected_sensors={"packet_id": 9},
+            writes=[
+                access(
                     "second-light-off",
-                    "Change one instance. The other two are resent from the last "
-                    "advertisement, and the display carries the no-op.",
-                    [LIGHT(True), LIGHT(False), LIGHT(True), TEXT_NOOP],
+                    "Touches entry 2 and nothing else.",
+                    2,
+                    LIGHT(False),
                 ),
-                write(
+                access(
                     "display-hello",
-                    "Write text without touching any light.",
-                    [
-                        LIGHT(True),
-                        LIGHT(False),
-                        LIGHT(True),
-                        obj(0x53, bytes([5]) + b"hello", "text"),
-                    ],
+                    "Text keeps BTHome's length byte.",
+                    3,
+                    TEXT(b"Hello"),
                 ),
             ],
         )
     )
 
-    # The two fixtures a real Espruino device produces: same devices as above,
-    # but with BTHome's packet-id object at position 0, which shifts every
-    # bitmask bit by one (§2.2, §8.3). The reference module must reproduce these
-    # byte for byte.
     fixtures.append(
         fixture(
-            "espruino-single-light",
-            "PROTOCOL.md §8.3: §8.1's device as the Espruino module emits it, "
-            "with the packet-id object at position 0.",
-            [PACKET_ID(9), BATTERY(97), LIGHT(True)],
-            writable_positions=[2],
-            expected_sensors={"packet_id": 9, "battery": 97, "light": True},
+            "momentary-action",
+            "PROTOCOL.md §8.4: a writable button. A write triggers only its own "
+            "entry, so events are safe to write in version 2.",
+            [PACKET_ID(9)],
+            entries=[BUTTON_ID],
+            expected_sensors={"packet_id": 9},
             writes=[
-                write(
-                    "light-off",
-                    "Identical to §8.1's write: only writable objects travel.",
-                    [LIGHT(False)],
-                )
-            ],
-        )
-    )
-
-    fixtures.append(
-        fixture(
-            "espruino-multi-instance",
-            "The multi-instance device as the Espruino module emits it. Three "
-            "light instances keep their declared order through the packet's "
-            "ascending-object-id sort, which must therefore be stable.",
-            [PACKET_ID(10), BATTERY(97), LIGHT(True), LIGHT(False), LIGHT(True)],
-            writable_positions=[2, 3, 4],
-            expected_sensors={
-                "packet_id": 10,
-                "battery": 97,
-                "light_1": True,
-                "light_2": False,
-                "light_3": True,
-            },
-            writes=[
-                write(
-                    "second-light-off",
-                    "Positions address the instances; no per-instance ID exists.",
-                    [LIGHT(True), LIGHT(False), LIGHT(True)],
-                )
-            ],
-        )
-    )
-
-    fixtures.append(
-        fixture(
-            "writable-setpoint",
-            "A writable numeric object: the shape of a dimmer level or a "
-            "setpoint. Its range and step are the encoding's, derived from the "
-            "object's width and factor -- BTHome gives a device no way to say "
-            "its own limits are narrower (spec/PLATFORMS.md).",
-            [PACKET_ID(3), BATTERY(88), MOISTURE(42.5)],
-            writable_positions=[2],
-            expected_sensors={"packet_id": 3, "battery": 88, "moisture": 42.5},
-            writes=[
-                write(
-                    "setpoint-to-60",
-                    "6000 little-endian is 0x1770 = 6000, which is 60.00%.",
-                    [MOISTURE(60.0)],
-                )
-            ],
-        )
-    )
-
-    fixtures.append(
-        fixture(
-            "writable-button",
-            "A writable event object. Its resting value is 'none', so it is "
-            "stateless by construction: there is nothing for §6 to confirm, "
-            "and a receiver offers one button per value of the vocabulary "
-            "(spec/PLATFORMS.md).",
-            [PACKET_ID(4), BATTERY(77), BUTTON_NONE],
-            writable_positions=[2],
-            expected_sensors={"packet_id": 4, "battery": 77},
-            writes=[
-                write(
-                    "long-press",
-                    "0x04 is long_press in BTHome's button vocabulary.",
-                    [obj(0x3A, bytes([4]), "button")],
-                )
-            ],
-        )
-    )
-
-    fixtures.append(
-        fixture(
-            "write-only-display",
-            "A device whose only writable object is a write-only text: it "
-            "advertises the placeholder and never the written value (§3).",
-            [BATTERY(88), TEXT_EMPTY],
-            writable_positions=[1],
-            expected_sensors={"battery": 88},
-            writes=[
-                write(
-                    "display-hello",
-                    "Fire-and-forget: the advertising will not change.",
-                    [obj(0x53, bytes([5]) + b"hello", "text")],
+                access(
+                    "press",
+                    "0x01 is press in BTHome's button vocabulary.",
+                    1,
+                    BUTTON(0x01),
                 ),
-                write(
-                    "display-noop",
-                    "Length 0: do not modify the display.",
-                    [TEXT_NOOP],
-                ),
+                access("long-press", "0x04 is long_press.", 1, BUTTON(0x04)),
+            ],
+        )
+    )
+
+    fixtures.append(
+        fixture(
+            "writable-level",
+            "A writable numeric entry: the shape of a dimmer level or a setpoint. "
+            "Range and step come from the object's width and factor.",
+            [PACKET_ID(3), BATTERY(88)],
+            entries=[MOISTURE_ID],
+            expected_sensors={"packet_id": 3, "battery": 88},
+            writes=[access("level-60", "6000 = 0x1770 is 60.00 %.", 1, MOISTURE(60.0))],
+        )
+    )
+
+    twelve = [LIGHT_ID] * 12
+    fixtures.append(
+        fixture(
+            "twelve-lights",
+            "More entries than version 1's bitmask allowed, and characteristic "
+            "numbers past 9: entry 10 is 2faa000a, written in hexadecimal.",
+            [PACKET_ID(1)],
+            entries=twelve,
+            expected_sensors={"packet_id": 1},
+            writes=[
+                access("tenth-on", "Characteristic 2faa000a.", 10, LIGHT(True)),
+                access("twelfth-on", "Characteristic 2faa000c.", 12, LIGHT(True)),
+            ],
+        )
+    )
+
+    fixtures.append(
+        fixture(
+            "unknown-entry-type",
+            "Entry 2 is an object ID the receiver does not know. It is not "
+            "offered, but it is counted: the light after it stays on "
+            "characteristic 3 (§2.1).",
+            [PACKET_ID(5)],
+            entries=[LIGHT_ID, UNKNOWN_ID, LIGHT_ID],
+            offered_entries=[1, 3],
+            expected_sensors={"packet_id": 5},
+            writes=[
+                access("third-entry-on", "Characteristic 3, not 2.", 3, LIGHT(True))
             ],
         )
     )
@@ -321,68 +306,47 @@ def build_fixtures() -> list[dict[str, Any]]:
     fixtures.append(
         fixture(
             "rotation-declaration-packet",
-            "A rotating device, packet 1 of 2. The same-packet rule (§2.1) "
-            "requires the declaration and every writable object to be here.",
-            [BATTERY(74), LIGHT(False)],
-            writable_positions=[1],
-            expected_sensors={"battery": 74, "light": False},
-            writes=[write("light-on", "Turn the relay on.", [LIGHT(True)])],
+            "A rotating device, packet 1 of 2, carrying the declaration.",
+            [PACKET_ID(1), BATTERY(74)],
+            entries=[LIGHT_ID],
+            expected_sensors={"packet_id": 1, "battery": 74},
+            writes=[access("light-on", "Turn the relay on.", 1, LIGHT(True))],
         )
     )
 
     fixtures.append(
         fixture(
             "rotation-sensor-packet",
-            "The same device, packet 2 of 2: read-only sensors that rotate "
-            "freely. No declaration, and a receiver must not infer one.",
+            "The same device, packet 2 of 2: sensors only. A receiver that has "
+            "seen the declaration MUST NOT drop the device's entries because "
+            "this packet lacks one (§2.2).",
             [
-                obj(0x02, (2210).to_bytes(2, "little"), "temperature"),
+                PACKET_ID(2),
+                TEMPERATURE(22.10),
                 obj(0x03, (5500).to_bytes(2, "little"), "humidity"),
             ],
-            expected_sensors={"temperature": 22.10, "humidity": 55.00},
+            expected_sensors={"packet_id": 2, "temperature": 22.10, "humidity": 55.00},
         )
     )
 
     fixtures.append(
         fixture(
             "plain-bthome-no-declaration",
-            "An ordinary BTHome device. The integration MUST abort discovery "
-            "with not_supported rather than offer it (§5 of the design).",
-            [BATTERY(50), obj(0x02, (2000).to_bytes(2, "little"), "temperature")],
+            "An ordinary BTHome device. A receiver MUST NOT offer it as writable.",
+            [BATTERY(50), TEMPERATURE(20.00)],
             expected_sensors={"battery": 50, "temperature": 20.00},
         )
     )
 
     fixtures.append(
         fixture(
-            "empty-bitmask",
-            "A declaration marking nothing writable. Legal, but a device SHOULD "
-            "omit the declaration instead (§2.2).",
-            [BATTERY(60)],
-            writable_positions=[],
-            expected_sensors={"battery": 60},
+            "empty-declaration",
+            "A declaration with no entries: legal, means nothing writable, and a "
+            "device SHOULD omit it instead (§2.1).",
+            [PACKET_ID(1), BATTERY(60)],
+            entries=[],
+            expected_sensors={"packet_id": 1, "battery": 60},
             writes=[],
-        )
-    )
-
-    eight_lights = [LIGHT(bool(i % 2)) for i in range(MAX_WRITABLE)]
-    fixtures.append(
-        fixture(
-            "eight-writables-maximum",
-            "The most a one-byte bitmask can address (§2.4). Bit 7 is set, "
-            "which catches an implementation using a signed byte.",
-            eight_lights,
-            writable_positions=list(range(MAX_WRITABLE)),
-            expected_sensors={
-                f"light_{i + 1}": bool(i % 2) for i in range(MAX_WRITABLE)
-            },
-            writes=[
-                write(
-                    "all-off",
-                    "Every writable object at once.",
-                    [LIGHT(False) for _ in range(MAX_WRITABLE)],
-                )
-            ],
         )
     )
 
@@ -390,51 +354,39 @@ def build_fixtures() -> list[dict[str, Any]]:
     fixtures.append(
         fixture(
             "declaration-not-last",
-            "The declaration placed first. Every object after it is silently "
-            "dropped by existing BTHome receivers (D-005), so §2.2 forbids it.",
-            [BATTERY(97), LIGHT(True)],
-            writable_positions=[2],
-            declaration_position=0,
+            "The declaration placed before a sensor. A receiver cannot detect "
+            "it: the entries run to the end of the data, so the battery bytes "
+            "would read as two more entries, and existing BTHome receivers drop "
+            "the battery. A device MUST make this impossible (§2.2).",
+            [PACKET_ID(1), BATTERY(97)],
+            entries=[LIGHT_ID],
+            declaration_index=1,
             valid=False,
             violates="declaration_not_last",
-            expected_sensors={},
         )
     )
 
     fixtures.append(
         fixture(
-            "bitmask-beyond-object-count",
-            "Bit 5 set, but the packet holds three objects. A receiver MUST "
-            "ignore bits that address nothing rather than invent an entity.",
-            [BATTERY(97), LIGHT(True)],
-            declaration_bitmask=0b00100010,
+            "forbidden-entry",
+            "Entry 1 lists the packet id, which §2.1 forbids. A receiver MUST NOT "
+            "offer it, and MUST still count it.",
+            [PACKET_ID(1)],
+            entries=[0x00, LIGHT_ID],
+            offered_entries=[2],
             valid=False,
-            violates="bitmask_addresses_missing_object",
-            expected_sensors={"battery": 97, "light": True},
+            violates="forbidden_entry",
+            expected_sensors={"packet_id": 1},
         )
     )
 
-    fixtures.append(
-        fixture(
-            "declaration-marks-itself",
-            "Bit 2 addresses the declaration object itself. Nonsensical; a "
-            "receiver MUST ignore it.",
-            [BATTERY(97), LIGHT(True)],
-            declaration_bitmask=0b00000110,
-            valid=False,
-            violates="bitmask_addresses_declaration",
-            expected_sensors={"battery": 97, "light": True},
-        )
-    )
-
-    # Deliberately over the budget: 11 lights plus battery plus declaration.
     fixtures.append(
         fixture(
             "capacity-overflow",
-            "Over the advertising budget of §2.3. A device MUST refuse this "
-            "configuration at setup rather than truncate.",
-            [BATTERY(97)] + [LIGHT(True) for _ in range(11)],
-            writable_positions=[1, 2, 3, 4, 5, 6, 7],
+            "Over the theoretical advertising budget of §2.4. A device MUST "
+            "refuse this configuration at setup rather than truncate.",
+            [PACKET_ID(1), BATTERY(97)],
+            entries=[LIGHT_ID] * 25,
             valid=False,
             violates="capacity_exceeded",
         )
@@ -446,9 +398,7 @@ def build_fixtures() -> list[dict[str, Any]]:
 def main() -> None:
     fixtures = build_fixtures()
 
-    # Sanity: the capacity fixture must actually exceed the budget, and every
-    # fixture claiming validity must actually fit. A fixture that silently
-    # stopped testing what it claims is worse than no fixture.
+    # A fixture that silently stopped testing what it claims is worse than none.
     for entry in fixtures:
         over_budget = entry["service_data_length"] > SERVICE_DATA_BUDGET
         if entry.get("violates") == "capacity_exceeded":
@@ -466,19 +416,18 @@ def main() -> None:
         "description": (
             "Advertising fixtures for bthome-writable, consumed by both test "
             "suites. Service data is the full BTHome v2 payload including the "
-            "device-information byte; write payloads follow PROTOCOL.md §4.2."
+            "device-information byte; writes and reads follow PROTOCOL.md §4."
         ),
         "budget": {
             "advertising_payload_bytes": ADV_PAYLOAD_BYTES,
             "ad_flags_bytes": AD_FLAGS_BYTES,
             "ad_service_data_header_bytes": AD_SERVICE_DATA_HEADER_BYTES,
             "service_data_budget": SERVICE_DATA_BUDGET,
-            "object_budget": OBJECT_BUDGET,
             "note": (
-                "The 31 bytes of a legacy advertising payload are not all "
-                "available to BTHome objects: the Flags AD structure and the "
-                "Service Data header come out first, and the device-information "
-                "byte after that. See PROTOCOL.md §2.3."
+                "A theoretical ceiling. Real devices spend more of the 31 bytes: "
+                "Espruino always advertises its manufacturer ID, and a local name "
+                "costs 2 + its length. Measured object budgets were 7 to 22 bytes "
+                "(PROTOCOL.md §2.4, decisions.md D-030, D-046)."
             ),
         },
         "fixtures": fixtures,
@@ -491,8 +440,7 @@ def main() -> None:
     valid = sum(1 for f in fixtures if f["valid"])
     print(
         f"wrote {OUTPUT} — {len(fixtures)} fixtures "
-        f"({valid} valid, {len(fixtures) - valid} invalid); "
-        f"service-data budget {SERVICE_DATA_BUDGET} bytes"
+        f"({valid} valid, {len(fixtures) - valid} invalid)"
     )
 
 

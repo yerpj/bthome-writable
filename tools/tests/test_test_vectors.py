@@ -53,14 +53,16 @@ def ids(vectors: list[dict[str, Any]]) -> list[str]:
 
 
 def test_the_file_covers_what_the_spec_promises() -> None:
-    """§5.4 requires both directions, ten or more vectors, and replay negatives."""
+    """§5.5 requires every direction, ten or more vectors, and replay negatives."""
     assert len(VECTORS) >= 10
     directions = {v["direction"] for v in VECTORS}
-    assert directions == {"advertising", "write"}
+    assert directions == {"advertising", "write", "read"}
     reasons = {v.get("reject_reason") for v in VECTORS}
     assert "mic_mismatch_cross_direction" in reasons
     assert "counter_not_increasing" in reasons
-    assert {v["name"] for v in VECTORS} == {v["name"] for v in VECTORS}
+    names = [v["name"] for v in VECTORS]
+    assert len(names) == len(set(names))
+    assert "replay-read-as-write" in names
 
 
 @pytest.mark.parametrize("vector", VECTORS, ids=ids(VECTORS))
@@ -78,19 +80,25 @@ def test_nonce_matches_the_specified_construction(vector: dict[str, Any]) -> Non
 
 @pytest.mark.parametrize("vector", VECTORS, ids=ids(VECTORS))
 def test_device_info_byte_matches_direction(vector: dict[str, Any]) -> None:
-    """§5.1: 0x41 for advertising, 0xFF for writes. This is the replay defence."""
+    """§5.1: 0x41 advertising, 0xFF write, 0xFE read. This is the replay defence."""
     constants = DOCUMENT["constants"]
-    expected = (
-        constants["device_info_byte_advertising"]
-        if vector["direction"] == "advertising"
-        else constants["device_info_byte_write"]
-    )
+    expected = constants[f"device_info_byte_{vector['direction']}"]
     assert vector["device_info_byte"] == expected
+    assert (
+        len(
+            {
+                constants["device_info_byte_advertising"],
+                constants["device_info_byte_write"],
+                constants["device_info_byte_read"],
+            }
+        )
+        == 3
+    )
 
 
 @pytest.mark.parametrize("vector", VECTORS, ids=ids(VECTORS))
 def test_payload_framing(vector: dict[str, Any]) -> None:
-    """§5.3 / D-008: ciphertext || counter || MIC, in both directions."""
+    """§5.2 / D-008: ciphertext || counter || MIC, in every direction."""
     ciphertext, counter, mic = split_payload(vector)
     assert len(mic) == MIC_LENGTH
     assert counter == vector["counter"]
@@ -167,6 +175,22 @@ def test_cross_direction_replay_only_fails_on_the_nonce() -> None:
     assert ref.decrypt(key, bytes.fromhex(replayed["nonce"]), ciphertext, mic) is None
 
     # The very same bytes under the advertising nonce (0x41): accepted.
+    recovered = ref.decrypt(key, bytes.fromhex(original["nonce"]), ciphertext, mic)
+    assert recovered is not None
+    assert recovered.hex() == original["plaintext"]
+
+
+def test_a_read_replayed_as_a_write_fails_only_on_the_nonce() -> None:
+    """Reads and writes share one layout (§5.2), so nothing in the bytes tells
+    them apart. The direction byte in the nonce (0xFE vs 0xFF) is the only thing
+    that stops a sniffed read being replayed as a command."""
+    replayed = next(v for v in VECTORS if v["name"] == "replay-read-as-write")
+    original = next(v for v in VECTORS if v["name"] == "read-target-temperature")
+
+    key = bytes.fromhex(replayed["bindkey"])
+    ciphertext, _, mic = split_payload(replayed)
+
+    assert ref.decrypt(key, bytes.fromhex(replayed["nonce"]), ciphertext, mic) is None
     recovered = ref.decrypt(key, bytes.fromhex(original["nonce"]), ciphertext, mic)
     assert recovered is not None
     assert recovered.hex() == original["plaintext"]

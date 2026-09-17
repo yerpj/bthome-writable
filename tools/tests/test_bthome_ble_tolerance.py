@@ -63,7 +63,7 @@ def test_declaration_last_keeps_all_sensors() -> None:
     payload = service_data(
         Obj(0x01, bytes([97])),  # battery 97 %
         Obj(0x1E, bytes([1])),  # light on
-        declaration(0b10),  # object #1 (the light) is writable
+        declaration(0x1E),  # object #1 (the light) is writable
     )
     values = parse(payload)
     assert values["battery"] == 97
@@ -76,7 +76,7 @@ def test_declaration_first_hides_following_sensors() -> None:
     This is what makes the 'declaration last' placement normative in §3.1.
     """
     payload = service_data(
-        declaration(0b10),
+        declaration(0x1E),
         Obj(0x01, bytes([97])),
         Obj(0x1E, bytes([1])),
     )
@@ -90,7 +90,7 @@ def test_unknown_object_id_does_not_raise_or_log_errors(
     payload = service_data(
         Obj(0x01, bytes([97])),
         Obj(0x1E, bytes([1])),
-        declaration(0b10),
+        declaration(0x1E),
     )
     with caplog.at_level(logging.DEBUG, logger="bthome_ble.parser"):
         parse(payload)
@@ -119,15 +119,16 @@ def test_multi_instance_same_object_id() -> None:
     """Several objects with the same ID in one packet (PROTOCOL §3.1).
 
     `bthome-ble` suffixes duplicate keys with their 1-based occurrence index in
-    packet order (`light_1`, `light_2`, ...), which is exactly the positional
-    model of §3.1 — upstream naming and our bitmask indices agree.
+    packet order (`light_1`, `light_2`, ...). Version 2 numbers duplicate entries
+    the same way (entry order), so a receiver can name writable instances with
+    the convention users already see on sensors.
     """
     payload = service_data(
         Obj(0x01, bytes([97])),
         Obj(0x1E, bytes([1])),
         Obj(0x1E, bytes([0])),
         Obj(0x1E, bytes([1])),
-        declaration(0b1110),
+        declaration(0x1E, 0x1E, 0x1E),
     )
     device = BTHomeBluetoothDeviceData()
     update = device.update(make_service_info(payload))
@@ -137,16 +138,31 @@ def test_multi_instance_same_object_id() -> None:
     assert lights == {"light_1": True, "light_2": False, "light_3": True}
 
 
-def test_zero_length_text_object_is_dropped_not_fatal() -> None:
-    """The write-only pattern (§3.2) advertises an empty value.
+def test_entries_that_are_valid_object_ids_create_no_sensors() -> None:
+    """PROTOCOL.md §2.1 (version 2): the declaration's entries are object IDs.
 
-    The parser skips a zero-length object and keeps going — so an empty text
-    object costs us no sensor entity upstream and breaks nothing.
+    `FF 01 02` lists a battery and a temperature. If the parser read past `0xFF`
+    it would try to decode them as a battery and a temperature and invent
+    sensors. It stops at the unknown ID instead, so declaring a writable battery
+    or temperature can never be mistaken for measuring one.
+    """
+    payload = service_data(
+        Obj(0x00, bytes([0x09])),
+        declaration(0x01, 0x02, 0x1E),
+    )
+    assert parse(payload) == {"packet_id": 9}
+
+
+def test_zero_length_text_object_is_dropped_not_fatal() -> None:
+    """The parser skips a zero-length object and keeps going.
+
+    Version 1 relied on this for its write-only placeholder; version 2 advertises
+    no writable values at all, but the tolerance is still worth pinning down.
     """
     payload = service_data(
         Obj(0x01, bytes([97])),
         Obj(0x53, bytes([0])),  # text, length 0 -> write-only placeholder
-        declaration(0b10),
+        declaration(0x1E),
     )
     values = parse(payload)
     assert values["battery"] == 97
@@ -166,7 +182,7 @@ def test_declaration_survives_encrypted_advertising() -> None:
         Obj(0x00, bytes([0x09])).encode()  # packet id
         + Obj(0x01, bytes([97])).encode()
         + Obj(0x1E, bytes([1])).encode()
-        + declaration(0b100).encode()
+        + declaration(0x1E).encode()
     )
     counter = (1).to_bytes(4, "little")
     nonce = (

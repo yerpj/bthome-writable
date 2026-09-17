@@ -6,7 +6,7 @@ either implementation cannot silently become the specification.
 
 Run with no arguments to regenerate the file:
 
-    python tools/gen_test_vectors.py
+    python -m tools.gen_test_vectors
 
 The output is deterministic: rerunning it on an unchanged spec must produce a
 byte-identical file, so an accidental change shows up as a diff.
@@ -24,12 +24,19 @@ from tools import ccm_reference as ref
 
 OUTPUT = Path(__file__).resolve().parent.parent / "test-vectors" / "test-vectors.json"
 
-SPEC_VERSION = "1.0-draft.1"
+SPEC_VERSION = "2.0-draft.1"
 
 UUID16 = bytes.fromhex("d2fc")
 DEVICE_INFO_ADVERTISING = 0x41  # BTHome v2, encrypted
 DEVICE_INFO_WRITE = 0xFF  # PROTOCOL.md §5.1
+DEVICE_INFO_READ = 0xFE  # PROTOCOL.md §5.1
 MIC_LENGTH = 4
+
+DEVICE_INFO = {
+    "advertising": DEVICE_INFO_ADVERTISING,
+    "write": DEVICE_INFO_WRITE,
+    "read": DEVICE_INFO_READ,
+}
 
 BINDKEY = bytes.fromhex("231d39c1d7cc1ab1aee224cd096db932")
 WRONG_BINDKEY = bytes.fromhex("00112233445566778899aabbccddeeff")
@@ -70,8 +77,12 @@ def advertising_payload(device_info: int, ciphertext: bytes, counter: int, mic: 
     return bytes([device_info]) + ciphertext + counter.to_bytes(4, "little") + mic
 
 
-def write_payload(ciphertext: bytes, counter: int, mic: bytes) -> bytes:
-    """PROTOCOL.md §5.3: ct || counter || MIC. No device-info byte on the wire."""
+def sealed_payload(ciphertext: bytes, counter: int, mic: bytes) -> bytes:
+    """PROTOCOL.md §5.2: ct || counter || MIC, for writes and reads alike.
+
+    No device-information byte on the wire: the direction is implicit in the
+    operation, and only the nonce carries it.
+    """
     return ciphertext + counter.to_bytes(4, "little") + mic
 
 
@@ -94,13 +105,11 @@ def vector(
     """Build one vector.
 
     `payload_override` carries the negative cases whose bytes do not come from
-    encrypting `plaintext` under `key` — a replayed advertisement presented as a
-    write, a tampered ciphertext. `verify_key` is the key the *receiver* would
-    use, which differs from `key` in the wrong-bindkey case.
+    encrypting `plaintext` under `key` — a replay presented in another direction,
+    a tampered ciphertext. `verify_key` is the key the *verifier* would use, which
+    differs from `key` in the wrong-bindkey case.
     """
-    device_info = (
-        DEVICE_INFO_ADVERTISING if direction == "advertising" else DEVICE_INFO_WRITE
-    )
+    device_info = DEVICE_INFO[direction]
     n, ciphertext, mic = seal(key, mac, device_info, counter, plaintext)
 
     if payload_override is not None:
@@ -108,7 +117,7 @@ def vector(
     elif direction == "advertising":
         payload = advertising_payload(device_info, ciphertext, counter, mic)
     else:
-        payload = write_payload(ciphertext, counter, mic)
+        payload = sealed_payload(ciphertext, counter, mic)
 
     entry: dict[str, Any] = {
         "name": name,
@@ -136,36 +145,31 @@ def vector(
 
 # --- Plaintexts, mirroring the worked examples of PROTOCOL.md §8 -------------
 
-# Advertising: packet id, battery 97 %, light on, declaration (position 1).
-ADV_SINGLE_LIGHT = (
+# Advertising (§8.1): packet id, battery 97 %, declaration with one light entry.
+# Version 2 advertises no writable value: the light's state is not in the packet.
+ADV_SINGLE_LIGHT = bytes.fromhex("0009") + bytes.fromhex("0161") + bytes.fromhex("ff1e")
+
+# Advertising (§8.3): two light entries and a text entry.
+ADV_MULTI = bytes.fromhex("000a") + bytes.fromhex("0161") + bytes.fromhex("ff1e1e53")
+
+# Advertising (§8.2): measured temperature, settings revision, power and target.
+ADV_THERMOSTAT = (
     bytes.fromhex("0009")
-    + bytes.fromhex("0161")
-    + bytes.fromhex("1e01")
-    + bytes.fromhex("ff02")
+    + bytes.fromhex("02c409")
+    + bytes.fromhex("6503")
+    + bytes.fromhex("ff1057")
 )
 
-# Advertising: three light instances plus a write-only text placeholder.
-ADV_MULTI = (
-    bytes.fromhex("000a")
-    + bytes.fromhex("0161")
-    + bytes.fromhex("1e01")
-    + bytes.fromhex("1e00")
-    + bytes.fromhex("1e01")
-    + bytes.fromhex("5300")
-    + bytes.fromhex("ff1e")
-)
-
-# Writes (§4.2): every writable object, in packet order.
+# Writes and reads (§4.2, §4.3): one BTHome object each.
 WRITE_LIGHT_OFF = bytes.fromhex("1e00")
-WRITE_MULTI_SECOND_OFF = (
-    bytes.fromhex("1e01")
-    + bytes.fromhex("1e00")
-    + bytes.fromhex("1e01")
-    + bytes.fromhex("5300")
-)
+WRITE_TEXT_HELLO = bytes.fromhex("5305") + b"Hello"
+WRITE_TARGET_22 = bytes.fromhex("5716")
+WRITE_BUTTON_PRESS = bytes.fromhex("3a01")
 WRITE_LONG_TEXT = (
     bytes.fromhex("53") + bytes([28]) + b"the quick brown fox jumps ove"[:28]
 )
+READ_TARGET_20 = bytes.fromhex("5714")
+READ_POWER_ON = bytes.fromhex("1001")
 
 
 def build_vectors() -> list[dict[str, Any]]:
@@ -175,7 +179,7 @@ def build_vectors() -> list[dict[str, Any]]:
     vectors.append(
         vector(
             "adv-single-light",
-            "PROTOCOL.md §8.1 encrypted: battery, light on, declaration.",
+            "PROTOCOL.md §8.1 encrypted: battery and a declaration listing one light.",
             "advertising",
             1,
             ADV_SINGLE_LIGHT,
@@ -184,10 +188,20 @@ def build_vectors() -> list[dict[str, Any]]:
     vectors.append(
         vector(
             "adv-multi-instance",
-            "PROTOCOL.md §8.2 encrypted: three lights and a write-only text.",
+            "PROTOCOL.md §8.3 encrypted: two light entries and a text entry.",
             "advertising",
             2,
             ADV_MULTI,
+        )
+    )
+    vectors.append(
+        vector(
+            "adv-thermostat",
+            "PROTOCOL.md §8.2 encrypted: measured temperature, settings revision, "
+            "writable power and target temperature.",
+            "advertising",
+            3,
+            ADV_THERMOSTAT,
         )
     )
     vectors.append(
@@ -213,7 +227,7 @@ def build_vectors() -> list[dict[str, Any]]:
     vectors.append(
         vector(
             "write-light-off",
-            "PROTOCOL.md §8.1: switch the single light off.",
+            "PROTOCOL.md §8.3: switch a light off, one object to its characteristic.",
             "write",
             1,
             WRITE_LIGHT_OFF,
@@ -221,11 +235,29 @@ def build_vectors() -> list[dict[str, Any]]:
     )
     vectors.append(
         vector(
-            "write-multi-instance-no-op-text",
-            "PROTOCOL.md §8.2: second light off, text carries the length-0 no-op.",
+            "write-text",
+            "PROTOCOL.md §8.3: a text write keeps BTHome's length byte.",
             "write",
             2,
-            WRITE_MULTI_SECOND_OFF,
+            WRITE_TEXT_HELLO,
+        )
+    )
+    vectors.append(
+        vector(
+            "write-target-temperature",
+            "PROTOCOL.md §8.2: target 22 °C written as a 0x57 temperature.",
+            "write",
+            3,
+            WRITE_TARGET_22,
+        )
+    )
+    vectors.append(
+        vector(
+            "write-button-press",
+            "PROTOCOL.md §8.4: an event write, the momentary action.",
+            "write",
+            4,
+            WRITE_BUTTON_PRESS,
         )
     )
     vectors.append(
@@ -233,7 +265,7 @@ def build_vectors() -> list[dict[str, Any]]:
             "write-long-text",
             "A 30-byte write: exceeds the 20-byte default-MTU budget of §4.4.",
             "write",
-            3,
+            5,
             WRITE_LONG_TEXT,
         )
     )
@@ -258,11 +290,32 @@ def build_vectors() -> list[dict[str, Any]]:
     vectors.append(
         vector(
             "write-forward-jump",
-            "§5.2: a large forward jump MUST be accepted (receiver reinstall).",
+            "§5.3: a large forward jump MUST be accepted (receiver reinstall).",
             "write",
             100000,
             WRITE_LIGHT_OFF,
             last_accepted_counter=7,
+        )
+    )
+
+    # --- Read direction, positive ---------------------------------------
+    vectors.append(
+        vector(
+            "read-target-temperature",
+            "PROTOCOL.md §8.2: the knob moved the target to 20 °C; the receiver "
+            "reads it after the settings revision changed.",
+            "read",
+            3,
+            READ_TARGET_20,
+        )
+    )
+    vectors.append(
+        vector(
+            "read-power",
+            "PROTOCOL.md §8.2: reading the power entry, heating on.",
+            "read",
+            4,
+            READ_POWER_ON,
         )
     )
 
@@ -283,7 +336,7 @@ def build_vectors() -> list[dict[str, Any]]:
             expect="reject",
             reject_reason="mic_mismatch_cross_direction",
             mic_valid=False,
-            payload_override=write_payload(adv_ct, 1, adv_mic),
+            payload_override=sealed_payload(adv_ct, 1, adv_mic),
         )
     )
 
@@ -306,11 +359,30 @@ def build_vectors() -> list[dict[str, Any]]:
         )
     )
 
+    # A read captured on the air, replayed as a write: reads and writes share a
+    # layout, so only the direction byte in the nonce (0xFE vs 0xFF) separates
+    # them.
+    _, rd_ct, rd_mic = seal(BINDKEY, MAC, DEVICE_INFO_READ, 3, READ_TARGET_20)
+    vectors.append(
+        vector(
+            "replay-read-as-write",
+            "§5.1: a sealed read replayed as a write. Same layout as a write, "
+            "different direction byte in the nonce, so the MIC cannot verify.",
+            "write",
+            3,
+            READ_TARGET_20,
+            expect="reject",
+            reject_reason="mic_mismatch_cross_direction",
+            mic_valid=False,
+            payload_override=sealed_payload(rd_ct, 3, rd_mic),
+        )
+    )
+
     # --- Negative: counter policy (MIC is valid, policy rejects) ---------
     vectors.append(
         vector(
             "write-counter-replayed-equal",
-            "§5.2: a byte-perfect replay of an accepted write. The MIC verifies; "
+            "§5.3: a byte-perfect replay of an accepted write. The MIC verifies; "
             "the device MUST still reject it, because counter <= last accepted.",
             "write",
             42,
@@ -323,7 +395,7 @@ def build_vectors() -> list[dict[str, Any]]:
     vectors.append(
         vector(
             "write-counter-below-last",
-            "§5.2: an older write replayed. MIC valid, counter below the last "
+            "§5.3: an older write replayed. MIC valid, counter below the last "
             "accepted — reject.",
             "write",
             41,
@@ -362,7 +434,7 @@ def build_vectors() -> list[dict[str, Any]]:
             expect="reject",
             reject_reason="mic_mismatch_tampered",
             mic_valid=False,
-            payload_override=write_payload(tampered, 6, tam_mic),
+            payload_override=sealed_payload(tampered, 6, tam_mic),
         )
     )
 
@@ -377,21 +449,22 @@ def main() -> None:
             "AES-CCM test vectors for bthome-writable. This file is the contract "
             "between the Espruino and Home Assistant implementations: both test "
             "suites consume it, and changing it is a change to the specification "
-            "(see spec/PROTOCOL.md §5.4)."
+            "(see spec/PROTOCOL.md §5.5)."
         ),
         "constants": {
             "uuid16": UUID16.hex(),
             "device_info_byte_advertising": f"{DEVICE_INFO_ADVERTISING:02x}",
             "device_info_byte_write": f"{DEVICE_INFO_WRITE:02x}",
+            "device_info_byte_read": f"{DEVICE_INFO_READ:02x}",
             "mic_length": MIC_LENGTH,
             "nonce": "mac(6, natural order) || uuid16 || device_info || counter u32 LE",
             "advertising_payload": "device_info || ciphertext || counter u32 LE || mic",
             "write_payload": "ciphertext || counter u32 LE || mic",
+            "read_payload": "ciphertext || counter u32 LE || mic",
         },
         "field_notes": {
-            "bindkey": "The key the RECEIVER uses to verify. For the "
-            "wrong-bindkey vector this is deliberately not the key that "
-            "sealed the payload.",
+            "bindkey": "The key the verifier uses. For the wrong-bindkey vector "
+            "this is deliberately not the key that sealed the payload.",
             "mic_valid": "Whether the MIC verifies. A rejected vector with "
             "mic_valid true is rejected by policy (counter), not by crypto.",
             "last_accepted_counter": "The counter state the device is assumed "

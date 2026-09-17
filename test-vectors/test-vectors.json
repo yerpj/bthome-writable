@@ -1,18 +1,20 @@
 {
-  "spec_version": "1.0-draft.1",
+  "spec_version": "2.0-draft.1",
   "generated_by": "tools/gen_test_vectors.py",
-  "description": "AES-CCM test vectors for bthome-writable. This file is the contract between the Espruino and Home Assistant implementations: both test suites consume it, and changing it is a change to the specification (see spec/PROTOCOL.md \u00a75.4).",
+  "description": "AES-CCM test vectors for bthome-writable. This file is the contract between the Espruino and Home Assistant implementations: both test suites consume it, and changing it is a change to the specification (see spec/PROTOCOL.md \u00a75.5).",
   "constants": {
     "uuid16": "d2fc",
     "device_info_byte_advertising": "41",
     "device_info_byte_write": "ff",
+    "device_info_byte_read": "fe",
     "mic_length": 4,
     "nonce": "mac(6, natural order) || uuid16 || device_info || counter u32 LE",
     "advertising_payload": "device_info || ciphertext || counter u32 LE || mic",
-    "write_payload": "ciphertext || counter u32 LE || mic"
+    "write_payload": "ciphertext || counter u32 LE || mic",
+    "read_payload": "ciphertext || counter u32 LE || mic"
   },
   "field_notes": {
-    "bindkey": "The key the RECEIVER uses to verify. For the wrong-bindkey vector this is deliberately not the key that sealed the payload.",
+    "bindkey": "The key the verifier uses. For the wrong-bindkey vector this is deliberately not the key that sealed the payload.",
     "mic_valid": "Whether the MIC verifies. A rejected vector with mic_valid true is rejected by policy (counter), not by crypto.",
     "last_accepted_counter": "The counter state the device is assumed to hold before processing this vector.",
     "payload": "The bytes on the wire for this direction."
@@ -20,7 +22,7 @@
   "vectors": [
     {
       "name": "adv-single-light",
-      "description": "PROTOCOL.md \u00a78.1 encrypted: battery, light on, declaration.",
+      "description": "PROTOCOL.md \u00a78.1 encrypted: battery and a declaration listing one light.",
       "direction": "advertising",
       "expect": "accept",
       "bindkey": "231d39c1d7cc1ab1aee224cd096db932",
@@ -28,15 +30,15 @@
       "device_info_byte": "41",
       "counter": 1,
       "nonce": "a4c1388e1f2bd2fc4101000000",
-      "payload": "41ea6859a5a1b3026c010000002d13f723",
+      "payload": "41ea6859a540ac01000000722a66fb",
       "mic_valid": true,
-      "plaintext": "000901611e01ff02",
-      "ciphertext": "ea6859a5a1b3026c",
-      "mic": "2d13f723"
+      "plaintext": "00090161ff1e",
+      "ciphertext": "ea6859a540ac",
+      "mic": "722a66fb"
     },
     {
       "name": "adv-multi-instance",
-      "description": "PROTOCOL.md \u00a78.2 encrypted: three lights and a write-only text.",
+      "description": "PROTOCOL.md \u00a78.3 encrypted: two light entries and a text entry.",
       "direction": "advertising",
       "expect": "accept",
       "bindkey": "231d39c1d7cc1ab1aee224cd096db932",
@@ -44,11 +46,27 @@
       "device_info_byte": "41",
       "counter": 2,
       "nonce": "a4c1388e1f2bd2fc4102000000",
-      "payload": "41e4fabab02020cc10e34ce1975ee902000000fac73746",
+      "payload": "41e4fabab0c13fcc43020000004b2785fd",
       "mic_valid": true,
-      "plaintext": "000a01611e011e001e015300ff1e",
-      "ciphertext": "e4fabab02020cc10e34ce1975ee9",
-      "mic": "fac73746"
+      "plaintext": "000a0161ff1e1e53",
+      "ciphertext": "e4fabab0c13fcc43",
+      "mic": "4b2785fd"
+    },
+    {
+      "name": "adv-thermostat",
+      "description": "PROTOCOL.md \u00a78.2 encrypted: measured temperature, settings revision, writable power and target temperature.",
+      "direction": "advertising",
+      "expect": "accept",
+      "bindkey": "231d39c1d7cc1ab1aee224cd096db932",
+      "mac": "A4:C1:38:8E:1F:2B",
+      "device_info_byte": "41",
+      "counter": 3,
+      "nonce": "a4c1388e1f2bd2fc4103000000",
+      "payload": "4172ab9b1fbfeb4f3f725a030000009f8d0e29",
+      "mic_valid": true,
+      "plaintext": "000902c4096503ff1057",
+      "ciphertext": "72ab9b1fbfeb4f3f725a",
+      "mic": "9f8d0e29"
     },
     {
       "name": "adv-counter-zero",
@@ -60,11 +78,11 @@
       "device_info_byte": "41",
       "counter": 0,
       "nonce": "a4c1388e1f2bd2fc4100000000",
-      "payload": "41cd8740078ca2ba0200000000b2ce5499",
+      "payload": "41cd8740076dbd000000009fd89fff",
       "mic_valid": true,
-      "plaintext": "000901611e01ff02",
-      "ciphertext": "cd8740078ca2ba02",
-      "mic": "b2ce5499"
+      "plaintext": "00090161ff1e",
+      "ciphertext": "cd8740076dbd",
+      "mic": "9fd89fff"
     },
     {
       "name": "adv-counter-max",
@@ -76,15 +94,15 @@
       "device_info_byte": "41",
       "counter": 4294967295,
       "nonce": "a4c1388e1f2bd2fc41ffffffff",
-      "payload": "4137bd87c32c2c2e7dffffffff28441da1",
+      "payload": "4137bd87c3cd33ffffffffae52d741",
       "mic_valid": true,
-      "plaintext": "000901611e01ff02",
-      "ciphertext": "37bd87c32c2c2e7d",
-      "mic": "28441da1"
+      "plaintext": "00090161ff1e",
+      "ciphertext": "37bd87c3cd33",
+      "mic": "ae52d741"
     },
     {
       "name": "write-light-off",
-      "description": "PROTOCOL.md \u00a78.1: switch the single light off.",
+      "description": "PROTOCOL.md \u00a78.3: switch a light off, one object to its characteristic.",
       "direction": "write",
       "expect": "accept",
       "bindkey": "231d39c1d7cc1ab1aee224cd096db932",
@@ -99,8 +117,8 @@
       "mic": "be2516ab"
     },
     {
-      "name": "write-multi-instance-no-op-text",
-      "description": "PROTOCOL.md \u00a78.2: second light off, text carries the length-0 no-op.",
+      "name": "write-text",
+      "description": "PROTOCOL.md \u00a78.3: a text write keeps BTHome's length byte.",
       "direction": "write",
       "expect": "accept",
       "bindkey": "231d39c1d7cc1ab1aee224cd096db932",
@@ -108,11 +126,43 @@
       "device_info_byte": "ff",
       "counter": 2,
       "nonce": "a4c1388e1f2bd2fcff02000000",
-      "payload": "cc13b52e37c235c0020000002ba07842",
+      "payload": "8117e34b45af09020000005e452d92",
       "mic_valid": true,
-      "plaintext": "1e011e001e015300",
-      "ciphertext": "cc13b52e37c235c0",
-      "mic": "2ba07842"
+      "plaintext": "530548656c6c6f",
+      "ciphertext": "8117e34b45af09",
+      "mic": "5e452d92"
+    },
+    {
+      "name": "write-target-temperature",
+      "description": "PROTOCOL.md \u00a78.2: target 22 \u00b0C written as a 0x57 temperature.",
+      "direction": "write",
+      "expect": "accept",
+      "bindkey": "231d39c1d7cc1ab1aee224cd096db932",
+      "mac": "A4:C1:38:8E:1F:2B",
+      "device_info_byte": "ff",
+      "counter": 3,
+      "nonce": "a4c1388e1f2bd2fcff03000000",
+      "payload": "da6d0300000017344dd9",
+      "mic_valid": true,
+      "plaintext": "5716",
+      "ciphertext": "da6d",
+      "mic": "17344dd9"
+    },
+    {
+      "name": "write-button-press",
+      "description": "PROTOCOL.md \u00a78.4: an event write, the momentary action.",
+      "direction": "write",
+      "expect": "accept",
+      "bindkey": "231d39c1d7cc1ab1aee224cd096db932",
+      "mac": "A4:C1:38:8E:1F:2B",
+      "device_info_byte": "ff",
+      "counter": 4,
+      "nonce": "a4c1388e1f2bd2fcff04000000",
+      "payload": "fda104000000149cee90",
+      "mic_valid": true,
+      "plaintext": "3a01",
+      "ciphertext": "fda1",
+      "mic": "149cee90"
     },
     {
       "name": "write-long-text",
@@ -122,13 +172,13 @@
       "bindkey": "231d39c1d7cc1ab1aee224cd096db932",
       "mac": "A4:C1:38:8E:1F:2B",
       "device_info_byte": "ff",
-      "counter": 3,
-      "nonce": "a4c1388e1f2bd2fcff03000000",
-      "payload": "de676de2b97d3c128ec2555494e7b1317a3436aa875cd01dd835d6521d1c0300000081939ceb",
+      "counter": 5,
+      "nonce": "a4c1388e1f2bd2fcff05000000",
+      "payload": "4b360b2fc2be604e39f67276a98a29ac2ae6bd61b9aa30481d73644ba42e05000000cc2abb5f",
       "mic_valid": true,
       "plaintext": "531c74686520717569636b2062726f776e20666f78206a756d7073206f76",
-      "ciphertext": "de676de2b97d3c128ec2555494e7b1317a3436aa875cd01dd835d6521d1c",
-      "mic": "81939ceb"
+      "ciphertext": "4b360b2fc2be604e39f67276a98a29ac2ae6bd61b9aa30481d73644ba42e",
+      "mic": "cc2abb5f"
     },
     {
       "name": "write-counter-zero",
@@ -164,7 +214,7 @@
     },
     {
       "name": "write-forward-jump",
-      "description": "\u00a75.2: a large forward jump MUST be accepted (receiver reinstall).",
+      "description": "\u00a75.3: a large forward jump MUST be accepted (receiver reinstall).",
       "direction": "write",
       "expect": "accept",
       "bindkey": "231d39c1d7cc1ab1aee224cd096db932",
@@ -180,6 +230,38 @@
       "last_accepted_counter": 7
     },
     {
+      "name": "read-target-temperature",
+      "description": "PROTOCOL.md \u00a78.2: the knob moved the target to 20 \u00b0C; the receiver reads it after the settings revision changed.",
+      "direction": "read",
+      "expect": "accept",
+      "bindkey": "231d39c1d7cc1ab1aee224cd096db932",
+      "mac": "A4:C1:38:8E:1F:2B",
+      "device_info_byte": "fe",
+      "counter": 3,
+      "nonce": "a4c1388e1f2bd2fcfe03000000",
+      "payload": "d0330300000050564a32",
+      "mic_valid": true,
+      "plaintext": "5714",
+      "ciphertext": "d033",
+      "mic": "50564a32"
+    },
+    {
+      "name": "read-power",
+      "description": "PROTOCOL.md \u00a78.2: reading the power entry, heating on.",
+      "direction": "read",
+      "expect": "accept",
+      "bindkey": "231d39c1d7cc1ab1aee224cd096db932",
+      "mac": "A4:C1:38:8E:1F:2B",
+      "device_info_byte": "fe",
+      "counter": 4,
+      "nonce": "a4c1388e1f2bd2fcfe04000000",
+      "payload": "e77404000000d33a8976",
+      "mic_valid": true,
+      "plaintext": "1001",
+      "ciphertext": "e774",
+      "mic": "d33a8976"
+    },
+    {
       "name": "replay-advertisement-as-write",
       "description": "\u00a75.1: an encrypted advertisement replayed as a write. The nonce's device-info byte differs (0x41 vs 0xFF), so the MIC cannot verify.",
       "direction": "write",
@@ -189,7 +271,7 @@
       "device_info_byte": "ff",
       "counter": 1,
       "nonce": "a4c1388e1f2bd2fcff01000000",
-      "payload": "ea6859a5a1b3026c010000002d13f723",
+      "payload": "ea6859a540ac01000000722a66fb",
       "mic_valid": false,
       "reject_reason": "mic_mismatch_cross_direction"
     },
@@ -208,8 +290,22 @@
       "reject_reason": "mic_mismatch_cross_direction"
     },
     {
+      "name": "replay-read-as-write",
+      "description": "\u00a75.1: a sealed read replayed as a write. Same layout as a write, different direction byte in the nonce, so the MIC cannot verify.",
+      "direction": "write",
+      "expect": "reject",
+      "bindkey": "231d39c1d7cc1ab1aee224cd096db932",
+      "mac": "A4:C1:38:8E:1F:2B",
+      "device_info_byte": "ff",
+      "counter": 3,
+      "nonce": "a4c1388e1f2bd2fcff03000000",
+      "payload": "d0330300000050564a32",
+      "mic_valid": false,
+      "reject_reason": "mic_mismatch_cross_direction"
+    },
+    {
       "name": "write-counter-replayed-equal",
-      "description": "\u00a75.2: a byte-perfect replay of an accepted write. The MIC verifies; the device MUST still reject it, because counter <= last accepted.",
+      "description": "\u00a75.3: a byte-perfect replay of an accepted write. The MIC verifies; the device MUST still reject it, because counter <= last accepted.",
       "direction": "write",
       "expect": "reject",
       "bindkey": "231d39c1d7cc1ab1aee224cd096db932",
@@ -227,7 +323,7 @@
     },
     {
       "name": "write-counter-below-last",
-      "description": "\u00a75.2: an older write replayed. MIC valid, counter below the last accepted \u2014 reject.",
+      "description": "\u00a75.3: an older write replayed. MIC valid, counter below the last accepted \u2014 reject.",
       "direction": "write",
       "expect": "reject",
       "bindkey": "231d39c1d7cc1ab1aee224cd096db932",
