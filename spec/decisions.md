@@ -1987,3 +1987,42 @@ confirmation window, D-010/D-011; redundancy suppression, D-020; no-op
 composition), and the device loses write-all parsing and the capacity limit of
 eight. What is lost is the observation of state by listening, which §3 of the
 specification replaces for the devices that need it.
+
+## D-049 — Protocol v2 on hardware: what held, and two bugs it found  [VERIFY]
+
+2026-09-17. Puck.js `C8:80:32:AD:F7:B9` (2v27), Windows host for the bench tools,
+Home Assistant 2026.7.4 through the ESP32 proxy `esp32-bluetooth-proxy-1f1020`.
+
+**Held.**
+
+| Check | Result |
+|---|---|
+| `tools.bthome_write --payload 1e01` on light-loop | acknowledged; connect 1.7 s, write 16 ms |
+| `tools.closed_loop` | illuminance 103 → 595 → 103 lux, 5.8× |
+| `tools.reject_matrix` | `objectid_mismatch`, `truncated` ×2, `trailing_bytes`; lamp unchanged |
+| `tools.multi_instance` on three-lights | entries 1, 2, 3 each moved only their lamp; `0f00` on entry 1 refused |
+| button-light: write then read | read `1e01`; revision unchanged by the write (§3.2) |
+| button-light: local toggle | revision 0x50 → 0x51, read `1e00` |
+| HA: first sight after restart | state read from the device, not assumed |
+| HA: switch on | LED on, `lamp.on` true |
+| HA: local toggle | HA shows `off` ~2 s after the bench tool let go of the link |
+
+Advertising of light-loop is `40 00 <pid> 01 <batt> 05 <lux×3> FF 1E`, 11 bytes.
+
+**Bug 1 — a failed re-read counted as done.** The coordinator recorded a new
+settings revision as seen *before* reading it. An Espruino device serves one
+central at a time; the read fired while the bench tool held the link, failed,
+and the state stayed stale until the next change. Now the revision moves only
+after a successful read, and a failed read is retried on a later advertisement
+once `READ_RETRY` (10 s) has passed. Test:
+`test_a_re_read_that_fails_is_tried_again_on_a_later_advertisement`.
+
+**Bug 2 — deploying from RAM leaked the previous sketch.** `espruino_deploy`
+stopped timers but did not `reset()`, so globals, `NRF.on()` listeners and the
+module cache piled up. After three deployments the Puck had 109 of 2630 blocks
+free and `require("BTHomeWritable")` failed with "Got UNFINISHED TEMPLATE
+LITERAL" — an out-of-memory symptom, not a syntax error. After `reset()`, the
+module plus a sketch leaves 1834 blocks free. The tool now sends `reset()`.
+
+**Not yet on hardware:** an encrypted device on v2 (sealed write, sealed read
+under 0xFE). Both sides consume the same vectors, including the read direction.

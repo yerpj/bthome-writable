@@ -1,9 +1,9 @@
 """Prove that a write produced a physical effect, not just an echoed value.
 
-Everything else in this repo can be satisfied by a device that stores what it
-was told and advertises it back. This cannot: it writes the light object, and
-then reads the *illuminance* object — a separate measurement, taken through a
-different LED — out of the same advertising packet.
+A write response says the bytes arrived, not that anything happened. This
+writes the light entry and then reads the *illuminance* object -- a separate
+measurement, taken through a different LED -- out of the device's advertising.
+The light's own state is never advertised (PROTOCOL.md §2.3).
 
     python -m tools.closed_loop --address C8:80:32:AD:F7:B9
 
@@ -25,7 +25,8 @@ import sys
 
 from bleak import BleakClient, BleakScanner
 
-from tools.bthome_write import WRITE_CHARACTERISTIC, Watcher
+from tools.bthome_write import Watcher
+from tools.ha_protocol import characteristic_uuid
 
 # The objects light-loop.js advertises, in packet order.
 PACKET_ID = 0x00
@@ -34,7 +35,7 @@ ILLUMINANCE = 0x05
 LIGHT = 0x1E
 DECLARATION = 0xFF
 
-WIDTHS = {PACKET_ID: 1, BATTERY: 1, ILLUMINANCE: 3, LIGHT: 1, DECLARATION: 1}
+WIDTHS = {PACKET_ID: 1, BATTERY: 1, ILLUMINANCE: 3}
 
 # Seconds to let the device rebuild its packet, which is when it re-reads the
 # sensor. The example refreshes every 2 s.
@@ -61,9 +62,9 @@ def decode(service_data: bytes) -> dict[int, int]:
     return values
 
 
-async def write(address: str, payload: bytes) -> None:
+async def write(address: str, entry: int, payload: bytes) -> None:
     async with BleakClient(address, timeout=30.0) as client:
-        await client.write_gatt_char(WRITE_CHARACTERISTIC, payload, response=True)
+        await client.write_gatt_char(characteristic_uuid(entry), payload, response=True)
 
 
 async def fresh_packet(watcher: Watcher, after: float, timeout: float) -> bytes | None:
@@ -83,7 +84,7 @@ async def fresh_packet(watcher: Watcher, after: float, timeout: float) -> bytes 
     return None
 
 
-async def run(address: str) -> int:
+async def run(address: str, entry: int) -> int:
     print(f"{address}: closing the loop through the light sensor")
     print()
 
@@ -98,7 +99,7 @@ async def run(address: str) -> int:
             return 1
 
         for on in (False, True, False):
-            await write(address, bytes([LIGHT, 1 if on else 0]))
+            await write(address, entry, bytes([LIGHT, 1 if on else 0]))
             mark = asyncio.get_running_loop().time()
             await asyncio.sleep(SETTLE)
 
@@ -108,15 +109,10 @@ async def run(address: str) -> int:
                 return 1
 
             values = decode(packet)
-            state = values.get(LIGHT)
             lux = values.get(ILLUMINANCE, 0) / 100
             label = "on " if on else "off"
             print(f"  commanded {label}   {packet.hex()}")
-            print(f"                 light={state}  illuminance={lux:.1f}")
-
-            if state != (1 if on else 0):
-                print(f"FAIL: commanded {label}, device advertises {state}")
-                return 1
+            print(f"                 illuminance={lux:.1f}")
             results.setdefault(on, []).append(lux)
     finally:
         await scanner.stop()
@@ -146,8 +142,9 @@ async def run(address: str) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--address", required=True)
+    parser.add_argument("--entry", type=int, default=1, help="the light's entry")
     args = parser.parse_args()
-    return asyncio.run(run(args.address))
+    return asyncio.run(run(args.address, args.entry))
 
 
 if __name__ == "__main__":

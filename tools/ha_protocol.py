@@ -35,8 +35,9 @@ _protocol = importlib.import_module(f"{_PACKAGE}.protocol")
 
 Declaration = _protocol.Declaration
 ProtocolError = _protocol.ProtocolError
-WritableObject = _protocol.WritableObject
-compose_write = _protocol.compose_write
-no_op_value = _protocol.no_op_value
+WritableEntry = _protocol.WritableEntry
+characteristic_uuid = _protocol.characteristic_uuid
+decode_object = _protocol.decode_object
+encode_object = _protocol.encode_object
 parse_declaration = _protocol.parse_declaration
 split_objects = _protocol.split_objects

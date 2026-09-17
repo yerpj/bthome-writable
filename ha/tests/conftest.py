@@ -150,6 +150,7 @@ class FakeGattClient:
         self.reads: list[str] = []
         self.fail_on_write: Exception | None = None
         self.fail_after: int | None = None
+        self.fail_on_read: Exception | None = None
         self.connections = 0
         self.disconnects = 0
         self.cache_cleared = 0
@@ -177,6 +178,8 @@ class FakeGattClient:
         self.writes.append((characteristic.uuid, bytes(payload)))
 
     async def read_gatt_char(self, characteristic) -> bytes:
+        if self.fail_on_read is not None:
+            raise self.fail_on_read
         self.reads.append(characteristic.uuid)
         return self.readable[characteristic.uuid]
 

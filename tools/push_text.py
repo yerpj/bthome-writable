@@ -9,8 +9,8 @@ Assistant, shown on a device that polls nothing and was configured by nobody.
 The write is an ordinary BTHome-writable write (PROTOCOL.md §4.2) carrying one
 text object.
 
-A text object is write-only, so **there is no confirmation** (§3): the device
-never advertises what it was told, and a lost write is silent. What this does
+The write response says the bytes arrived; a text object is never advertised
+(§2.3), so whether it was *shown* is the device's business. What this does
 instead is read the device's console back and report the line the sketch prints
 when it draws -- which is a debugging aid, not a protocol feature. A real
 receiver has nothing equivalent.
@@ -28,8 +28,8 @@ import sys
 import urllib.request
 
 from tools.espruino_deploy import UART_RX, UART_TX, connect, discover
+from tools.ha_protocol import characteristic_uuid
 
-WRITE_CHARACTERISTIC = "2faa0002-3b0b-4b1a-9e2a-b4c2952e62f2"
 TEXT_OBJECT_ID = 0x53
 NOISE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]|[\r\x00-\x08\x0b-\x1f]")
 
@@ -60,7 +60,7 @@ def compose(text: str) -> bytes:
     return bytes([TEXT_OBJECT_ID, len(body)]) + body
 
 
-async def run(address: str, text: str) -> int:
+async def run(address: str, entry: int, text: str) -> int:
     payload = compose(text)
     device = await discover(address, 120.0)
     if device is None:
@@ -73,7 +73,7 @@ async def run(address: str, text: str) -> int:
         with contextlib.suppress(Exception):
             await client.start_notify(UART_TX, lambda _s, data: console.extend(data))
         print(f"writing {len(payload)} bytes: {payload.hex()}")
-        await client.write_gatt_char(WRITE_CHARACTERISTIC, payload, response=True)
+        await client.write_gatt_char(characteristic_uuid(entry), payload, response=True)
         await asyncio.sleep(1.0)
         # Ask rather than listen. Catching the sketch's own console.log is a
         # race -- the line can be printed before the notification subscription
@@ -107,6 +107,7 @@ async def run(address: str, text: str) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--address", required=True)
+    parser.add_argument("--entry", type=int, default=1, help="the text entry")
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--text", help="literal text to display")
     source.add_argument("--entity", help="a Home Assistant entity to read")
@@ -114,7 +115,7 @@ def main() -> int:
 
     text = args.text if args.text else from_home_assistant(args.entity)
     print(f"text: {text!r}")
-    return asyncio.run(run(args.address, text))
+    return asyncio.run(run(args.address, args.entry, text))
 
 
 if __name__ == "__main__":

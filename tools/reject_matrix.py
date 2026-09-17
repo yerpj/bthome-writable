@@ -6,135 +6,93 @@ the part it understood. That strictness is a safety property — a permissive
 parser is what would let a replayed advertisement apply its objects — so it is
 worth testing against a real device rather than only in unit tests.
 
-One BLE connection carries both the write characteristic and Espruino's console,
+One BLE connection carries both the entry's characteristic and Espruino's console,
 so this writes each bad payload and reads back what the board printed, which is
 the rejection code the module raised.
 
     python -m tools.reject_matrix --address C8:80:32:AD:F7:B9
 
 The example sketch must be running with its `onError` hook, which prints
-"write rejected: <code> <message>".
+"write rejected: <code> <message>" -- light-loop.js does, and exposes
+`lamp.on`, which is checked to be unchanged afterwards.
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import sys
 
-from bleak import BleakClient, BleakScanner
-
-from tools.bthome_write import WRITE_CHARACTERISTIC, Watcher
-from tools.ha_protocol import parse_declaration
-
-UART_TX = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"
+from tools.espruino_deploy import connect, discover
+from tools.ha_protocol import characteristic_uuid
+from tools.multi_instance import Console
 
 # payload, what it exercises, the code the module should raise
 CASES: list[tuple[str, str, str | None]] = [
-    (
-        "1f01",
-        "an object ID the device does not have at that position",
-        "objectid_mismatch",
-    ),
+    ("1f01", "an object ID that is not the entry's", "objectid_mismatch"),
     ("1e", "a value cut short", "truncated"),
     ("", "an empty write", "truncated"),
     (
         "1e01ff02",
-        "trailing bytes -- what a replayed advertisement looks like",
+        "trailing bytes -- a second object smuggled into one write",
         "trailing_bytes",
     ),
 ]
 
 
-async def run(address: str) -> int:
-    watcher = Watcher(address)
-    scanner = BleakScanner(detection_callback=watcher)
-    await scanner.start()
-    try:
-        deadline = asyncio.get_running_loop().time() + 15
-        while watcher.latest is None and asyncio.get_running_loop().time() < deadline:
-            await asyncio.sleep(0.2)
-        if watcher.latest is None:
-            print(f"{address}: nothing heard", file=sys.stderr)
-            return 1
-        before = watcher.latest
-        print(f"advertising before: {before.hex()}\n")
-    finally:
-        await scanner.stop()
-
-    console = bytearray()
+async def run(address: str, entry: int, state: str) -> int:
+    device = await discover(address, 120.0)
+    if device is None:
+        print(f"{address}: not seen", file=sys.stderr)
+        return 1
+    client = await connect(device)
     failures = 0
-
-    async with BleakClient(address, timeout=30.0) as client:
-        await client.start_notify(UART_TX, lambda _s, data: console.extend(data))
+    try:
+        console = Console(client)
+        await console.start()
+        before = await console.ask(state)
+        print(f"{state} before: {before}\n")
 
         for payload_hex, description, expected in CASES:
-            console.clear()
-            payload = bytes.fromhex(payload_hex)
-            await client.write_gatt_char(WRITE_CHARACTERISTIC, payload, response=True)
+            console.buffer.clear()
+            await client.write_gatt_char(
+                characteristic_uuid(entry), bytes.fromhex(payload_hex), response=True
+            )
             await asyncio.sleep(1.0)
-
-            printed = console.decode("utf-8", errors="replace")
             got = None
-            for line in printed.splitlines():
+            for line in console.printed().splitlines():
                 if "write rejected:" in line:
                     got = line.split("write rejected:")[1].strip().split()[0]
-
             ok = got == expected
             failures += 0 if ok else 1
-            status = "ok  " if ok else "FAIL"
             shown = payload_hex or "(empty)"
-            print(f"{status} {shown:<10} {description}")
+            print(f"{'ok  ' if ok else 'FAIL'} {shown:<10} {description}")
             print(f"       expected {expected}, got {got}")
 
-    # Whatever the device did with those writes, its advertised state must not
-    # have moved: a rejected write applies nothing at all.
-    watcher = Watcher(address)
-    scanner = BleakScanner(detection_callback=watcher)
-    await scanner.start()
-    try:
-        deadline = asyncio.get_running_loop().time() + 15
-        while watcher.latest is None and asyncio.get_running_loop().time() < deadline:
-            await asyncio.sleep(0.2)
+        # A rejected write applies nothing at all.
+        after = await console.ask(state)
+        print(f"\n{state} after:  {after}")
+        if before is None or after != before:
+            print("FAIL: a rejected write changed the state", file=sys.stderr)
+            failures += 1
+        else:
+            print("ok   the state is unchanged")
     finally:
-        await scanner.stop()
-
-    after = watcher.latest
-    print(f"\nadvertising after:  {after.hex() if after else '(nothing)'}")
-    if after is None:
-        print("could not re-read the advertising", file=sys.stderr)
-        return 1
-
-    # Compare the objects, not the packet id, which moves on every refresh.
-    if writable_state(before) != writable_state(after):
-        print("FAIL: a rejected write changed the advertised state", file=sys.stderr)
-        failures += 1
-    else:
-        print("ok   the advertised state is unchanged")
-
+        with contextlib.suppress(Exception):
+            await client.disconnect()
     return 1 if failures else 0
-
-
-def writable_state(payload: bytes) -> dict[int, bytes] | None:
-    """The advertised value of every writable object, keyed by position.
-
-    Comparing whole payloads would be wrong, not merely strict: the packet id
-    changes by design, and any sensor read on every packet -- the light sensor
-    of `light-loop.js`, for one -- changes with the room. What "a rejected write
-    must not change the state" means is the *writable* objects, which is what
-    the declaration points at.
-    """
-    declaration = parse_declaration(payload[1:])  # minus the device-info byte
-    if declaration is None:
-        return None
-    return {obj.position: obj.value for obj in declaration.objects}
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--address", required=True)
+    parser.add_argument("--entry", type=int, default=1, help="a light entry")
+    parser.add_argument(
+        "--state", default="lamp.on", help="a sketch expression holding the state"
+    )
     args = parser.parse_args()
-    return asyncio.run(run(args.address))
+    return asyncio.run(run(args.address, args.entry, args.state))
 
 
 if __name__ == "__main__":

@@ -337,15 +337,15 @@ async def run(
             for attempt in range(1, WRITE_ATTEMPTS + 1):
                 print(f"running {app.name} from RAM ...")
                 await send("\x03")
-                await send("clearInterval();clearWatch();\n", 0.4)
-                # Espruino caches `require()` results, and a cached module's
-                # function bodies are *offsets into the flash file* rather than
-                # copies. Rewriting the modules underneath -- which is exactly
-                # what this tool just did -- leaves those offsets pointing at
-                # whatever now occupies that address. The symptom is a function
-                # whose source reads `[ERASED]`, or reads as a neighbouring
-                # module's text, thrown from a line that is perfectly fine.
-                await send("Modules.removeAllCached();\n", 0.4)
+                # A full reset(), not just clearInterval(): the previous sketch's
+                # globals, its NRF.on() listeners and the module cache all live
+                # in RAM, and a Puck.js has 2630 blocks of it. Three deployments
+                # in a row filled it, and the next require() failed with a
+                # misleading "UNFINISHED TEMPLATE LITERAL" (D-049). reset() also
+                # empties the module cache, whose function bodies are *offsets
+                # into the flash file*: rewriting the modules underneath leaves
+                # them pointing at whatever now occupies that address.
+                await send("reset();\n", 2.0)
                 console.clear()
                 for line in app_code.splitlines():
                     if line.strip():

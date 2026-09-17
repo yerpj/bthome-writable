@@ -47,6 +47,11 @@ WRITE_DEBOUNCE: Final = 0.25
 """Seconds to let rapid changes pile up behind a write in flight -- a slider drag
 must produce one follow-up write, not one per pixel."""
 
+READ_RETRY: Final = 10.0
+"""Seconds before a failed state read is tried again. An Espruino device serves
+one central at a time, so a read can fail simply because a phone or the Web IDE
+holds the link; the next advertisement after this retries it."""
+
 CONF_BINDKEY: Final = "bindkey"
 CONF_WRITE_COUNTER: Final = "write_counter"
 

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 from homeassistant.core import HomeAssistant
 import pytest
 
@@ -72,6 +74,36 @@ async def test_a_changed_settings_revision_triggers_a_re_read(
     await settle(hass)
 
     assert len(gatt.reads) > reads_before
+    assert float(hass.states.get(TARGET).state) == 18
+
+
+async def test_a_re_read_that_fails_is_tried_again_on_a_later_advertisement(
+    hass: HomeAssistant, radio, gatt
+) -> None:
+    """An Espruino device serves one central at a time: a read attempted while a
+    phone holds the link fails, and must not count as having read the revision.
+    Seen on hardware, where the state stayed stale until the next change."""
+    gatt.declare(2, readable={1: bytes.fromhex("1001"), 2: bytes.fromhex("5714")})
+    await setup_device(hass, radio, "thermostat")
+    await settle(hass)
+
+    gatt.readable[UUID_TEMPLATE.format(2)] = bytes.fromhex("5712")
+    payload = bytearray(bytes.fromhex("40000902c4096503ff1057"))
+    payload[7] = 0x04
+    gatt.fail_on_read = RuntimeError("device busy")
+    radio.push(service_info("thermostat", service_data=bytes(payload)))
+    await settle(hass)
+    assert float(hass.states.get(TARGET).state) == 20
+
+    # Not straight away: that would be a connection attempt per advertisement.
+    gatt.fail_on_read = None
+    radio.push(service_info("thermostat", service_data=bytes(payload)))
+    await settle(hass)
+    assert float(hass.states.get(TARGET).state) == 20
+
+    with patch("custom_components.bthome_writable.coordinator.READ_RETRY", 0):
+        radio.push(service_info("thermostat", service_data=bytes(payload)))
+        await settle(hass)
     assert float(hass.states.get(TARGET).state) == 18
 
 

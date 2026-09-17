@@ -26,6 +26,7 @@ from .const import (
     DEFAULT_MAX_CONNECTIONS,
     DEFAULT_MTU_PAYLOAD,
     MIN_MTU,
+    READ_RETRY,
     RESYNC_JUMP,
     SERVICE_UUID,
     WRITE_DEBOUNCE,
@@ -104,7 +105,13 @@ class BTHomeWritableCoordinator:
         """Last known value per entry: what was written, or what was read.
         Never what was advertised -- version 2 advertises no writable values."""
 
-        self._revision_seen: int | None = None
+        self._revision_advertised: int | None = None
+        self._revision_read: int | None = None
+        """The revision whose values are in `_values`. Moves only when a read
+        succeeds: an Espruino device serves one central at a time, so a read
+        attempted while something else holds the link fails, and marking the
+        revision seen at that point would leave the state stale indefinitely."""
+        self._read_failed_at: float | None = None
         self._read_task: asyncio.Task[None] | None = None
         self._read_again = False
 
@@ -172,9 +179,18 @@ class BTHomeWritableCoordinator:
         Also on first sight: after a Home Assistant restart the entity would
         otherwise show nothing until the next write.
         """
-        if revision is None or revision == self._revision_seen:
+        if revision is None:
             return
-        self._revision_seen = revision
+        self._revision_advertised = revision
+        if revision == self._revision_read:
+            return
+        if (
+            self._read_failed_at is not None
+            and time.monotonic() - self._read_failed_at < READ_RETRY
+        ):
+            # Every advertisement would otherwise be a connection attempt on a
+            # device that just refused one.
+            return
         self.async_request_read()
 
     @callback
@@ -188,10 +204,19 @@ class BTHomeWritableCoordinator:
     async def _read_loop(self) -> None:
         while True:
             self._read_again = False
+            target = self._revision_advertised
             try:
-                await self.async_read_all()
+                done = await self.async_read_all()
             except Exception as error:  # best effort: state stays as last known
                 _LOGGER.debug("%s: reading state failed: %s", self.address, error)
+                done = False
+            if done:
+                self._revision_read = target
+                self._read_failed_at = None
+            else:
+                # Retried on a later advertisement, once READ_RETRY has passed.
+                self._read_failed_at = time.monotonic()
+                return
             if not self._read_again:
                 return
 
@@ -458,15 +483,18 @@ class BTHomeWritableCoordinator:
 
     # --- Read side (§3.2, §4.3) --------------------------------------------
 
-    async def async_read_all(self) -> None:
-        """Read every offered, readable entry over one connection."""
+    async def async_read_all(self) -> bool:
+        """Read every offered, readable entry over one connection.
+
+        Returns whether the device was read; raises if the connection fails.
+        """
         if self.declaration is None:
-            return
+            return False
         device = bluetooth.async_ble_device_from_address(
             self.hass, self.address, connectable=True
         )
         if device is None:
-            return
+            return False
 
         changed = False
         async with self._semaphore:
@@ -494,6 +522,7 @@ class BTHomeWritableCoordinator:
 
         if changed:
             self._notify()
+        return True
 
     def _open_read(self, entry: WritableEntry, raw: bytes) -> bytes | None:
         """A read's value, or None -- with the reason logged -- if unusable."""

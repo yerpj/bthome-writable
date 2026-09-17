@@ -32,6 +32,8 @@ export default [
         D45: "readonly",
         D47: "readonly",
         Puck: "readonly",
+        setWatch: "readonly",
+        BTN: "readonly",
         g: "readonly",
       },
     },

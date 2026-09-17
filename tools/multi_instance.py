@@ -1,23 +1,23 @@
-"""T2.2 on hardware: does position really address the instance?
+"""T2.2 on hardware: does the entry number really address the instance?
 
     python -m tools.multi_instance --address C8:80:32:AD:F7:B9
 
 Needs a board running espruino/examples/three-lights.js.
 
-PROTOCOL.md §2.1 makes position the addressing primitive: three `light` objects
-share one object ID, and the only thing distinguishing the second from the third
-is where it sits in the packet. Everything else in this repository tests that
-against fixtures, where both sides count the same way by construction. This
-tests it where the counting is done twice, independently, by a host and by a
-device that has sorted its own objects.
+PROTOCOL.md §2.1 makes the entry number the addressing primitive: three `light`
+entries share one object ID, and the only thing distinguishing the second from
+the third is which characteristic they are served on. Everything else in this
+repository tests that against fixtures, where both sides count the same way by
+construction. This tests it where the counting is done twice, independently, by
+a host and by a device that has sorted its own objects.
 
 The failure it is looking for is not an error. A protocol that got this wrong
-would switch the wrong light and report success, so each write is checked
-against the advertising that follows: exactly one position changed, and it was
-the intended one.
+would switch the wrong light and report success. Light state is never
+advertised (§2.3), so each write is checked by asking the sketch over its
+console: exactly one lamp changed, and it was the intended one.
 
-Then the other half of §4.2 — a write whose object IDs do not match the layout
-must be rejected whole, not applied in part (risk #8).
+Then the other half of §4.2 -- a write whose object ID does not match the entry
+must be refused, and change nothing.
 """
 
 from __future__ import annotations
@@ -25,121 +25,123 @@ from __future__ import annotations
 import argparse
 import asyncio
 import contextlib
+import json
+import re
 import sys
 
 from bleak import BleakScanner
 
-from tools.espruino_deploy import UART_TX, connect, discover
-from tools.ha_protocol import ProtocolError, parse_declaration
+from tools.bthome_write import Watcher, first_advertisement
+from tools.espruino_deploy import UART_RX, UART_TX, connect, discover
+from tools.ha_protocol import characteristic_uuid, parse_declaration
 
-BTHOME_UUID = "0000fcd2-0000-1000-8000-00805f9b34fb"
-WRITE_CHARACTERISTIC = "2faa0002-3b0b-4b1a-9e2a-b4c2952e62f2"
+NOISE = re.compile(r"\x1b\[[0-9;]*[A-Za-z]|[\r\x00-\x08\x0b-\x1f]")
+LIGHT = 0x1E
 
 
-async def latest_declaration(address: str, seconds: float = 25.0):
-    """The device's current declaration, from its own advertising."""
-    wanted = address.upper()
-    seen: list[bytes] = []
+class Console:
+    """The sketch's REPL, asked one expression at a time."""
 
-    def heard(device, advertisement) -> None:
-        payload = advertisement.service_data.get(BTHOME_UUID)
-        if device.address.upper() == wanted and payload:
-            seen.append(payload)
+    def __init__(self, client) -> None:
+        self.client = client
+        self.buffer = bytearray()
 
-    async with BleakScanner(heard):
+    async def start(self) -> None:
+        await self.client.start_notify(
+            UART_TX, lambda _s, data: self.buffer.extend(data)
+        )
+
+    async def ask(self, expression: str, seconds: float = 1.2) -> str | None:
+        """Evaluate `expression` on the device and return what it printed."""
+        self.buffer.clear()
+        line = f'print("ANSWER=" + JSON.stringify({expression}));\n'.encode()
+        for offset in range(0, len(line), 50):
+            await self.client.write_gatt_char(
+                UART_RX, line[offset : offset + 50], response=False
+            )
+            await asyncio.sleep(0.03)
         await asyncio.sleep(seconds)
-
-    if not seen:
+        said = NOISE.sub("", self.buffer.decode("utf-8", "replace"))
+        for text in said.splitlines():
+            stripped = text.strip()
+            if stripped.startswith("ANSWER=") and "print(" not in stripped:
+                return stripped[len("ANSWER=") :]
         return None
-    with contextlib.suppress(ProtocolError):
-        # Minus the device-information byte, which is not part of the objects.
-        return parse_declaration(seen[-1][1:])
-    return None
+
+    def printed(self) -> str:
+        return NOISE.sub("", self.buffer.decode("utf-8", "replace"))
 
 
-def states(declaration) -> list[int]:
-    """The advertised on/off of each writable object, in packet order."""
-    return [obj.value[0] for obj in declaration.objects]
-
-
-def compose(values: list[int], object_ids: list[int]) -> bytes:
-    """Write-all in packet order: every writable object, id then value."""
-    payload = bytearray()
-    for object_id, value in zip(object_ids, values, strict=True):
-        payload.append(object_id)
-        payload.append(value)
-    return bytes(payload)
+async def lamps(console: Console) -> list[bool] | None:
+    answer = await console.ask("lamps.map(function (l) { return l.on; })")
+    return json.loads(answer) if answer else None
 
 
 async def run(address: str) -> int:
-    declaration = await latest_declaration(address)
-    if declaration is None:
-        print(f"{address}: heard no declaration", file=sys.stderr)
+    watcher = Watcher(address)
+    async with BleakScanner(detection_callback=watcher):
+        heard = await first_advertisement(watcher, 25)
+    if heard is None:
+        print(f"{address}: nothing heard", file=sys.stderr)
         return 1
-
-    object_ids = [obj.object_id for obj in declaration.objects]
-    count = len(object_ids)
-    print(f"declared writable: {count} objects at positions {declaration.positions}")
-    if count < 2 or len(set(object_ids)) != 1:
-        print("this test wants several objects of one ID", file=sys.stderr)
+    declaration = parse_declaration(heard[1:])
+    if declaration is None:
+        print(f"{address}: no declaration in {heard.hex()}", file=sys.stderr)
+        return 1
+    ids = [e.object_id for e in declaration.entries]
+    print(f"declared writable: {[f'0x{i:02x}' for i in ids]}")
+    if len(ids) < 2 or set(ids) != {LIGHT}:
+        print("this test wants several light entries", file=sys.stderr)
         return 1
 
     device = await discover(address, 120.0)
     client = await connect(device)
     failures = 0
     try:
-        with contextlib.suppress(Exception):
-            await client.start_notify(UART_TX, lambda _s, _d: None)
+        console = Console(client)
+        await console.start()
+        before = await lamps(console)
+        if before is None:
+            print("the sketch did not answer; is three-lights.js running?")
+            return 1
 
-        for target in range(count):
-            before = states(declaration)
-            wanted = list(before)
-            wanted[target] = 0 if before[target] else 1
-
-            payload = compose(wanted, object_ids)
-            print(f"\nposition {target}: {before} -> {wanted}  ({payload.hex()})")
-            await client.write_gatt_char(WRITE_CHARACTERISTIC, payload, response=True)
-            await asyncio.sleep(1.0)
-
-            declaration = await latest_declaration(address, 12.0)
-            if declaration is None:
-                print("  no advertisement heard back")
-                failures += 1
-                continue
-            after = states(declaration)
-            moved = [i for i in range(count) if after[i] != before[i]]
-            if moved == [target]:
-                print(f"  ok   advertised {after}")
+        for entry in range(1, len(ids) + 1):
+            wanted = not before[entry - 1]
+            payload = bytes([LIGHT, int(wanted)])
+            await client.write_gatt_char(
+                characteristic_uuid(entry), payload, response=True
+            )
+            after = await lamps(console)
+            moved = [i + 1 for i in range(len(ids)) if after and after[i] != before[i]]
+            if moved == [entry]:
+                print(f"  ok   entry {entry} <- {payload.hex()}: lamps {after}")
             else:
                 failures += 1
-                print(f"  FAIL advertised {after}; {moved} moved, wanted [{target}]")
+                print(f"  FAIL entry {entry} <- {payload.hex()}: {moved} moved")
+            before = after or before
 
-        # Risk #8: the IDs are redundant given the position, and that redundancy
-        # is what catches a receiver writing against a layout the device no
-        # longer has. A wrong ID must lose the whole write, not part of it.
-        before = states(declaration)
-        desync = bytearray(compose(before, object_ids))
-        desync[0] = 0x0F  # generic, where the device expects a light
-        desync[1] = 1 if before[0] == 0 else 0
-        print(f"\ndesynchronised write ({bytes(desync).hex()}) -- must be refused")
-        await client.write_gatt_char(WRITE_CHARACTERISTIC, bytes(desync), response=True)
+        # §4.2: the object ID is redundant given the characteristic, and that
+        # redundancy is what catches a receiver writing against a layout the
+        # device no longer has.
+        wrong = bytes([0x0F, int(not before[0])])
+        print(f"\nwrong object ID on entry 1 ({wrong.hex()}) -- must be refused")
+        console.buffer.clear()
+        await client.write_gatt_char(characteristic_uuid(1), wrong, response=True)
         await asyncio.sleep(1.0)
-
-        declaration = await latest_declaration(address, 12.0)
-        after = states(declaration) if declaration else None
-        if after == before:
-            print(f"  ok   advertised {after}, unchanged")
+        rejected = "objectid_mismatch" in console.printed()
+        after = await lamps(console)
+        if after == before and rejected:
+            print(f"  ok   refused (objectid_mismatch), lamps {after}")
         else:
             failures += 1
-            print(f"  FAIL advertised {after}, was {before}")
+            print(f"  FAIL lamps {after}, was {before}; rejection logged: {rejected}")
     finally:
         with contextlib.suppress(Exception):
             await client.disconnect()
 
-    if failures:
-        print(f"\n{failures} failure(s)")
-    else:
-        print("\nevery position addressed the object it names")
+    print(
+        f"\n{failures} failure(s)" if failures else "\nevery entry addressed its lamp"
+    )
     return 1 if failures else 0
 
 

@@ -6,9 +6,10 @@ does is another matter, and the answer decides whether "show a sensor value on a
 screen" is a sensible thing to build on this.
 
 So this writes text of increasing length and reads back, over the device's own
-console, what actually arrived — the only way to tell a write that was rejected
-from one that silently went nowhere, since a write-only object has no
-confirmation to offer (§3).
+console, what actually arrived -- the only way to tell a write that was rejected
+from one that silently went nowhere, since an Espruino device acknowledges a
+write before its handler has looked at it, and a text object is never advertised
+(§2.3).
 
     python -m tools.text_limits --address C8:80:32:AD:F7:B9
 
@@ -24,7 +25,8 @@ import sys
 
 from bleak import BleakClient, BleakScanner
 
-WRITE_CHARACTERISTIC = "2faa0002-3b0b-4b1a-9e2a-b4c2952e62f2"
+from tools.ha_protocol import characteristic_uuid
+
 UART_RX = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"
 UART_TX = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"
 
@@ -47,7 +49,7 @@ def payload_for(length: int) -> bytes:
     return bytes([TEXT_OBJECT, length]) + text.encode("ascii")
 
 
-async def run(address: str, response: bool) -> int:
+async def run(address: str, entry: int, response: bool) -> int:
     device = await BleakScanner.find_device_by_address(address, timeout=40.0)
     if device is None:
         print(f"{address}: not seen", file=sys.stderr)
@@ -79,7 +81,7 @@ async def run(address: str, response: bool) -> int:
             console.clear()
             try:
                 await client.write_gatt_char(
-                    WRITE_CHARACTERISTIC, payload, response=response
+                    characteristic_uuid(entry), payload, response=response
                 )
             except Exception as error:  # the point of the tool is what fails
                 print(
@@ -122,13 +124,14 @@ async def run(address: str, response: bool) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--address", required=True)
+    parser.add_argument("--entry", type=int, default=1, help="the text entry")
     parser.add_argument(
         "--no-response",
         action="store_true",
         help="use write-without-response, which cannot exceed the MTU",
     )
     args = parser.parse_args()
-    return asyncio.run(run(args.address, not args.no_response))
+    return asyncio.run(run(args.address, args.entry, not args.no_response))
 
 
 if __name__ == "__main__":
