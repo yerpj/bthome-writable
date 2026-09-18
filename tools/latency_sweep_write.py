@@ -51,7 +51,12 @@ DEVICES = {
     },
 }
 
-DEFAULT_INTERVALS = (100, 200, 500, 1000, 2000, 5000, 10000)
+DEFAULT_INTERVALS = (100, 200, 400, 700, 1200, 2000, 4000)
+"""Seven points, each about 1.8x the one below it, stopping at 4 s.
+
+Above that the measurement stops being a latency and becomes a failure rate --
+at 10 s, three of three first commands were never delivered -- and a mean over
+delivered commands would flatter a device nobody could reach."""
 
 
 class Bus:
@@ -144,6 +149,48 @@ async def command(bus: Bus, config: dict, index: int, timeout: float) -> dict:
         return {"failed": True}
 
 
+async def set_fast_timeout(config: dict, ms: int) -> None:
+    """Shorten the window the device stays fast in after a disconnect.
+
+    Every sample of a first command has to wait that window out, so the module's
+    30 s default turns a ten-sample interval into eight minutes of waiting. The
+    measurement itself is unaffected: what it times is a command issued while the
+    device is back on its idle interval, and this only changes how long it takes
+    to get there. Put back at the end of the sweep.
+    """
+    await run_on_device(config, f"bw.setFastTimeout({ms});")
+
+
+async def run_on_device(config: dict, statement: str) -> None:
+    """Run one statement on the sketch, over USB where there is a cable.
+
+    Ctrl-C first, so a console left mid-line does not swallow it.
+    """
+    if config.get("port"):
+        import serial
+
+        with serial.Serial(config["port"], 115200, timeout=0.2) as link:
+            link.write((chr(3) + statement + chr(10)).encode())
+            await asyncio.sleep(1.0)
+            link.reset_input_buffer()
+        return
+
+    from bleak import BleakClient, BleakScanner
+
+    device = await BleakScanner.find_device_by_address(config["address"], timeout=60)
+    if device is None:
+        raise SystemExit(f"{config['address']}: not seen")
+    async with BleakClient(device, timeout=30.0) as client:
+        line = (statement + chr(10)).encode()
+        for offset in range(0, len(line), 50):
+            await client.write_gatt_char(
+                "6e400002-b5a3-f393-e0a9-e50e24dcca9e",
+                line[offset : offset + 50],
+                response=True,
+            )
+        await asyncio.sleep(1.0)
+
+
 async def set_interval(config: dict, ms: int, attempts: int = 4) -> None:
     """Put the device on the interval about to be measured, or give up loudly.
 
@@ -183,6 +230,12 @@ async def run(args) -> int:
         bus = Bus(session)
         await bus.open()
         try:
+            if args.fast_timeout is not None:
+                print(
+                    f"fast window set to {args.fast_timeout} ms for the sweep",
+                    flush=True,
+                )
+                await set_fast_timeout(config, args.fast_timeout)
             for interval in args.intervals:
                 print(f"\n=== {interval} ms ===", flush=True)
                 await set_interval(config, interval)
@@ -209,6 +262,10 @@ async def run(args) -> int:
                 if args.out:
                     write_out(args, config, results)
         finally:
+            if args.fast_timeout is not None:
+                with contextlib.suppress(Exception):
+                    await set_fast_timeout(config, 30000)
+                    print("fast window restored to 30000 ms", flush=True)
             await bus.close()
 
     for row in results:
@@ -264,11 +321,17 @@ def main() -> int:
     parser.add_argument(
         "--intervals", type=int, nargs="+", default=list(DEFAULT_INTERVALS)
     )
-    parser.add_argument("--first-reps", type=int, default=3)
-    parser.add_argument("--burst", type=int, default=4)
-    parser.add_argument("--idle", type=float, default=35.0)
+    parser.add_argument("--first-reps", type=int, default=10)
+    parser.add_argument("--burst", type=int, default=8)
+    parser.add_argument("--idle", type=float, default=32.0)
     parser.add_argument("--gap", type=float, default=1.0)
     parser.add_argument("--timeout", type=float, default=60.0)
+    parser.add_argument(
+        "--fast-timeout",
+        type=int,
+        help="shorten the device's fast-advertising window for the sweep, in "
+        "milliseconds, and put it back afterwards",
+    )
     parser.add_argument("--out")
     args = parser.parse_args()
 

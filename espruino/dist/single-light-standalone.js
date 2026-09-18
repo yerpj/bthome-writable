@@ -577,10 +577,23 @@ function setAdvertisingInterval(ms) {
   return st.interval;
 }
 
+/* Change how long the device keeps advertising fast after a disconnect, without
+   re-running setup(). The counterpart of setAdvertisingInterval: the fast window
+   trades battery for the cost of the *next* command, and the only way to choose
+   either well is to try values against a real receiver. Measuring what the idle
+   interval costs also needs it -- a measurement has to wait this window out
+   before every sample (docs/measurements.md). */
+function setFastTimeout(ms) {
+  if (ms < 0) throw err("fast_timeout_negative", `fastTimeout is ${ms}ms`);
+  st.fastTimeout = ms;
+  return st.fastTimeout;
+}
+
 exports.setup = setup;
 exports.update = update;
 exports.changed = changed;
 exports.setAdvertisingInterval = setAdvertisingInterval;
+exports.setFastTimeout = setFastTimeout;
 exports.SERVICE_UUID = SERVICE_UUID;
 exports.characteristicUuid = characteristicUuid;
 exports.plan = () => st && st.plan;

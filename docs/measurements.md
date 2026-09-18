@@ -25,164 +25,96 @@ matters, the section says so.
 
 ---
 
-## 1. Response time against advertising interval
+## 1. From a command to the write acknowledgement
 
-**2026-09-17, both devices.** The sweeps are `tools/latency_sweep.py` (from the
-bench host) and `tools/latency_sweep_ha.py` (through Home Assistant); the figure
-is [`figures/latency-vs-interval.png`](figures/latency-vs-interval.png), redrawn
-from the raw samples in `data/` with `tools/gen_latency_figure.py`.
+**2026-09-18, both devices, through Home Assistant.** The sweep is
+`tools/latency_sweep_write.py`; `tools/summarise_latency.py` prints the tables
+below from the raw samples in `data/`, and the figure is
+[`figures/latency-vs-interval.png`](figures/latency-vs-interval.png).
 
 ```
-python -m tools.latency_sweep --address C8:80:32:AD:F7:B9 --kind switch \
-    --out docs/data/latency-puck-switch.json
-python -m tools.latency_sweep_ha --device nano --out docs/data/ha-nano-text.json
-python -m tools.latency_sweep_ha --device puck --out docs/data/ha-puck-switch.json
-python -m tools.gen_latency_figure docs/data/*.json \
-    --out docs/figures/latency-vs-interval.html
+python -m tools.latency_sweep_write --device nano --idle 5 --fast-timeout 3000 \
+    --out docs/data/write-nano-text.json
+python -m tools.latency_sweep_write --device puck --idle 5 --fast-timeout 3000 \
+    --out docs/data/write-puck-switch.json
+python -m tools.summarise_latency docs/data/write-*.json
 ```
 
-**What is timed, and from where.** Two vantage points, because they answer two
-questions:
+**What is timed.** From the command arriving in Home Assistant to the device
+acknowledging the GATT write, split into the wait in the queue, the time to open
+the link, and the write itself. Nothing downstream of the radio is counted: not
+the device applying the value, not the refreshed advertising, not the entity
+update. The integration measures it and fires `bthome_writable_write`; the sweep
+subscribes to that event, so no witness on the device is involved.
 
-- **From the bench host** — catch an advertisement, connect, write one object,
-  receive the write response. This is the protocol itself, timed in its three
-  phases. It also carries this host's WinRT penalty, which is large (D-047).
-- **Through Home Assistant** — a service call, over the Pi's adapter or the
-  ESP32 proxy, until the *device* shows it acted. The service call returns in
-  about 0.3 s, long before anything reaches the device, so each device needs a
-  witness that does not take its single BLE connection: the nice!nano's USB
-  console, which prints what it drew, and the Puck's own light sensor.
+**Two cases.** A *first* command is issued after the device has returned to its
+idle advertising interval; *following* commands are issued straight after it,
+while it is still advertising fast. Ten first commands and eight following ones
+per interval, per device — 250 measurements in all.
 
-**Two cases, because they are two different questions.** A device advertises at
-its idle interval only when nothing has talked to it recently: after any
-disconnection this module advertises at 100 ms for 30 s (`fastTimeout`). So each
-*first* sample is preceded by a 35 s silence, and the *following* samples are
-taken straight after it, while the device is still in fast mode. Three first
-commands and five following ones per interval, alternating the value written so
-the device really acts each time.
+**One thing was changed to make the sweep affordable:** `bw.setFastTimeout(3000)`
+for its duration, restored to 30 s afterwards. Every first command has to wait
+that window out, and the module's 30 s default turns each interval into eight
+minutes of waiting. It does not touch what is measured — only how long it takes
+to get the device back to its idle interval.
 
-### Puck.js switch, from the bench host
+### Puck.js light switch
 
-| Interval | First command | Spread | Following commands |
-|---|---|---|---|
-| 100 ms | 0.89 s | 0.87 – 0.90 | 1.69 s |
-| 200 ms | 1.86 s | 1.50 – 2.16 | 1.15 s |
-| 500 ms | 3.82 s | 2.67 – 5.38 | 0.44 s |
-| 1 s | 10.81 s | 2.91 – 16.89 | 0.49 s |
-| 2 s | 15.46 s | 6.69 – 24.79 | 0.35 s |
-| 5 s | 33.17 s | 19.93 – 54.68 | 0.42 s |
-| 10 s | 44.82 s | 34.89 – 54.59 | 0.70 s |
+| Interval | First, median | mean | range | of which connecting | Following, median | Lost |
+|---|---|---|---|---|---|---|
+| 100 ms | 0.57 s | 1.10 s | 0.29 – 2.55 | 0.46 s (4.6×) | 1.56 s | — |
+| 200 ms | 1.96 s | 2.19 s | 0.41 – 5.22 | 1.81 s (9.0×) | 0.98 s | — |
+| 400 ms | 2.68 s | 2.69 s | 0.30 – 5.42 | 2.42 s (6.1×) | 2.82 s | — |
+| 700 ms | 3.14 s | 4.45 s | 0.39 – 17.74 | 2.49 s (3.6×) | 1.32 s | — |
+| 1.2 s | 10.60 s | 13.54 s | 0.33 – 32.96 | 5.46 s (4.5×) | 1.50 s | — |
+| 2 s | 9.01 s | 8.65 s | 2.16 – 20.35 | 3.55 s (1.8×) | 1.52 s | — |
+| 4 s | 10.77 s | 12.93 s | 6.81 – 24.48 | 9.93 s (2.5×) | 2.04 s | 1 |
 
-### Puck.js switch, through Home Assistant
+### nice!nano OLED text
 
-Witness: the device's own light sensor, read back as a Home Assistant sensor.
+| Interval | First, median | mean | range | of which connecting | Following, median | Lost |
+|---|---|---|---|---|---|---|
+| 100 ms | 0.44 s | 0.60 s | 0.29 – 1.29 | 0.31 s (3.1×) | 2.46 s | — |
+| 200 ms | 0.54 s | 0.68 s | 0.24 – 2.20 | 0.40 s (2.0×) | 2.01 s | — |
+| 400 ms | 0.68 s | 1.03 s | 0.24 – 2.19 | 0.46 s (1.1×) | 2.05 s | — |
+| 700 ms | 0.60 s | 1.39 s | 0.28 – 6.69 | 0.56 s (0.8×) | 2.11 s | — |
+| 1.2 s | 0.89 s | 1.74 s | 0.24 – 5.87 | 0.43 s (0.4×) | 2.35 s | — |
+| 2 s | 1.90 s | 4.30 s | 0.24 – 15.72 | 1.86 s (0.9×) | 1.97 s | — |
+| 4 s | 6.53 s | 5.27 s | 0.46 – 11.00 | 6.46 s (1.6×) | 2.33 s | 2 |
 
-| Interval | First command | Spread | Following commands | Failed |
-|---|---|---|---|---|
-| 100 ms | 1.65 s | 0.85 – 2.41 | 1.35 s | — |
-| 200 ms | 2.43 s | 0.87 – 3.23 | 2.80 s | 1 |
-| 500 ms | 2.27 s | 2.00 – 2.80 | 2.28 s | 1 |
-| 1 s | 3.96 s | 2.03 – 5.89 | 1.35 s | 1 |
-| 2 s | 4.98 s | 2.79 – 8.59 | 12.39 s | 3 |
-| 5 s | 24.12 s | 19.86 – 28.38 | 2.06 s | 3 |
-| 10 s | 21.75 s | 18.97 – 24.54 | 1.53 s | 1 |
+### What the numbers say
 
-Ten of 49 commands never produced a visible effect. Home Assistant logged each
-on the entity: *the command did not reach the device … Failed to connect.* The
-2 s row rests on a single surviving sample of the following commands, which is
-why it reads worse than its neighbours; treat it as noise rather than as shape.
+**The median is the number to read.** These distributions are not symmetric: a
+connection attempt that misses its advertising window waits out another
+interval, so each interval has a few samples far above the rest. On the
+nice!nano at 2 s, the median first command is 1.90 s and the mean 4.30 s; the
+gap is the shape of the distribution, not noise to be averaged away.
 
-**Before and after D-051**, which made a write republish at once. The figures
-above are the "after"; the earlier run is kept in
-`data/ha-puck-switch-before-d051.json`. The effect is where it was predicted, in
-the commands that follow one another:
+**Opening the link costs a fixed cost plus about half an interval.** Read in
+seconds rather than in intervals, the nice!nano's median connect time runs
+0.31, 0.40, 0.46, 0.56, 0.43, 1.86 and 6.46 s across the ladder. There is a
+floor of roughly 0.3 s that has nothing to do with advertising, and above about
+1 s of interval the wait for an advertising event takes over. Expressed as a
+multiple of the interval — the natural way to ask the question — that same
+series reads 3.1×, 2.0×, 1.15×, 0.80×, 0.35×, 0.93×, 1.61×: a small multiple,
+but not a constant one, because the two terms trade places.
 
-| Interval | Following commands, before | after |
-|---|---|---|
-| 1 s | 3.05 s | 1.35 s |
-| 5 s | 9.88 s | 2.06 s |
-| 10 s | 17.94 s | 1.53 s |
+**Following commands are flat.** Around 2 s on the nice!nano and 1–3 s on the
+Puck at every interval, because `fastTimeout` keeps the device advertising at
+100 ms once a receiver has been in touch.
 
-### nice!nano text, through Home Assistant
+**The two devices are not equivalent, and the difference is not the protocol.**
+The Puck's median connect time is three to five times the nice!nano's at the
+same interval. It also stalls: **13 of its 125 writes took more than 5 s inside
+`write_gatt_char`**, several landing within a few milliseconds of 16.1 s, which
+looks like a timeout and a retry rather than a slow device. The nice!nano did
+that **0 times in 124 writes**. Both go through the same ESP32 proxy and the
+same Home Assistant; what differs is the device, its power source (a coin cell
+against USB) and where it sits in the room. Unresolved, and worth resolving
+before quoting the Puck's figures as the protocol's.
 
-Witness: the sketch's own console over USB, which prints what it drew.
-
-| Interval | First command | Spread | Following commands | Failed |
-|---|---|---|---|---|
-| 100 ms | 1.01 s | 0.84 – 1.25 | 1.27 s | — |
-| 200 ms | 1.46 s | 1.02 – 1.90 | 1.04 s | 1 |
-| 500 ms | 1.65 s | 1.01 – 2.04 | 1.00 s | — |
-| 1 s | 1.85 s | 1.01 – 2.63 | 1.07 s | — |
-| 2 s | 4.85 s | 2.56 – 8.92 | 1.15 s | — |
-| 5 s | 8.16 s | 4.68 – 14.91 | 0.98 s | — |
-| 10 s | 8.19 s | 4.86 – 14.72 | 1.33 s | 1 |
-
-Two of 56 commands never reached the device. Both are real failures a user would
-see, not measurement artefacts — Home Assistant logs them on the entity.
-
-**The interval is a cold-start dial, not a latency dial.** Where the witness
-sees the command itself — the nice!nano's console, or the bench host's write
-response — the line for following commands is flat: 0.35 – 1.7 s everywhere, at
-100 ms and at 10 s alike. That is `fastTimeout` doing its job: once a receiver
-has been in touch, the device advertises at 100 ms for the next 30 s, so the
-idle interval does not apply to the interaction at all.
-
-What the interval buys battery with is the idle refresh rate and the cost of the
-*first* command after a quiet period, and that cost grows faster than the
-interval does: on the Puck from the bench host, twenty times the interval
-(0.5 s → 10 s) costs twelve times the wait, with the worst single sample at
-55 s. The mechanism is in the phases the sweep records: at a 2 s interval, 57 to
-82 % of a first command is spent waiting to catch an advertisement, before any
-connection is attempted.
-
-**Fast advertising speeds the radio, not the packet** — it did, until this
-measurement showed why it should not.  The Puck's
-through-Home-Assistant line does *not* flatten for following commands: it climbs
-to 18 s at a 10 s interval, where the nice!nano stays at 1 s. The two are
-measuring different things, and the difference is in the module.
-`goFast()` changes how often the radio transmits, but the packet itself is
-rebuilt — and its sensors re-read — on a timer that keeps running at the idle
-interval. The Puck's witness is a *sensor value*, so it waits for that rebuild;
-the nice!nano's witness is the sketch's console, which sees the write as it
-lands. A user watching a state that comes from advertising therefore waited an
-idle interval for it, however fast the command itself was.
-
-**Fixed, and measured again (D-051).** A write now rebuilds the packet
-immediately instead of waiting for the timer. On the Puck at a 10 s idle
-interval, watched on the air by a host scanner:
-
-| Write | Effect advertised after |
-|---|---|
-| first, device idle | 0.31 s |
-| second, device already fast | 0.41 s |
-| third | 0.42 s |
-
-And with the link already open, Home Assistant showed the change 0.3–0.7 s after
-the write. So the device answers in well under a second at any interval, and
-what remains in the through-Home-Assistant tables is Home Assistant opening a
-connection — which is also where its failures are. The Puck's table above was
-re-measured after the fix and its following-commands column no longer climbs
-with the interval.
-
-**The receiver matters as much as the device.** At a 5 s interval the same kind
-of first command takes 33 s from this Windows host and 8 s through Home
-Assistant — the Pi and the ESP32 proxy scan continuously, where WinRT stops
-delivering advertisements for seconds around every disconnection (D-047). Read
-the bench-host curve as an upper bound on a poor receiver, and the Home
-Assistant curve as what a user experiences.
-
-**Writes do fail, and the rate is worth stating.** Seven of 49 commands to the
-Puck through Home Assistant never produced an effect, against two of 56 to the
-nice!nano. Each is logged on the entity, so a user is told; none was silent.
-Whether the difference is the device, its battery or where it sits relative to
-the proxy is not established here.
-
-**Two cautions about the bench host.** Its Bluetooth stack stopped being able to
-open connections part-way through the campaign; cycling the radio (the Windows
-`Radio` API, no administrator rights needed) fixed it. And a first reading of
-"the host has gone deaf" was wrong: both devices were sitting at a 10 s interval
-at the time, so one or two packets in 25 s was exactly right. The number that
-means something is not the packet count but whether a connection opens.
+**Failures.** Three commands of 249 were never delivered, all at 4 s. Each was
+logged on its entity as *the command did not reach the device*.
 
 ---
 

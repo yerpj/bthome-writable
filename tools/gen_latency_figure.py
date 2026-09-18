@@ -27,7 +27,7 @@ PLOT_W = W - LEFT - RIGHT
 PLOT_H = H - TOP - BOTTOM
 
 COLOURS = ("#0b5394", "#0b6e4f", "#8a3ffc")
-TICKS = (100, 200, 500, 1000, 2000, 5000, 10000)
+TICKS = (100, 200, 400, 700, 1200, 2000, 4000)
 
 
 def totals(samples: list[dict]) -> list[float]:
@@ -52,13 +52,24 @@ def totals(samples: list[dict]) -> list[float]:
 
 
 def series(dataset: dict, case: str) -> list[tuple[int, float, float, float]]:
-    """(interval, mean, min, max) per interval, for one case."""
+    """(interval, median, min, max) per interval, for one case.
+
+    The median, not the mean: a connection attempt that misses its advertising
+    window waits out another interval, so every interval has a few samples far
+    above the rest. A mean follows those; the median says what usually happens,
+    and the whiskers show how far the rest reach.
+    """
     out = []
     for row in dataset["results"]:
         values = totals(row[case])
         if values:
             out.append(
-                (row["interval_ms"], statistics.fmean(values), min(values), max(values))
+                (
+                    row["interval_ms"],
+                    statistics.median(values),
+                    min(values),
+                    max(values),
+                )
             )
     return sorted(out)
 
@@ -101,7 +112,7 @@ def svg(datasets: list[dict]) -> str:
 
     for interval in TICKS:
         x = x_of(interval)
-        label = f"{interval} ms" if interval < 1000 else f"{interval // 1000} s"
+        label = f"{interval} ms" if interval < 1000 else f"{interval / 1000:g} s"
         parts.append(
             f'<line class="grid v" x1="{x:.1f}" y1="{TOP}"'
             f' x2="{x:.1f}" y2="{TOP + PLOT_H}"/>'
@@ -193,8 +204,8 @@ def render(datasets: list[dict]) -> str:
 </style>
 <h1>Response time against advertising interval</h1>
 <p class="sub">From the command reaching Home Assistant to the device acknowledging the
-GATT write. Mean of three commands issued after 35&nbsp;s of silence, and of four issued
-straight afterwards; whiskers span the samples.</p>
+GATT write. Median of ten commands issued after a quiet period, and of eight issued
+straight afterwards; whiskers span every sample.</p>
 <div style="position:relative">
 <svg width="{W}" height="{H}" viewBox="0 0 {W} {H}">
 {body}

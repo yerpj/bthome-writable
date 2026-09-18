@@ -349,3 +349,17 @@ test("the advertising interval can be changed without re-running setup", () => {
   assert.equal(result.options[result.options.length - 1].interval, 750);
   assert.equal(result.timers[result.timers.length - 1].ms, 750);
 });
+
+test("the fast window can be changed without re-running setup", () => {
+  /* The counterpart of setAdvertisingInterval, and the knob a measurement needs:
+   * every sample of a first command has to wait this window out before the
+   * device is back on its idle interval (docs/measurements.md). */
+  const result = run(load("light-loop-standalone.js"));
+  const bw = result.context.bw;
+
+  assert.equal(bw.setFastTimeout(3000), 3000);
+  result.handlers.connect();
+  result.handlers.disconnect();
+  const scheduled = result.timeouts[result.timeouts.length - 1];
+  assert.equal(scheduled.ms, 3000, "the new window is what gets scheduled");
+});

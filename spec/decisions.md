@@ -2132,3 +2132,49 @@ write, rather than at its next scheduled rebuild" would make this behaviour
 part of the contract instead of a quality of this module. Worth putting to
 Gordon, since it costs a device one packet rebuild per write and buys a receiver
 the difference measured above.
+
+## D-052 — The sweep, done properly: ten samples, a shorter ladder, medians  [VERIFY]
+
+2026-09-18, at the owner's request: more samples, and stop at 4 s. Seven
+intervals — 100, 200, 400, 700, 1200, 2000, 4000 ms, each about 1.8x the one
+below — ten first commands and eight following ones per interval per device.
+250 measurements. Tables and figure: `docs/measurements.md` §1.
+
+**What the earlier three-sample runs could not say.** These distributions are
+skewed: a connection attempt that misses its advertising window waits out
+another interval, so every interval carries a few samples far above the rest.
+On the nice!nano at 2 s the median first command is 1.90 s and the mean 4.30 s.
+Three samples could not separate those, and `docs/measurements.md` now leads
+with the median and prints the mean beside it.
+
+**The owner's prediction, tested.** One to two advertising intervals for a first
+command. Measured, the connect phase behaves as *a fixed cost plus about half an
+interval*: on the nice!nano, 0.31, 0.40, 0.46, 0.56, 0.43, 1.86, 6.46 s across
+the ladder — a floor near 0.3 s that has nothing to do with advertising, with
+the wait for an advertising event taking over past about 1 s. As a multiple of
+the interval that reads 3.1x, 2.0x, 1.15x, 0.80x, 0.35x, 0.93x, 1.61x: a small
+multiple, never a constant, because which term dominates changes along the way.
+
+**Following commands are flat** at 1–3 s everywhere, as `fastTimeout` intends.
+
+**The Puck is not the nice!nano, and the difference is not the protocol.** Its
+median connect time is three to five times longer at the same interval, and
+**13 of its 125 writes stalled past 5 s inside `write_gatt_char`**, several
+within milliseconds of 16.1 s — a timeout and a retry, not a slow device. The
+nice!nano: 0 of 124. Same module, same proxy, same Home Assistant; what differs
+is the hardware, a coin cell against USB, and the position in the room.
+**Unresolved**, and a reason not to quote the Puck's figures as the protocol's.
+
+**Three commands of 249 were never delivered**, all at 4 s, each logged on its
+entity.
+
+### Two tools came out of this
+
+- `bw.setFastTimeout(ms)` on the module, the counterpart of
+  `setAdvertisingInterval`. Every first-command sample has to wait out the fast
+  window, so the 30 s default turned each interval into eight minutes of
+  waiting; at 3 s the campaign went from two hours to forty-five minutes. The
+  sweep sets it and restores 30 s afterwards. It does not touch what is
+  measured — only how long it takes the device to return to its idle interval.
+- `tools/summarise_latency.py`, which prints the tables from the raw samples,
+  so a number in the document can be traced to the run that produced it.

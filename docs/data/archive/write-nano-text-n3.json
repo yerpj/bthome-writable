@@ -1,0 +1,435 @@
+{
+  "address": "CD:F5:77:3A:B2:16",
+  "label": "nice!nano text (OLED), command to write acknowledged",
+  "entity": "text.espruino_b216_text",
+  "measures": "Home Assistant command to the device's GATT write acknowledgement, as the integration times it",
+  "idle_wait_s": 35.0,
+  "results": [
+    {
+      "interval_ms": 100,
+      "first": [
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 1.0,
+          "connect_ms": 414.6,
+          "write_ms": 92.4,
+          "total_ms": 508.0
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.9,
+          "connect_ms": 325.5,
+          "write_ms": 89.4,
+          "total_ms": 415.8
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.6,
+          "connect_ms": 251.1,
+          "write_ms": 125.4,
+          "total_ms": 377.1
+        }
+      ],
+      "consecutive": [
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 311.0,
+          "connect_ms": 2511.7,
+          "write_ms": 402.2,
+          "total_ms": 3224.9
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 1.1,
+          "connect_ms": 2869.9,
+          "write_ms": 83.8,
+          "total_ms": 2954.9
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.6,
+          "connect_ms": 337.7,
+          "write_ms": 79.1,
+          "total_ms": 417.5
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.6,
+          "connect_ms": 1764.1,
+          "write_ms": 105.9,
+          "total_ms": 1870.6
+        }
+      ]
+    },
+    {
+      "interval_ms": 200,
+      "first": [
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.8,
+          "connect_ms": 893.7,
+          "write_ms": 107.2,
+          "total_ms": 1001.8
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 1.0,
+          "connect_ms": 1318.6,
+          "write_ms": 102.6,
+          "total_ms": 1422.3
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.6,
+          "connect_ms": 255.7,
+          "write_ms": 162.7,
+          "total_ms": 419.0
+        }
+      ],
+      "consecutive": [
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 270.1,
+          "connect_ms": 2587.3,
+          "write_ms": 99.7,
+          "total_ms": 2957.1
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 144.0,
+          "write_ms": 210.2,
+          "total_ms": 355.0
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.6,
+          "connect_ms": 2121.3,
+          "write_ms": 103.4,
+          "total_ms": 2225.4
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.6,
+          "connect_ms": 2887.2,
+          "write_ms": 107.2,
+          "total_ms": 2995.1
+        }
+      ]
+    },
+    {
+      "interval_ms": 500,
+      "first": [
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 2178.4,
+          "write_ms": 110.2,
+          "total_ms": 2289.3
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.6,
+          "connect_ms": 2851.0,
+          "write_ms": 102.9,
+          "total_ms": 2954.6
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 3373.3,
+          "write_ms": 116.6,
+          "total_ms": 3490.6
+        }
+      ],
+      "consecutive": [
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 328.5,
+          "connect_ms": 502.2,
+          "write_ms": 166.9,
+          "total_ms": 997.7
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.6,
+          "connect_ms": 1863.5,
+          "write_ms": 95.5,
+          "total_ms": 1959.6
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.9,
+          "connect_ms": 322.6,
+          "write_ms": 16072.3,
+          "total_ms": 16395.8
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.6,
+          "connect_ms": 147.6,
+          "write_ms": 167.6,
+          "total_ms": 315.8
+        }
+      ]
+    },
+    {
+      "interval_ms": 1000,
+      "first": [
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 1.0,
+          "connect_ms": 2164.4,
+          "write_ms": 112.5,
+          "total_ms": 2277.9
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.8,
+          "connect_ms": 7878.4,
+          "write_ms": 128.2,
+          "total_ms": 8007.4
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 1.0,
+          "connect_ms": 835.6,
+          "write_ms": 170.8,
+          "total_ms": 1007.4
+        }
+      ],
+      "consecutive": [
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 328.6,
+          "connect_ms": 204.2,
+          "write_ms": 160.7,
+          "total_ms": 693.5
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 1143.6,
+          "write_ms": 100.0,
+          "total_ms": 1244.4
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 1.2,
+          "connect_ms": 660.4,
+          "write_ms": 150.2,
+          "total_ms": 811.8
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 1.0,
+          "connect_ms": 1230.7,
+          "write_ms": 111.3,
+          "total_ms": 1343.0
+        }
+      ]
+    },
+    {
+      "interval_ms": 2000,
+      "first": [
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 2151.5,
+          "write_ms": 96.9,
+          "total_ms": 2249.1
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.6,
+          "connect_ms": 8835.9,
+          "write_ms": 73.6,
+          "total_ms": 8910.2
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.8,
+          "connect_ms": 2973.1,
+          "write_ms": 103.1,
+          "total_ms": 3077.0
+        }
+      ],
+      "consecutive": [
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 309.3,
+          "connect_ms": 223.5,
+          "write_ms": 162.6,
+          "total_ms": 695.4
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 2.1,
+          "connect_ms": 1561.7,
+          "write_ms": 176.9,
+          "total_ms": 1740.7
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.6,
+          "connect_ms": 1344.6,
+          "write_ms": 119.3,
+          "total_ms": 1464.6
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.6,
+          "connect_ms": 1128.8,
+          "write_ms": 102.6,
+          "total_ms": 1232.0
+        }
+      ]
+    },
+    {
+      "interval_ms": 5000,
+      "first": [
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 19171.3,
+          "write_ms": 102.0,
+          "total_ms": 19274.1
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.6,
+          "connect_ms": 14868.1,
+          "write_ms": 98.9,
+          "total_ms": 14967.7
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.8,
+          "connect_ms": 9894.5,
+          "write_ms": 157.5,
+          "total_ms": 10052.7
+        }
+      ],
+      "consecutive": [
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 276.5,
+          "connect_ms": 162.8,
+          "write_ms": 156.9,
+          "total_ms": 596.3
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 167.0,
+          "write_ms": 155.6,
+          "total_ms": 323.4
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.6,
+          "connect_ms": 338.8,
+          "write_ms": 140.4,
+          "total_ms": 479.9
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.6,
+          "connect_ms": 2326.9,
+          "write_ms": 108.9,
+          "total_ms": 2436.4
+        }
+      ]
+    },
+    {
+      "interval_ms": 10000,
+      "first": [
+        {
+          "failed": true
+        },
+        {
+          "failed": true
+        },
+        {
+          "failed": true
+        }
+      ],
+      "consecutive": [
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.9,
+          "connect_ms": 16376.3,
+          "write_ms": 63.6,
+          "total_ms": 16440.8
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 1949.7,
+          "connect_ms": 202.6,
+          "write_ms": 43.2,
+          "total_ms": 2195.5
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 1730.3,
+          "connect_ms": 233.6,
+          "write_ms": 47.4,
+          "total_ms": 2011.3
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 1760.2,
+          "connect_ms": 437.4,
+          "write_ms": 41.9,
+          "total_ms": 2239.6
+        }
+      ]
+    }
+  ]
+}
