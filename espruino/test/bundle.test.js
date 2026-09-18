@@ -180,6 +180,29 @@ for (const name of BUNDLES) {
     assert.equal(result.pins[expected.pin], false);
   });
 
+  test(`${name}: every write republishes at once`, () => {
+    /* Advertising fast repeats the packet the device already has, so anything a
+     * write changed that *is* advertised -- a sensor measuring the effect --
+     * would otherwise wait for the next scheduled rebuild, which runs at the
+     * idle interval. Measured at 18 s on a 10 s interval before this, against
+     * one second for the write itself (D-050). The second write is the one that
+     * matters: by then the device is already advertising fast, which is exactly
+     * when the old code skipped the rebuild. */
+    const result = run(load(name));
+    const light = result.characteristics["2FAA0001-3B0B-4B1A-9E2A-B4C2952E62F2"];
+
+    const before = result.advertised.length;
+    light.onWrite({ data: [0x1e, 0x01] });
+    assert.equal(result.advertised.length, before + 1);
+    light.onWrite({ data: [0x1e, 0x00] });
+    assert.equal(result.advertised.length, before + 2);
+    // A rebuilt packet, not a repeat: the packet id moves every time.
+    assert.notEqual(
+      hex(result.advertised[before + 1]),
+      hex(result.advertised[before])
+    );
+  });
+
   test(`${name}: the light's state never reaches the advertising`, () => {
     /* PROTOCOL.md §2.3: writable values are not advertised. */
     const result = run(load(name));

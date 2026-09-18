@@ -122,7 +122,8 @@ interval does: on the Puck from the bench host, twenty times the interval
 82 % of a first command is spent waiting to catch an advertisement, before any
 connection is attempted.
 
-**Fast advertising speeds the radio, not the packet.** The Puck's
+**Fast advertising speeds the radio, not the packet** — it did, until this
+measurement showed why it should not.  The Puck's
 through-Home-Assistant line does *not* flatten for following commands: it climbs
 to 18 s at a 10 s interval, where the nice!nano stays at 1 s. The two are
 measuring different things, and the difference is in the module.
@@ -130,8 +131,25 @@ measuring different things, and the difference is in the module.
 rebuilt — and its sensors re-read — on a timer that keeps running at the idle
 interval. The Puck's witness is a *sensor value*, so it waits for that rebuild;
 the nice!nano's witness is the sketch's console, which sees the write as it
-lands. A user watching a state that comes from advertising therefore waits an
+lands. A user watching a state that comes from advertising therefore waited an
 idle interval for it, however fast the command itself was.
+
+**Fixed, and measured again (D-051).** A write now rebuilds the packet
+immediately instead of waiting for the timer. On the Puck at a 10 s idle
+interval, watched on the air by a host scanner:
+
+| Write | Effect advertised after |
+|---|---|
+| first, device idle | 0.31 s |
+| second, device already fast | 0.41 s |
+| third | 0.42 s |
+
+And with the link already open, Home Assistant showed the change 0.3–0.7 s after
+the write. So the device answers in well under a second at any interval, and
+what remains in the through-Home-Assistant tables above is Home Assistant
+opening a connection — which is also where its failures are. Those tables were
+measured before the fix; the curve they show for the Puck's following commands
+is the behaviour D-051 removed.
 
 **The receiver matters as much as the device.** At a 5 s interval the same kind
 of first command takes 33 s from this Windows host and 8 s through Home

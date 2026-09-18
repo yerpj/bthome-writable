@@ -2090,3 +2090,45 @@ this integration.
   `bw.setAdvertisingInterval()` restarted it. Nothing outside the device says
   this has happened except that it goes quiet, which is worth remembering before
   blaming a receiver.
+
+## D-051 — A write now republishes at once, and that is worth about ten seconds  [T1.1]
+
+2026-09-18, prompted by the owner asking whether an advertisement could be
+forced rather than waited for. It could, and the module was not doing it.
+
+**What was wrong.** `handleWrite` called `goFast()`, which dropped the
+advertising interval to 100 ms and rebuilt the packet — but only when the rate
+actually changed. The first write after a quiet period therefore republished at
+once, and every write after it, with the device already fast, did not: fast
+advertising repeats the packet the device already holds, so a sensor measuring
+what the write did was not re-read until the next scheduled rebuild, which runs
+at the idle interval. D-050 measured the consequence without naming the cause:
+the Puck's advertised effect trailed its own write by up to 18 s at a 10 s
+interval, while the nice!nano — watched on its console rather than on the air —
+stayed at one second.
+
+**The change.** `goFast()` now always rebuilds, and `handleWrite` reports a
+refused packet through `onError` rather than letting it escape into `onWrite`.
+One extra packet rebuild per write, at the moment someone is waiting for it.
+
+**Measured on the Puck at a 10 s idle interval, on air, with a host scanner:**
+
+| Write | Effect advertised after |
+|---|---|
+| first, device idle | 0.31 s |
+| second, device already fast | 0.41 s |
+| third | 0.42 s |
+
+Before the change the second and third would have waited for the rebuild timer.
+Home Assistant, on the same device with the link already open, showed the change
+0.3–0.7 s after the write — so device and receiver together account for about a
+second, and what remains in D-050's through-Home-Assistant figures is Home
+Assistant establishing a connection, not the device answering.
+
+**For the specification, not decided here (CLAUDE.md rule 2).** §7 lists what a
+device must do and says nothing about when it must republish. A line such as
+"a device SHOULD publish a fresh advertisement as soon as it has applied a
+write, rather than at its next scheduled rebuild" would make this behaviour
+part of the contract instead of a quality of this module. Worth putting to
+Gordon, since it costs a device one packet rebuild per write and buys a receiver
+the difference measured above.

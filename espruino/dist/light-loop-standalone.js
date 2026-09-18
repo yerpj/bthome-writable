@@ -424,10 +424,18 @@ function publishRead(w) {
 /* Advertise fast while someone is plainly interacting, from connect until
    fastTimeout after disconnect. A central can only begin a connection when it
    catches an advertising event, so the idle interval taxes the first write of
-   a burst (D-013, D-024). */
+   a burst (D-013, D-024).
+
+   Always rebuilds the packet, not only when the rate changes. Advertising fast
+   only makes the radio repeat the packet it already has: a sensor reflecting
+   what a write just did -- a lamp's own light reading, a position, a level --
+   would otherwise wait for the next scheduled rebuild, which runs at the idle
+   interval. Measured before this: at a 10 s interval, effects took 18 s to show
+   in Home Assistant while the write itself had landed in one (D-050). */
 function goFast() {
   if (st.fastTimer !== undefined) { clearTimeout(st.fastTimer); st.fastTimer = undefined; }
-  if (st.advInterval !== st.fastInterval) { st.advInterval = st.fastInterval; refreshAdvertising(); }
+  st.advInterval = st.fastInterval;
+  refreshAdvertising();
 }
 
 function goIdleAfterTimeout() {
@@ -455,8 +463,11 @@ function handleWrite(k, pl) {
   // receiver that wrote it already knows (S3.2).
   if (w.readable) publishRead(w);
   // A write means a receiver is plainly here, and its next command should not
-  // wait out the idle interval -- even if the connect event was missed.
-  goFast();
+  // wait out the idle interval -- even if the connect event was missed. This
+  // also republishes at once, so anything the write changed that *is*
+  // advertised goes out now rather than at the next scheduled rebuild.
+  try { goFast(); }
+  catch (e) { if (st.onError) st.onError(e); }  // a refused packet must not escape into onWrite
   return true;
 }
 
