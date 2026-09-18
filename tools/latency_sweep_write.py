@@ -19,6 +19,11 @@ The expectation worth testing: a first command after a quiet period should cost
 one to two advertising intervals, because a central cannot begin a connection
 until it catches an advertising event.
 
+Each first command is issued after the idle wait plus a random fraction of one
+advertising interval. Without that, every sample would be taken at the same
+phase of the device's advertising train, and the phase is precisely what
+determines how long the receiver waits to catch it.
+
 Needs `HA_URL` and `HA_TOKEN` in the environment.
 """
 
@@ -30,6 +35,7 @@ import contextlib
 import json
 import os
 from pathlib import Path
+import random
 import statistics
 import sys
 
@@ -242,8 +248,17 @@ async def run(args) -> int:
 
                 first, following = [], []
                 for _ in range(args.first_reps):
-                    print(f"  idling {args.idle:.0f} s ...", flush=True)
-                    await asyncio.sleep(args.idle)
+                    # A fixed wait would issue every command at the same phase of
+                    # the device's advertising train, and the thing being measured
+                    # is how long it takes to catch one of those. Spreading the
+                    # wait over a whole interval samples the phase uniformly
+                    # instead of sampling one point of it ten times.
+                    jitter = random.uniform(0, interval / 1000)
+                    print(
+                        f"  idling {args.idle:.0f} s + {jitter * 1000:.0f} ms ...",
+                        flush=True,
+                    )
+                    await asyncio.sleep(args.idle + jitter)
                     index += 1
                     got = await command(bus, config, index, args.timeout)
                     report("first", got, interval)
@@ -254,7 +269,9 @@ async def run(args) -> int:
                     got = await command(bus, config, index, args.timeout)
                     report("next", got, interval)
                     following.append(got)
-                    await asyncio.sleep(args.gap)
+                    # Jittered too, so a burst cannot fall into lockstep with the
+                    # receiver's own write debounce.
+                    await asyncio.sleep(args.gap + random.uniform(0, 0.25))
 
                 results.append(
                     {"interval_ms": interval, "first": first, "consecutive": following}

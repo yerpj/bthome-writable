@@ -2229,3 +2229,52 @@ should average. The proxy is probably reusing a recent connection. It does not
 affect the comparison above, both runs having the same receiver, but it does
 limit what the long-interval rows can say about the cost of catching an
 advertisement.
+
+## D-054 — The sweep, with the proxy out of the way and the phase sampled  [VERIFY]
+
+2026-09-18, at the owner's request: measure without the ESP32 proxy, check that
+nothing else is advertising faster, and add a random delay before each command
+so the measurement cannot lock onto the advertising phase. All three changed the
+result, and the third changed it most.
+
+**What was wrong with the earlier runs.**
+
+- *The proxy reused connections.* Some first commands opened a link in less than
+  half an interval — faster than catching an advertisement allows. Disabling the
+  ESPHome proxy (both its own entry and its Bluetooth entry) leaves Home
+  Assistant on the Raspberry Pi's adapter, which hears the Puck at −56 dBm and
+  the nice!nano at −63 dBm: weaker than the proxy's −38, and enough.
+- *Every sample was taken at the same phase.* The idle wait was a fixed 5 s, so
+  ten samples at one interval all landed at the same point of the device's
+  advertising cycle — and that point is what decides how long the receiver
+  waits. Each first command now waits the idle period plus a uniform random
+  fraction of one interval; bursts get a smaller random gap so they cannot fall
+  into lockstep with the receiver's write debounce.
+- *The advertising was assumed rather than checked.* Verified on the air before
+  starting: one BTHome train per device, nothing faster, observed gaps at
+  0.98–1.01× the configured interval. A first check read 0.14× on the Puck and
+  was wrong — it was taken inside the fast-advertising window, which the sweep
+  shortens to 3 s and waits out before every sample.
+
+**The result, 252 commands, no failures, no stalls.** Median connect time, in
+seconds, across 100 ms → 4 s:
+
+| | 100 ms | 200 ms | 400 ms | 700 ms | 1.2 s | 2 s | 4 s |
+|---|---|---|---|---|---|---|---|
+| Puck.js | 0.33 | 0.51 | 0.65 | 1.40 | 1.86 | 4.38 | 9.30 |
+| nice!nano | 0.26 | 0.78 | 0.73 | 1.79 | 2.70 | 3.68 | 14.56 |
+
+As a multiple of the interval both devices sit between **1.5× and 3.9×** with no
+systematic trend — two firmwares, two payload types, agreeing within the spread.
+That is the honest answer to "how long does a first command take": one or two
+advertising events plus the connection's own handshake.
+
+**A receiver-side finding.** Following commands are flat at about 1.9 s on both
+devices, and the split says why: 1.4–1.6 s of it is this integration holding the
+second command behind the first (`WRITE_DEBOUNCE`, D-020). The radio part is a
+few hundred milliseconds. The warm path is bounded by the receiver, not by the
+device or the interval — worth knowing before anyone tunes a device to improve
+it.
+
+Superseded runs are kept under `docs/data/archive/`: with the proxy, with three
+samples, and with the LED driven (D-053).

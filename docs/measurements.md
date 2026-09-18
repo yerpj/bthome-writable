@@ -60,59 +60,67 @@ to get the device back to its idle interval.
 
 ### Puck.js light switch
 
-| Interval | First, median | mean | range | of which connecting | Write itself | Following, median | Lost |
-|---|---|---|---|---|---|---|---|
-| 100 ms | 0.34 s | 0.52 s | 0.21 – 2.03 | 0.32 s (3.2×) | 36 ms | 1.97 s | — |
-| 200 ms | 0.41 s | 0.54 s | 0.25 – 1.27 | 0.38 s (1.9×) | 36 ms | 1.94 s | — |
-| 400 ms | 0.53 s | 0.70 s | 0.29 – 1.79 | 0.50 s (1.3×) | 36 ms | 2.02 s | — |
-| 700 ms | 0.74 s | 1.28 s | 0.21 – 4.79 | 0.71 s (1.0×) | 36 ms | 2.02 s | — |
-| 1.2 s | 0.42 s | 1.60 s | 0.22 – 4.60 | 0.39 s (0.3×) | 36 ms | 2.05 s | — |
-| 2 s | 0.40 s | 1.78 s | 0.23 – 7.07 | 0.37 s (0.2×) | 36 ms | 1.94 s | — |
-| 4 s | 0.43 s | 2.53 s | 0.14 – 13.51 | 0.40 s (0.1×) | 36 ms | 2.04 s | — |
+| Interval | First, median | mean | range | of which connecting | Write itself | Following, median | of which queued | Lost |
+|---|---|---|---|---|---|---|---|---|
+| 100 ms | 0.42 s | 0.45 s | 0.22 – 0.87 | 0.33 s (3.3×) | 36 ms | 1.90 s | 1.52 s | — |
+| 200 ms | 0.55 s | 0.72 s | 0.20 – 2.50 | 0.51 s (2.5×) | 36 ms | 1.87 s | 1.58 s | — |
+| 400 ms | 0.68 s | 0.73 s | 0.30 – 1.66 | 0.65 s (1.6×) | 36 ms | 1.88 s | 1.52 s | — |
+| 700 ms | 1.43 s | 1.54 s | 0.22 – 3.53 | 1.40 s (2.0×) | 32 ms | 1.84 s | 1.46 s | — |
+| 1.2 s | 1.90 s | 3.00 s | 0.27 – 9.15 | 1.86 s (1.6×) | 36 ms | 1.86 s | 1.42 s | — |
+| 2 s | 4.41 s | 5.41 s | 0.24 – 12.00 | 4.38 s (2.2×) | 36 ms | 2.09 s | 1.58 s | — |
+| 4 s | 9.34 s | 13.37 s | 4.76 – 44.48 | 9.30 s (2.3×) | 36 ms | 1.86 s | 1.54 s | — |
 
 ### nice!nano OLED text
 
-| Interval | First, median | mean | range | of which connecting | Write itself | Following, median | Lost |
-|---|---|---|---|---|---|---|---|
-| 100 ms | 0.44 s | 0.60 s | 0.29 – 1.29 | 0.31 s (3.1×) | 44 ms | 2.46 s | — |
-| 200 ms | 0.54 s | 0.68 s | 0.24 – 2.20 | 0.40 s (2.0×) | 43 ms | 2.01 s | — |
-| 400 ms | 0.68 s | 1.03 s | 0.24 – 2.19 | 0.46 s (1.1×) | 43 ms | 2.05 s | — |
-| 700 ms | 0.60 s | 1.39 s | 0.28 – 6.69 | 0.56 s (0.8×) | 43 ms | 2.11 s | — |
-| 1.2 s | 0.89 s | 1.74 s | 0.24 – 5.87 | 0.43 s (0.4×) | 44 ms | 2.35 s | — |
-| 2 s | 1.90 s | 4.30 s | 0.24 – 15.72 | 1.86 s (0.9×) | 43 ms | 1.97 s | — |
-| 4 s | 6.53 s | 5.27 s | 0.46 – 11.00 | 6.46 s (1.6×) | 100 ms | 2.33 s | 2 |
+| Interval | First, median | mean | range | of which connecting | Write itself | Following, median | of which queued | Lost |
+|---|---|---|---|---|---|---|---|---|
+| 100 ms | 0.31 s | 0.53 s | 0.17 – 1.60 | 0.26 s (2.6×) | 43 ms | 2.13 s | 1.54 s | — |
+| 200 ms | 1.03 s | 0.91 s | 0.30 – 1.65 | 0.78 s (3.9×) | 43 ms | 2.15 s | 1.40 s | — |
+| 400 ms | 0.77 s | 0.88 s | 0.16 – 1.66 | 0.73 s (1.8×) | 43 ms | 2.13 s | 1.46 s | — |
+| 700 ms | 1.84 s | 2.12 s | 0.24 – 3.95 | 1.79 s (2.6×) | 43 ms | 1.81 s | 1.46 s | — |
+| 1.2 s | 2.74 s | 2.63 s | 0.24 – 6.53 | 2.70 s (2.2×) | 43 ms | 2.26 s | 1.34 s | — |
+| 2 s | 3.72 s | 4.05 s | 0.32 – 10.85 | 3.68 s (1.8×) | 43 ms | 1.90 s | 1.54 s | — |
+| 4 s | 14.69 s | 16.02 s | 5.08 – 35.50 | 14.56 s (3.6×) | 43 ms | 1.94 s | 1.56 s | — |
 
 ### What the numbers say
 
-**The median is the number to read.** These distributions are not symmetric: a
-connection attempt that misses its advertising window waits out another
-interval, so each interval carries a few samples far above the rest. Where the
-mean sits well above the median — 2.53 s against 0.43 s on the Puck at 4 s — the
-gap is that tail, not noise to average away.
-
-**Opening the link costs a floor plus part of an interval.** In seconds, the
-Puck's median connect time runs 0.32, 0.38, 0.50, 0.71, 0.39, 0.37, 0.40 across
-the ladder, and the nice!nano's 0.31, 0.40, 0.46, 0.56, 0.43, 1.86, 6.46. There
-is a floor of roughly 0.3–0.4 s that owes nothing to advertising. Below about a
-second of interval the floor dominates, which is why the same figure reads as a
-large multiple of a small interval (3.2× of 100 ms is 0.32 s).
+**Opening the link is the cost, and it tracks the interval.** The Puck's median
+connect time runs 0.33, 0.51, 0.65, 1.40, 1.86, 4.38, 9.30 s across the ladder
+and the nice!nano's 0.26, 0.78, 0.73, 1.79, 2.70, 3.68, 14.56 s — two devices,
+two firmwares, two payload types, agreeing within the spread. As a multiple of
+the interval both sit between **1.5× and 3.9×**, with no systematic trend: the
+cost is one or two advertising events plus the connection's own handshake, and
+which of those dominates depends on where in the cycle the command lands.
 
 **The write itself is never the cost**: 36 ms on the Puck, 43 ms on the
-nice!nano, whether the object written is one byte or a whole string.
+nice!nano, one byte or a whole string.
 
-**Following commands are flat** at about 2 s on both devices, at every interval,
-because `fastTimeout` keeps a device advertising at 100 ms for 30 s once a
-receiver has been in touch. This is the result that matters for a user
-interacting with a device: the interval is a cold-start dial, not a latency
-dial.
+**Following commands are flat** at about 1.9 s on both devices at every
+interval — and most of that is the receiver's own queue, not the radio: the
+*queued* column reads 1.4–1.6 s, which is this integration holding a second
+command behind the first (`WRITE_DEBOUNCE`, D-020). The radio part of a
+following command is a few hundred milliseconds. So the interval is a cold-start
+dial, not a latency dial, and the warm path is bounded by the receiver.
 
-**Failures.** Two commands of 250 were never delivered, both on the nice!nano at
-4 s. Each was logged on its entity as *the command did not reach the device*.
+**Nothing was lost.** 252 commands, 0 failures, 0 writes stalled past 5 s.
 
-**A caution about the long intervals.** At 1.2 s and above the Puck connects in
-less than half an interval — faster than a fresh connection should average. The
-proxy is probably reusing a recent link. Those rows therefore say less about the
-cost of catching an advertisement than the short ones do.
+### How this run was set up, and why
+
+Three things were changed after the first attempt, each of which had been
+distorting the result:
+
+- **The ESP32 proxy was disabled**, leaving Home Assistant to use the Raspberry
+  Pi's own adapter. Through the proxy, some commands connected in less than half
+  an interval — faster than catching an advertisement allows — because it reuses
+  a recent link. Both devices are heard by the Pi at −56 and −63 dBm.
+- **Each first command is issued after a random fraction of one interval**, on
+  top of the idle wait. A fixed wait samples one phase of the advertising cycle
+  ten times; the phase is exactly what determines how long the receiver waits.
+- **The advertising was checked on the air** before starting: one BTHome train
+  per device and nothing faster, with observed gaps at 0.98–1.01× the configured
+  interval. A first check read 0.14× on the Puck — it was taken inside the
+  device's fast-advertising window, which the sweep shortens to 3 s and waits
+  out before every sample.
 
 ---
 
