@@ -2036,3 +2036,57 @@ renamed to the old IDs, so the `Puck illuminance -> OLED` automation reaches the
 nice!nano again: the sketch reported `shown = "Lux 102.47"`. The nice!nano runs
 `oled-text.js` from flash on 2v29.396, 8 bytes of service data, 10974 blocks free.
 The name budget on 396 is recorded under D-046.
+
+## D-050 — Response time against the advertising interval, and what the sweep exposed  [VERIFY]
+
+2026-09-18, both devices, seven intervals from 100 ms to 10 s, three "first"
+commands (each after 35 s of silence, past `fastTimeout`) and four or five
+following ones per interval. Tools: `tools/latency_sweep.py` from the bench
+host, `tools/latency_sweep_ha.py` through Home Assistant. Numbers, tables and
+the figure: `docs/measurements.md` §1.
+
+**The headline is the one D-021 and D-024 already implied, now with a curve.**
+The interval is a cold-start dial: commands that follow one another land in
+0.35–1.7 s at every interval, while the first after a quiet period grows faster
+than the interval does — 0.9 s at 100 ms to 45 s at 10 s from the bench host,
+1.0 s to 8.2 s through Home Assistant. At a 2 s interval, 57–82 % of a first
+command is spent waiting to catch an advertisement.
+
+**New: fast advertising speeds the radio, not the packet.** `goFast()` drops the
+advertising interval to 100 ms, but `st.timer` keeps rebuilding the packet at
+`st.interval`, so a sensor value is re-read at the *idle* rate whatever the
+radio is doing. It shows up as the one curve that does not flatten: the Puck's
+witness is its advertised illuminance, and its following commands climb to 18 s
+at a 10 s interval, where the nice!nano — witnessed on its own console — stays
+at 1 s. Nothing is wrong with either number; they measure different things.
+
+Worth deciding later, not now: whether `goFast()` should also rebuild faster.
+It would make an advertised actuator effect visible within the fast window, at
+the cost of re-reading sensors more often exactly when the radio is already
+costing more.
+
+**Failure rate, stated rather than averaged away.** Seven of 49 commands to the
+Puck through Home Assistant produced no effect, against two of 56 to the
+nice!nano. Every one was logged on the entity ("the command did not reach the
+device … Failed to connect"), so none was silent — which is what D-042 asked of
+this integration.
+
+**Method notes, because two of them cost an hour.**
+
+- A witness must require a *transition*. The first version accepted the state
+  the lamp already had, timing a command at nothing whenever it was sent where
+  it already was, and drifting out of step after any failure.
+- The bench host must be timed from *catching an advertisement*, not from
+  `BleakClient(address)`: connecting by address alone answers "device not found"
+  the moment WinRT's cache has gone cold, which at a 10 s interval is every
+  time.
+- The host's Bluetooth stack stopped opening connections part-way through, and
+  cycling the radio through the Windows `Radio` API fixed it — no administrator
+  rights needed. An earlier reading of "the host has gone deaf" was wrong: both
+  devices were at a 10 s interval, so one packet in 25 s was correct. Judge the
+  host by whether a connection opens, not by the packet count.
+- The Puck stopped refreshing its advertising at one point — same payload, same
+  packet id, minutes on end — and Home Assistant could then no longer reach it.
+  `bw.setAdvertisingInterval()` restarted it. Nothing outside the device says
+  this has happened except that it goes quiet, which is worth remembering before
+  blaming a receiver.

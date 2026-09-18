@@ -21,12 +21,12 @@ from pathlib import Path
 import statistics
 import sys
 
-W, H = 1080, 620
+W, H = 1080, 660
 LEFT, RIGHT, TOP, BOTTOM = 84, 300, 74, 76
 PLOT_W = W - LEFT - RIGHT
 PLOT_H = H - TOP - BOTTOM
 
-COLOURS = ("#0b5394", "#0b6e4f")
+COLOURS = ("#0b5394", "#0b6e4f", "#8a3ffc")
 TICKS = (100, 200, 500, 1000, 2000, 5000, 10000)
 
 

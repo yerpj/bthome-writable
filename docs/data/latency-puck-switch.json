@@ -2,7 +2,7 @@
   "address": "C8:80:32:AD:F7:B9",
   "kind": "switch",
   "entry": 1,
-  "label": "Puck.js switch (light)",
+  "label": "Puck.js switch (light), from the bench host",
   "idle_wait_s": 35.0,
   "host": "Windows/WinRT bench host",
   "results": [

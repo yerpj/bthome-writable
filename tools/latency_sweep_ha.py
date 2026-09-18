@@ -118,19 +118,27 @@ class SerialWitness:
 
 
 class SensorWitness:
-    """The Puck's light sensor, as Home Assistant reports it."""
+    """The Puck's light sensor, as Home Assistant reports it.
+
+    Always waits for a *transition*, never for a state: a witness that accepts
+    the value it already had would time a command at nothing whenever the lamp
+    was already where it was being sent, and would drift out of step after the
+    first failed write.
+    """
 
     def __init__(self, entity: str, threshold: float = 300.0) -> None:
         self.entity = entity
         self.threshold = threshold
 
+    def bright(self) -> bool:
+        try:
+            return float(state_of(self.entity)) > self.threshold
+        except (ValueError, KeyError):
+            return False
+
     def wait_for(self, want_bright: bool, deadline: float) -> float | None:
         while time.perf_counter() < deadline:
-            try:
-                value = float(state_of(self.entity))
-            except (ValueError, KeyError):
-                value = 0.0
-            if (value > self.threshold) == want_bright:
+            if self.bright() == want_bright:
                 return time.perf_counter()
             time.sleep(0.15)
         return None
@@ -171,7 +179,9 @@ def one_command_nano(
 def one_command_puck(
     config, witness: SensorWitness, index: int, timeout: float
 ) -> dict:
-    on = index % 2 == 0
+    # Whatever the lamp is now, send it the other way, so that every sample is a
+    # change the sensor can witness.
+    on = not witness.bright()
     started = time.perf_counter()
     call(
         f"/api/services/switch/turn_{'on' if on else 'off'}",
