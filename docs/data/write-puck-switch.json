@@ -1,6 +1,6 @@
 {
   "address": "C8:80:32:AD:F7:B9",
-  "label": "Puck.js switch (light), command to write acknowledged",
+  "label": "Puck.js switch, LED driven (a CR2032 under load)",
   "entity": "switch.bureau_mobilesensf7b9_light",
   "measures": "Home Assistant command to the device's GATT write acknowledgement, as the integration times it",
   "idle_wait_s": 5.0,

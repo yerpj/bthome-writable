@@ -2178,3 +2178,54 @@ entity.
   measured — only how long it takes the device to return to its idle interval.
 - `tools/summarise_latency.py`, which prints the tables from the raw samples,
   so a number in the document can be traced to the run that produced it.
+
+## D-053 — The Puck's stalled writes were its LED, not the protocol  [VERIFY]
+
+2026-09-18, on the owner's hypothesis: a coin cell has a high internal
+resistance, an LED draws a few milliamps, and the radio transmits from the same
+rail — so the stalls of D-052 might be the battery sagging rather than anything
+in the link.
+
+Tested with `espruino/examples/light-loop-no-led.js`, identical to `light-loop.js`
+in everything a receiver can see — same entries, same intervals, same writable
+light on 2FAA0001 — except that applying a write drives no pin. Same sweep, same
+ladder, same receiver, immediately afterwards.
+
+| Same Puck, same sweep | LED driven | LED not driven |
+|---|---|---|
+| Write, median | 141 ms | **36 ms** |
+| Write, 90th percentile | 6636 ms | **37 ms** |
+| Write, worst | 16153 ms | 4061 ms |
+| Writes stalled past 5 s | 13 of 125 | **0 of 126** |
+| Connect, median | 2.56 s | **0.39 s** |
+| Commands never delivered | 1 | **0** |
+
+The 90th percentile is the number that matters: with the LED, one write in ten
+took more than 6.6 s; without it, 37 ms. That is a failure mode disappearing,
+not a mean shifting. The several stalls within milliseconds of 16.1 s look like
+a supervision timeout and a retry — consistent with the link dropping while the
+rail sagged, not with a device that is merely slow.
+
+**First commands without the LED**, 100 ms to 4 s: 0.34, 0.41, 0.53, 0.74, 0.42,
+0.40, 0.43 s. The Puck is now faster than the mains-powered nice!nano, and the
+figures stop climbing with the interval.
+
+**What this changes.**
+
+- D-052's Puck column measured a power supply, not a protocol. It stays in
+  `docs/measurements.md` as the cautionary case, relabelled, with this run beside
+  it. The nice!nano's figures are unaffected.
+- A measurement of write latency on a device that actuates anything from a coin
+  cell is measuring the cell. Any future latency work uses a device that drives
+  no load, or one on mains.
+- It also says something for the specification's readers rather than its text: a
+  battery device that switches a real load should expect its own writes to be the
+  least reliable moment in its life, and a receiver that reports failures plainly
+  (D-042) matters more on such a device than on a powered one.
+
+**Left unexplained:** at 1.2 s and above, the no-LED connect medians fall to 0.32
+and then 0.10 of an interval — faster than the half-interval a fresh connection
+should average. The proxy is probably reusing a recent connection. It does not
+affect the comparison above, both runs having the same receiver, but it does
+limit what the long-interval rows can say about the cost of catching an
+advertisement.

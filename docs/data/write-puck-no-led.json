@@ -1,0 +1,1066 @@
+{
+  "address": "C8:80:32:AD:F7:B9",
+  "label": "Puck.js switch, LED disconnected",
+  "entity": "switch.bureau_mobilesensf7b9_light",
+  "measures": "Home Assistant command to the device's GATT write acknowledgement, as the integration times it",
+  "idle_wait_s": 5.0,
+  "results": [
+    {
+      "interval_ms": 100,
+      "first": [
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 618.6,
+          "write_ms": 32.1,
+          "total_ms": 651.4
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.8,
+          "connect_ms": 409.8,
+          "write_ms": 42.9,
+          "total_ms": 453.5
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.9,
+          "connect_ms": 258.1,
+          "write_ms": 35.7,
+          "total_ms": 294.7
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 6.7,
+          "connect_ms": 1905.9,
+          "write_ms": 112.7,
+          "total_ms": 2025.3
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.8,
+          "connect_ms": 274.7,
+          "write_ms": 22.8,
+          "total_ms": 298.3
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.9,
+          "connect_ms": 201.9,
+          "write_ms": 36.1,
+          "total_ms": 239.0
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 168.7,
+          "write_ms": 36.0,
+          "total_ms": 205.4
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.6,
+          "connect_ms": 248.3,
+          "write_ms": 25.9,
+          "total_ms": 274.8
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 362.3,
+          "write_ms": 26.0,
+          "total_ms": 389.1
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.6,
+          "connect_ms": 364.3,
+          "write_ms": 26.1,
+          "total_ms": 391.0
+        }
+      ],
+      "consecutive": [
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 2796.2,
+          "connect_ms": 277.4,
+          "write_ms": 36.5,
+          "total_ms": 3110.2
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 1647.2,
+          "connect_ms": 286.6,
+          "write_ms": 37.7,
+          "total_ms": 1971.6
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 1695.8,
+          "connect_ms": 166.6,
+          "write_ms": 75.9,
+          "total_ms": 1938.4
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 1729.3,
+          "connect_ms": 191.1,
+          "write_ms": 35.9,
+          "total_ms": 1956.3
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 1754.8,
+          "connect_ms": 187.4,
+          "write_ms": 36.1,
+          "total_ms": 1978.3
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 1772.9,
+          "connect_ms": 487.2,
+          "write_ms": 36.0,
+          "total_ms": 2296.1
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 1449.0,
+          "connect_ms": 181.0,
+          "write_ms": 35.9,
+          "total_ms": 1665.9
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 1755.5,
+          "connect_ms": 203.6,
+          "write_ms": 36.1,
+          "total_ms": 1995.3
+        }
+      ]
+    },
+    {
+      "interval_ms": 200,
+      "first": [
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 226.5,
+          "write_ms": 36.1,
+          "total_ms": 263.3
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.6,
+          "connect_ms": 1247.0,
+          "write_ms": 26.2,
+          "total_ms": 1273.8
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 1.0,
+          "connect_ms": 556.4,
+          "write_ms": 31.0,
+          "total_ms": 588.5
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.6,
+          "connect_ms": 942.3,
+          "write_ms": 36.3,
+          "total_ms": 979.3
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.6,
+          "connect_ms": 215.9,
+          "write_ms": 29.7,
+          "total_ms": 246.3
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.9,
+          "connect_ms": 488.8,
+          "write_ms": 35.8,
+          "total_ms": 525.5
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 238.7,
+          "write_ms": 36.2,
+          "total_ms": 275.6
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 2.8,
+          "connect_ms": 666.2,
+          "write_ms": 28.5,
+          "total_ms": 697.6
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 261.8,
+          "write_ms": 35.9,
+          "total_ms": 298.3
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.9,
+          "connect_ms": 243.8,
+          "write_ms": 36.2,
+          "total_ms": 281.0
+        }
+      ],
+      "consecutive": [
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 2892.5,
+          "connect_ms": 451.9,
+          "write_ms": 36.2,
+          "total_ms": 3380.7
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 1.2,
+          "connect_ms": 211.5,
+          "write_ms": 4061.4,
+          "total_ms": 4274.2
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 387.4,
+          "connect_ms": 368.6,
+          "write_ms": 41.0,
+          "total_ms": 797.0
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 1573.1,
+          "connect_ms": 256.0,
+          "write_ms": 35.8,
+          "total_ms": 1864.9
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 1682.3,
+          "connect_ms": 378.7,
+          "write_ms": 33.6,
+          "total_ms": 2094.6
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 1590.1,
+          "connect_ms": 256.9,
+          "write_ms": 36.3,
+          "total_ms": 1883.3
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 1680.5,
+          "connect_ms": 271.3,
+          "write_ms": 36.2,
+          "total_ms": 1988.0
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 1670.7,
+          "connect_ms": 171.6,
+          "write_ms": 35.9,
+          "total_ms": 1878.2
+        }
+      ]
+    },
+    {
+      "interval_ms": 400,
+      "first": [
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.6,
+          "connect_ms": 399.4,
+          "write_ms": 36.2,
+          "total_ms": 436.3
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 681.4,
+          "write_ms": 36.2,
+          "total_ms": 718.4
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 1124.4,
+          "write_ms": 25.3,
+          "total_ms": 1150.5
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.8,
+          "connect_ms": 1752.2,
+          "write_ms": 36.0,
+          "total_ms": 1789.0
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.6,
+          "connect_ms": 542.7,
+          "write_ms": 36.2,
+          "total_ms": 579.6
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 369.2,
+          "write_ms": 24.9,
+          "total_ms": 394.8
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 840.2,
+          "write_ms": 36.1,
+          "total_ms": 877.1
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.6,
+          "connect_ms": 461.5,
+          "write_ms": 25.9,
+          "total_ms": 488.0
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.6,
+          "connect_ms": 262.5,
+          "write_ms": 22.0,
+          "total_ms": 285.2
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 255.6,
+          "write_ms": 36.1,
+          "total_ms": 292.5
+        }
+      ],
+      "consecutive": [
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 2178.7,
+          "connect_ms": 270.6,
+          "write_ms": 36.0,
+          "total_ms": 2485.3
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 1670.8,
+          "connect_ms": 254.0,
+          "write_ms": 36.2,
+          "total_ms": 1961.0
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 1699.6,
+          "connect_ms": 351.7,
+          "write_ms": 36.4,
+          "total_ms": 2087.8
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 1604.0,
+          "connect_ms": 660.8,
+          "write_ms": 36.1,
+          "total_ms": 2301.0
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 1291.0,
+          "connect_ms": 274.2,
+          "write_ms": 36.1,
+          "total_ms": 1601.3
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 1663.3,
+          "connect_ms": 150.8,
+          "write_ms": 40.8,
+          "total_ms": 1854.9
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 1799.8,
+          "connect_ms": 348.1,
+          "write_ms": 36.0,
+          "total_ms": 2184.0
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 1588.8,
+          "connect_ms": 266.2,
+          "write_ms": 25.6,
+          "total_ms": 1880.6
+        }
+      ]
+    },
+    {
+      "interval_ms": 700,
+      "first": [
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 204.2,
+          "write_ms": 26.7,
+          "total_ms": 231.7
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 230.5,
+          "write_ms": 27.0,
+          "total_ms": 258.1
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 174.9,
+          "write_ms": 36.0,
+          "total_ms": 211.7
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.6,
+          "connect_ms": 1535.6,
+          "write_ms": 36.6,
+          "total_ms": 1572.8
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 373.5,
+          "write_ms": 36.4,
+          "total_ms": 410.6
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 1.6,
+          "connect_ms": 239.0,
+          "write_ms": 36.4,
+          "total_ms": 277.1
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.8,
+          "connect_ms": 1050.8,
+          "write_ms": 25.3,
+          "total_ms": 1077.0
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.9,
+          "connect_ms": 1974.7,
+          "write_ms": 36.3,
+          "total_ms": 2012.0
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.8,
+          "connect_ms": 1945.0,
+          "write_ms": 36.2,
+          "total_ms": 1982.0
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 4753.9,
+          "write_ms": 36.1,
+          "total_ms": 4790.8
+        }
+      ],
+      "consecutive": [
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 2267.4,
+          "connect_ms": 204.0,
+          "write_ms": 35.7,
+          "total_ms": 2507.1
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 1741.0,
+          "connect_ms": 209.8,
+          "write_ms": 36.3,
+          "total_ms": 1987.1
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 1724.9,
+          "connect_ms": 189.4,
+          "write_ms": 36.7,
+          "total_ms": 1951.1
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 1771.1,
+          "connect_ms": 216.8,
+          "write_ms": 35.4,
+          "total_ms": 2023.3
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 1743.6,
+          "connect_ms": 307.5,
+          "write_ms": 35.9,
+          "total_ms": 2087.1
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 1618.3,
+          "connect_ms": 809.7,
+          "write_ms": 35.8,
+          "total_ms": 2463.9
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 1146.1,
+          "connect_ms": 292.5,
+          "write_ms": 35.9,
+          "total_ms": 1474.6
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 1666.8,
+          "connect_ms": 317.4,
+          "write_ms": 26.9,
+          "total_ms": 2011.1
+        }
+      ]
+    },
+    {
+      "interval_ms": 1200,
+      "first": [
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 228.4,
+          "write_ms": 35.2,
+          "total_ms": 264.4
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.8,
+          "connect_ms": 195.4,
+          "write_ms": 36.1,
+          "total_ms": 232.5
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 489.8,
+          "write_ms": 36.2,
+          "total_ms": 526.8
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.8,
+          "connect_ms": 3812.9,
+          "write_ms": 36.2,
+          "total_ms": 3849.9
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 183.0,
+          "write_ms": 35.6,
+          "total_ms": 219.3
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.9,
+          "connect_ms": 2909.3,
+          "write_ms": 36.1,
+          "total_ms": 2946.3
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 4564.1,
+          "write_ms": 35.6,
+          "total_ms": 4600.4
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 280.4,
+          "write_ms": 36.4,
+          "total_ms": 317.6
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.8,
+          "connect_ms": 2809.7,
+          "write_ms": 36.1,
+          "total_ms": 2846.6
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 188.2,
+          "write_ms": 26.8,
+          "total_ms": 215.7
+        }
+      ],
+      "consecutive": [
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 2103.3,
+          "connect_ms": 440.1,
+          "write_ms": 28.1,
+          "total_ms": 2571.6
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 1507.3,
+          "connect_ms": 533.4,
+          "write_ms": 35.5,
+          "total_ms": 2076.2
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 1454.3,
+          "connect_ms": 231.7,
+          "write_ms": 36.2,
+          "total_ms": 1722.2
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 1694.6,
+          "connect_ms": 427.0,
+          "write_ms": 36.2,
+          "total_ms": 2157.8
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 1519.0,
+          "connect_ms": 871.8,
+          "write_ms": 35.0,
+          "total_ms": 2425.8
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 1074.3,
+          "connect_ms": 308.6,
+          "write_ms": 36.2,
+          "total_ms": 1419.2
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 1634.2,
+          "connect_ms": 346.2,
+          "write_ms": 39.0,
+          "total_ms": 2019.5
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 1598.4,
+          "connect_ms": 334.3,
+          "write_ms": 77.3,
+          "total_ms": 2010.1
+        }
+      ]
+    },
+    {
+      "interval_ms": 2000,
+      "first": [
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 2.6,
+          "connect_ms": 227.4,
+          "write_ms": 27.2,
+          "total_ms": 257.3
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 224.2,
+          "write_ms": 36.2,
+          "total_ms": 261.2
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 7045.5,
+          "write_ms": 25.7,
+          "total_ms": 7072.0
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.6,
+          "connect_ms": 240.6,
+          "write_ms": 36.2,
+          "total_ms": 277.5
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.6,
+          "connect_ms": 3582.2,
+          "write_ms": 36.2,
+          "total_ms": 3619.2
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.8,
+          "connect_ms": 402.0,
+          "write_ms": 36.4,
+          "total_ms": 439.2
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 3499.3,
+          "write_ms": 26.3,
+          "total_ms": 3526.3
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.6,
+          "connect_ms": 195.1,
+          "write_ms": 36.4,
+          "total_ms": 232.1
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 1716.5,
+          "write_ms": 36.2,
+          "total_ms": 1753.4
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 332.5,
+          "write_ms": 26.6,
+          "total_ms": 359.9
+        }
+      ],
+      "consecutive": [
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 2289.3,
+          "connect_ms": 280.6,
+          "write_ms": 35.9,
+          "total_ms": 2605.8
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 1660.7,
+          "connect_ms": 210.4,
+          "write_ms": 35.9,
+          "total_ms": 1907.0
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 1738.7,
+          "connect_ms": 294.1,
+          "write_ms": 36.1,
+          "total_ms": 2069.0
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 1661.9,
+          "connect_ms": 325.2,
+          "write_ms": 26.7,
+          "total_ms": 2013.9
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 1638.0,
+          "connect_ms": 297.2,
+          "write_ms": 36.3,
+          "total_ms": 1971.4
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 1652.4,
+          "connect_ms": 217.8,
+          "write_ms": 36.2,
+          "total_ms": 1906.4
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 1.2,
+          "connect_ms": 368.9,
+          "write_ms": 155.4,
+          "total_ms": 525.6
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 129.2,
+          "connect_ms": 293.1,
+          "write_ms": 36.4,
+          "total_ms": 458.8
+        }
+      ]
+    },
+    {
+      "interval_ms": 4000,
+      "first": [
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 350.9,
+          "write_ms": 36.5,
+          "total_ms": 388.1
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 106.8,
+          "write_ms": 36.1,
+          "total_ms": 143.7
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 472.4,
+          "write_ms": 35.8,
+          "total_ms": 509.0
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 7.4,
+          "connect_ms": 238.3,
+          "write_ms": 68.6,
+          "total_ms": 314.4
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 2356.6,
+          "connect_ms": 518.2,
+          "write_ms": 35.8,
+          "total_ms": 2910.6
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.8,
+          "connect_ms": 191.8,
+          "write_ms": 26.3,
+          "total_ms": 218.9
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 6544.0,
+          "write_ms": 28.8,
+          "total_ms": 6573.5
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 442.0,
+          "write_ms": 26.0,
+          "total_ms": 468.7
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 2.1,
+          "connect_ms": 13471.4,
+          "write_ms": 36.7,
+          "total_ms": 13510.3
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.6,
+          "connect_ms": 234.0,
+          "write_ms": 43.8,
+          "total_ms": 278.5
+        }
+      ],
+      "consecutive": [
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 2321.4,
+          "connect_ms": 202.8,
+          "write_ms": 36.4,
+          "total_ms": 2560.6
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 1738.0,
+          "connect_ms": 211.7,
+          "write_ms": 35.0,
+          "total_ms": 1984.8
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 1737.5,
+          "connect_ms": 316.0,
+          "write_ms": 36.4,
+          "total_ms": 2089.8
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 1635.5,
+          "connect_ms": 421.7,
+          "write_ms": 36.0,
+          "total_ms": 2093.4
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 1524.0,
+          "connect_ms": 209.0,
+          "write_ms": 36.3,
+          "total_ms": 1769.2
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 1739.2,
+          "connect_ms": 227.1,
+          "write_ms": 35.5,
+          "total_ms": 2001.8
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 1716.9,
+          "connect_ms": 315.9,
+          "write_ms": 36.1,
+          "total_ms": 2069.0
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 1648.2,
+          "connect_ms": 306.2,
+          "write_ms": 36.1,
+          "total_ms": 1990.6
+        }
+      ]
+    }
+  ]
+}

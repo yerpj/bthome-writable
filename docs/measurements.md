@@ -58,7 +58,11 @@ that window out, and the module's 30 s default turns each interval into eight
 minutes of waiting. It does not touch what is measured — only how long it takes
 to get the device back to its idle interval.
 
-### Puck.js light switch
+### Puck.js light switch — and what its LED was doing to it
+
+The Puck ran `light-loop.js`, which switches an LED from a CR2032. Its figures
+here are a cautionary tale rather than a measurement of the protocol: see the
+comparison below before reading them.
 
 | Interval | First, median | mean | range | of which connecting | Following, median | Lost |
 |---|---|---|---|---|---|---|
@@ -69,6 +73,40 @@ to get the device back to its idle interval.
 | 1.2 s | 10.60 s | 13.54 s | 0.33 – 32.96 | 5.46 s (4.5×) | 1.50 s | — |
 | 2 s | 9.01 s | 8.65 s | 2.16 – 20.35 | 3.55 s (1.8×) | 1.52 s | — |
 | 4 s | 10.77 s | 12.93 s | 6.81 – 24.48 | 9.93 s (2.5×) | 2.04 s | 1 |
+
+### Puck.js again, with the LED disconnected
+
+`light-loop-no-led.js` is identical in everything a receiver can see — same
+entries, same intervals, same writable light on 2FAA0001 — except that applying
+a write drives no pin. Same sweep, same receiver, immediately afterwards.
+
+| Interval | First, median | mean | range | of which connecting | Following, median | Lost |
+|---|---|---|---|---|---|---|
+| 100 ms | 0.34 s | 0.52 s | 0.21 – 2.03 | 0.32 s (3.2×) | 1.97 s | — |
+| 200 ms | 0.41 s | 0.54 s | 0.25 – 1.27 | 0.38 s (1.9×) | 1.94 s | — |
+| 400 ms | 0.53 s | 0.70 s | 0.29 – 1.79 | 0.50 s (1.3×) | 2.02 s | — |
+| 700 ms | 0.74 s | 1.28 s | 0.21 – 4.79 | 0.71 s (1.0×) | 2.02 s | — |
+| 1.2 s | 0.42 s | 1.60 s | 0.22 – 4.60 | 0.39 s (0.3×) | 2.05 s | — |
+| 2 s | 0.40 s | 1.78 s | 0.23 – 7.07 | 0.37 s (0.2×) | 1.94 s | — |
+| 4 s | 0.43 s | 2.53 s | 0.14 – 13.51 | 0.40 s (0.1×) | 2.04 s | — |
+
+| Same Puck, same sweep | LED driven | LED not driven |
+|---|---|---|
+| Write, median | 141 ms | **36 ms** |
+| Write, 90th percentile | 6636 ms | **37 ms** |
+| Write, worst | 16153 ms | 4061 ms |
+| Writes stalled past 5 s | 13 of 125 | **0 of 126** |
+| Connect, median | 2.56 s | **0.39 s** |
+| Never delivered | 1 | **0** |
+
+The 90th percentile is the one to read: with the LED, one write in ten took more
+than 6.6 s; without it, 37 ms. A coin cell has a high internal
+resistance, an LED draws a few milliamps, and the radio transmits from the same
+rail — the link drops while the rail sags, and the several stalls within
+milliseconds of 16.1 s are a supervision timeout and a retry (D-053).
+
+**So: a latency measured on a battery device that actuates something is measuring
+the battery.** Use a device that drives no load, or one on mains.
 
 ### nice!nano OLED text
 
@@ -103,15 +141,12 @@ but not a constant one, because the two terms trade places.
 Puck at every interval, because `fastTimeout` keeps the device advertising at
 100 ms once a receiver has been in touch.
 
-**The two devices are not equivalent, and the difference is not the protocol.**
-The Puck's median connect time is three to five times the nice!nano's at the
-same interval. It also stalls: **13 of its 125 writes took more than 5 s inside
-`write_gatt_char`**, several landing within a few milliseconds of 16.1 s, which
-looks like a timeout and a retry rather than a slow device. The nice!nano did
-that **0 times in 124 writes**. Both go through the same ESP32 proxy and the
-same Home Assistant; what differs is the device, its power source (a coin cell
-against USB) and where it sits in the room. Unresolved, and worth resolving
-before quoting the Puck's figures as the protocol's.
+**The two devices were not equivalent, and the reason was the power supply.**
+The Puck's stalls and its long connect times disappeared when the same sketch
+stopped driving its LED: 0 of 126 writes stalled against 13 of 125, and the
+median connect time fell from 2.56 s to 0.39 s. What looked like a device or a
+protocol problem was a CR2032 sagging under an LED and a transmitting radio
+(D-053).
 
 **Failures.** Three commands of 249 were never delivered, all at 4 s. Each was
 logged on its entity as *the command did not reach the device*.
