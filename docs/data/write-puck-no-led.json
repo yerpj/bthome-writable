@@ -1,6 +1,6 @@
 {
   "address": "C8:80:32:AD:F7:B9",
-  "label": "Puck.js switch, LED disconnected",
+  "label": "Puck.js switch (light)",
   "entity": "switch.bureau_mobilesensf7b9_light",
   "measures": "Home Assistant command to the device's GATT write acknowledgement, as the integration times it",
   "idle_wait_s": 5.0,

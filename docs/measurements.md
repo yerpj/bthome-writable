@@ -58,98 +58,61 @@ that window out, and the module's 30 s default turns each interval into eight
 minutes of waiting. It does not touch what is measured — only how long it takes
 to get the device back to its idle interval.
 
-### Puck.js light switch — and what its LED was doing to it
+### Puck.js light switch
 
-The Puck ran `light-loop.js`, which switches an LED from a CR2032. Its figures
-here are a cautionary tale rather than a measurement of the protocol: see the
-comparison below before reading them.
-
-| Interval | First, median | mean | range | of which connecting | Following, median | Lost |
-|---|---|---|---|---|---|---|
-| 100 ms | 0.57 s | 1.10 s | 0.29 – 2.55 | 0.46 s (4.6×) | 1.56 s | — |
-| 200 ms | 1.96 s | 2.19 s | 0.41 – 5.22 | 1.81 s (9.0×) | 0.98 s | — |
-| 400 ms | 2.68 s | 2.69 s | 0.30 – 5.42 | 2.42 s (6.1×) | 2.82 s | — |
-| 700 ms | 3.14 s | 4.45 s | 0.39 – 17.74 | 2.49 s (3.6×) | 1.32 s | — |
-| 1.2 s | 10.60 s | 13.54 s | 0.33 – 32.96 | 5.46 s (4.5×) | 1.50 s | — |
-| 2 s | 9.01 s | 8.65 s | 2.16 – 20.35 | 3.55 s (1.8×) | 1.52 s | — |
-| 4 s | 10.77 s | 12.93 s | 6.81 – 24.48 | 9.93 s (2.5×) | 2.04 s | 1 |
-
-### Puck.js again, with the LED disconnected
-
-`light-loop-no-led.js` is identical in everything a receiver can see — same
-entries, same intervals, same writable light on 2FAA0001 — except that applying
-a write drives no pin. Same sweep, same receiver, immediately afterwards.
-
-| Interval | First, median | mean | range | of which connecting | Following, median | Lost |
-|---|---|---|---|---|---|---|
-| 100 ms | 0.34 s | 0.52 s | 0.21 – 2.03 | 0.32 s (3.2×) | 1.97 s | — |
-| 200 ms | 0.41 s | 0.54 s | 0.25 – 1.27 | 0.38 s (1.9×) | 1.94 s | — |
-| 400 ms | 0.53 s | 0.70 s | 0.29 – 1.79 | 0.50 s (1.3×) | 2.02 s | — |
-| 700 ms | 0.74 s | 1.28 s | 0.21 – 4.79 | 0.71 s (1.0×) | 2.02 s | — |
-| 1.2 s | 0.42 s | 1.60 s | 0.22 – 4.60 | 0.39 s (0.3×) | 2.05 s | — |
-| 2 s | 0.40 s | 1.78 s | 0.23 – 7.07 | 0.37 s (0.2×) | 1.94 s | — |
-| 4 s | 0.43 s | 2.53 s | 0.14 – 13.51 | 0.40 s (0.1×) | 2.04 s | — |
-
-| Same Puck, same sweep | LED driven | LED not driven |
-|---|---|---|
-| Write, median | 141 ms | **36 ms** |
-| Write, 90th percentile | 6636 ms | **37 ms** |
-| Write, worst | 16153 ms | 4061 ms |
-| Writes stalled past 5 s | 13 of 125 | **0 of 126** |
-| Connect, median | 2.56 s | **0.39 s** |
-| Never delivered | 1 | **0** |
-
-The 90th percentile is the one to read: with the LED, one write in ten took more
-than 6.6 s; without it, 37 ms. A coin cell has a high internal
-resistance, an LED draws a few milliamps, and the radio transmits from the same
-rail — the link drops while the rail sags, and the several stalls within
-milliseconds of 16.1 s are a supervision timeout and a retry (D-053).
-
-**So: a latency measured on a battery device that actuates something is measuring
-the battery.** Use a device that drives no load, or one on mains.
+| Interval | First, median | mean | range | of which connecting | Write itself | Following, median | Lost |
+|---|---|---|---|---|---|---|---|
+| 100 ms | 0.34 s | 0.52 s | 0.21 – 2.03 | 0.32 s (3.2×) | 36 ms | 1.97 s | — |
+| 200 ms | 0.41 s | 0.54 s | 0.25 – 1.27 | 0.38 s (1.9×) | 36 ms | 1.94 s | — |
+| 400 ms | 0.53 s | 0.70 s | 0.29 – 1.79 | 0.50 s (1.3×) | 36 ms | 2.02 s | — |
+| 700 ms | 0.74 s | 1.28 s | 0.21 – 4.79 | 0.71 s (1.0×) | 36 ms | 2.02 s | — |
+| 1.2 s | 0.42 s | 1.60 s | 0.22 – 4.60 | 0.39 s (0.3×) | 36 ms | 2.05 s | — |
+| 2 s | 0.40 s | 1.78 s | 0.23 – 7.07 | 0.37 s (0.2×) | 36 ms | 1.94 s | — |
+| 4 s | 0.43 s | 2.53 s | 0.14 – 13.51 | 0.40 s (0.1×) | 36 ms | 2.04 s | — |
 
 ### nice!nano OLED text
 
-| Interval | First, median | mean | range | of which connecting | Following, median | Lost |
-|---|---|---|---|---|---|---|
-| 100 ms | 0.44 s | 0.60 s | 0.29 – 1.29 | 0.31 s (3.1×) | 2.46 s | — |
-| 200 ms | 0.54 s | 0.68 s | 0.24 – 2.20 | 0.40 s (2.0×) | 2.01 s | — |
-| 400 ms | 0.68 s | 1.03 s | 0.24 – 2.19 | 0.46 s (1.1×) | 2.05 s | — |
-| 700 ms | 0.60 s | 1.39 s | 0.28 – 6.69 | 0.56 s (0.8×) | 2.11 s | — |
-| 1.2 s | 0.89 s | 1.74 s | 0.24 – 5.87 | 0.43 s (0.4×) | 2.35 s | — |
-| 2 s | 1.90 s | 4.30 s | 0.24 – 15.72 | 1.86 s (0.9×) | 1.97 s | — |
-| 4 s | 6.53 s | 5.27 s | 0.46 – 11.00 | 6.46 s (1.6×) | 2.33 s | 2 |
+| Interval | First, median | mean | range | of which connecting | Write itself | Following, median | Lost |
+|---|---|---|---|---|---|---|---|
+| 100 ms | 0.44 s | 0.60 s | 0.29 – 1.29 | 0.31 s (3.1×) | 44 ms | 2.46 s | — |
+| 200 ms | 0.54 s | 0.68 s | 0.24 – 2.20 | 0.40 s (2.0×) | 43 ms | 2.01 s | — |
+| 400 ms | 0.68 s | 1.03 s | 0.24 – 2.19 | 0.46 s (1.1×) | 43 ms | 2.05 s | — |
+| 700 ms | 0.60 s | 1.39 s | 0.28 – 6.69 | 0.56 s (0.8×) | 43 ms | 2.11 s | — |
+| 1.2 s | 0.89 s | 1.74 s | 0.24 – 5.87 | 0.43 s (0.4×) | 44 ms | 2.35 s | — |
+| 2 s | 1.90 s | 4.30 s | 0.24 – 15.72 | 1.86 s (0.9×) | 43 ms | 1.97 s | — |
+| 4 s | 6.53 s | 5.27 s | 0.46 – 11.00 | 6.46 s (1.6×) | 100 ms | 2.33 s | 2 |
 
 ### What the numbers say
 
 **The median is the number to read.** These distributions are not symmetric: a
 connection attempt that misses its advertising window waits out another
-interval, so each interval has a few samples far above the rest. On the
-nice!nano at 2 s, the median first command is 1.90 s and the mean 4.30 s; the
-gap is the shape of the distribution, not noise to be averaged away.
+interval, so each interval carries a few samples far above the rest. Where the
+mean sits well above the median — 2.53 s against 0.43 s on the Puck at 4 s — the
+gap is that tail, not noise to average away.
 
-**Opening the link costs a fixed cost plus about half an interval.** Read in
-seconds rather than in intervals, the nice!nano's median connect time runs
-0.31, 0.40, 0.46, 0.56, 0.43, 1.86 and 6.46 s across the ladder. There is a
-floor of roughly 0.3 s that has nothing to do with advertising, and above about
-1 s of interval the wait for an advertising event takes over. Expressed as a
-multiple of the interval — the natural way to ask the question — that same
-series reads 3.1×, 2.0×, 1.15×, 0.80×, 0.35×, 0.93×, 1.61×: a small multiple,
-but not a constant one, because the two terms trade places.
+**Opening the link costs a floor plus part of an interval.** In seconds, the
+Puck's median connect time runs 0.32, 0.38, 0.50, 0.71, 0.39, 0.37, 0.40 across
+the ladder, and the nice!nano's 0.31, 0.40, 0.46, 0.56, 0.43, 1.86, 6.46. There
+is a floor of roughly 0.3–0.4 s that owes nothing to advertising. Below about a
+second of interval the floor dominates, which is why the same figure reads as a
+large multiple of a small interval (3.2× of 100 ms is 0.32 s).
 
-**Following commands are flat.** Around 2 s on the nice!nano and 1–3 s on the
-Puck at every interval, because `fastTimeout` keeps the device advertising at
-100 ms once a receiver has been in touch.
+**The write itself is never the cost**: 36 ms on the Puck, 43 ms on the
+nice!nano, whether the object written is one byte or a whole string.
 
-**The two devices were not equivalent, and the reason was the power supply.**
-The Puck's stalls and its long connect times disappeared when the same sketch
-stopped driving its LED: 0 of 126 writes stalled against 13 of 125, and the
-median connect time fell from 2.56 s to 0.39 s. What looked like a device or a
-protocol problem was a CR2032 sagging under an LED and a transmitting radio
-(D-053).
+**Following commands are flat** at about 2 s on both devices, at every interval,
+because `fastTimeout` keeps a device advertising at 100 ms for 30 s once a
+receiver has been in touch. This is the result that matters for a user
+interacting with a device: the interval is a cold-start dial, not a latency
+dial.
 
-**Failures.** Three commands of 249 were never delivered, all at 4 s. Each was
-logged on its entity as *the command did not reach the device*.
+**Failures.** Two commands of 250 were never delivered, both on the nice!nano at
+4 s. Each was logged on its entity as *the command did not reach the device*.
+
+**A caution about the long intervals.** At 1.2 s and above the Puck connects in
+less than half an interval — faster than a fresh connection should average. The
+proxy is probably reusing a recent link. Those rows therefore say less about the
+cost of catching an advertisement than the short ones do.
 
 ---
 

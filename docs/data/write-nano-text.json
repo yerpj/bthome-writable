@@ -1,6 +1,6 @@
 {
   "address": "CD:F5:77:3A:B2:16",
-  "label": "nice!nano text, USB powered",
+  "label": "nice!nano text (OLED)",
   "entity": "text.espruino_b216_text",
   "measures": "Home Assistant command to the device's GATT write acknowledgement, as the integration times it",
   "idle_wait_s": 5.0,
