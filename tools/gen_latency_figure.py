@@ -31,19 +31,24 @@ TICKS = (100, 200, 500, 1000, 2000, 5000, 10000)
 
 
 def totals(samples: list[dict]) -> list[float]:
-    """Seconds per command that landed.
+    """Seconds per command that landed, whichever sweep produced it.
 
-    The bench-host sweep records its phases separately (catch the advertising,
-    connect, write); the Home Assistant one can only see the whole thing, since
-    its witness is the device itself. Both add up to one response time.
+    Three shapes, one meaning. The bench-host sweep records its phases in
+    seconds (catch the advertising, connect, write); the witness sweep sees only
+    the whole thing; the write sweep reads Home Assistant's own timing in
+    milliseconds. All add up to one response time.
     """
-    return [
-        s["total"]
-        if "total" in s
-        else s.get("discover", 0.0) + s["connect"] + s["write"]
-        for s in samples
-        if not s.get("failed")
-    ]
+    out = []
+    for s in samples:
+        if s.get("failed"):
+            continue
+        if "total_ms" in s:
+            out.append(s["total_ms"] / 1000)
+        elif "total" in s:
+            out.append(s["total"])
+        else:
+            out.append(s.get("discover", 0.0) + s["connect"] + s["write"])
+    return out
 
 
 def series(dataset: dict, case: str) -> list[tuple[int, float, float, float]]:
@@ -187,9 +192,9 @@ def render(datasets: list[dict]) -> str:
   }}
 </style>
 <h1>Response time against advertising interval</h1>
-<p class="sub">One command, end to end: from the bench host, catching an advertisement,
-connecting and writing; through Home Assistant, until the device itself shows it acted.
-Mean of three (first) and five (following) commands; whiskers are the spread.</p>
+<p class="sub">From the command reaching Home Assistant to the device acknowledging the
+GATT write. Mean of three commands issued after 35&nbsp;s of silence, and of four issued
+straight afterwards; whiskers span the samples.</p>
 <div style="position:relative">
 <svg width="{W}" height="{H}" viewBox="0 0 {W} {H}">
 {body}

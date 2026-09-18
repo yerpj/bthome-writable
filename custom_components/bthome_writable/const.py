@@ -52,6 +52,11 @@ READ_RETRY: Final = 10.0
 one central at a time, so a read can fail simply because a phone or the Web IDE
 holds the link; the next advertisement after this retries it."""
 
+EVENT_WRITE: Final = "bthome_writable_write"
+"""Fired after each acknowledged write, with where its time went: `queued_ms`,
+`connect_ms`, `write_ms`, `total_ms`. `connect_ms` is mostly the wait to catch
+the device advertising, which is what its advertising interval buys or costs."""
+
 CONF_BINDKEY: Final = "bindkey"
 CONF_WRITE_COUNTER: Final = "write_counter"
 

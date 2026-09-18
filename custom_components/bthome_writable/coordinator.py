@@ -25,6 +25,7 @@ from .const import (
     COUNTER_STRIDE,
     DEFAULT_MAX_CONNECTIONS,
     DEFAULT_MTU_PAYLOAD,
+    EVENT_WRITE,
     MIN_MTU,
     READ_RETRY,
     RESYNC_JUMP,
@@ -117,7 +118,7 @@ class BTHomeWritableCoordinator:
 
         self._listeners: list[Callable[[], None]] = []
         self._write_listeners: list[WriteListener] = []
-        self._pending: list[tuple[int, bytes, bool]] = []
+        self._pending: list[tuple[int, bytes, bool, float]] = []
         self._pending_lock = asyncio.Lock()
         self._flush_task: asyncio.Task[None] | None = None
         self._semaphore = connection_semaphore(max_connections)
@@ -335,7 +336,10 @@ class BTHomeWritableCoordinator:
                 self._pending = [
                     item for item in self._pending if not (item[0] == entry and item[2])
                 ]
-            self._pending.append((entry, value, coalesce))
+            # Stamped here, where the command arrives, so that what is reported
+            # afterwards measures the whole journey rather than the part that
+            # happens to be easy to see.
+            self._pending.append((entry, value, coalesce, time.monotonic()))
             if self._flush_task is None or self._flush_task.done():
                 self._flush_task = self.hass.async_create_task(self._flush_soon())
 
@@ -367,7 +371,7 @@ class BTHomeWritableCoordinator:
             if not batch:
                 return
 
-            written: list[tuple[int, bytes, bool]] = []
+            written: list[tuple[int, bytes, bool, float]] = []
             try:
                 await self._write_now(batch, written)
             except Exception as caught:  # broad on purpose: reported to listeners
@@ -385,8 +389,8 @@ class BTHomeWritableCoordinator:
 
     async def _write_now(
         self,
-        batch: list[tuple[int, bytes, bool]],
-        written: list[tuple[int, bytes, bool]],
+        batch: list[tuple[int, bytes, bool, float]],
+        written: list[tuple[int, bytes, bool, float]],
     ) -> None:
         """Deliver a batch over one connection, one write with response each.
 
@@ -429,8 +433,9 @@ class BTHomeWritableCoordinator:
                 name=self.address,
                 max_attempts=2,
             )
+            connected = time.monotonic()
             try:
-                for number, value, coalesce in batch:
+                for number, value, coalesce, queued_at in batch:
                     entry = self.entry(number)
                     if entry is None:
                         raise WriteFailed(
@@ -445,11 +450,21 @@ class BTHomeWritableCoordinator:
                             self.next_write_counter(),
                         )
                     await self._check_mtu(client, payload)
+                    write_started = time.monotonic()
                     await self._write_characteristic(client, entry, payload)
+                    acknowledged = time.monotonic()
                     if coalesce:
                         # Events leave no state behind; everything else does.
                         self._values[number] = value
-                    written.append((number, value, coalesce))
+                    written.append((number, value, coalesce, queued_at))
+                    self._report_timing(
+                        number,
+                        queued_at=queued_at,
+                        connect_started=started,
+                        connected=connected,
+                        write_started=write_started,
+                        acknowledged=acknowledged,
+                    )
             finally:
                 await client.disconnect()
 
@@ -459,6 +474,36 @@ class BTHomeWritableCoordinator:
             len(batch),
             "y" if len(batch) == 1 else "ies",
             (time.monotonic() - started) * 1000,
+        )
+
+    def _report_timing(
+        self,
+        entry: int,
+        *,
+        queued_at: float,
+        connect_started: float,
+        connected: float,
+        write_started: float,
+        acknowledged: float,
+    ) -> None:
+        """Say how long a write took, split where the time actually goes.
+
+        Fired as an event rather than logged, so that anyone can watch it: the
+        interesting question -- how much of a command is spent waiting to catch
+        the device advertising -- is answered by `connect_ms`, and the answer
+        depends on the device's advertising interval rather than on anything
+        Home Assistant does (`docs/measurements.md`).
+        """
+        self.hass.bus.async_fire(
+            EVENT_WRITE,
+            {
+                "address": self.address,
+                "entry": entry,
+                "queued_ms": round((connect_started - queued_at) * 1000, 1),
+                "connect_ms": round((connected - connect_started) * 1000, 1),
+                "write_ms": round((acknowledged - write_started) * 1000, 1),
+                "total_ms": round((acknowledged - queued_at) * 1000, 1),
+            },
         )
 
     async def _write_characteristic(

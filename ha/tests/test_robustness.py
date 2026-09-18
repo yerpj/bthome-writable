@@ -8,16 +8,18 @@ as something else (D-042, D-043).
 
 from __future__ import annotations
 
+import time
 from unittest.mock import patch
 
 from homeassistant.const import STATE_ON, STATE_UNKNOWN
 from homeassistant.core import HomeAssistant
 import pytest
 
+from custom_components.bthome_writable.const import EVENT_WRITE
 from custom_components.bthome_writable.coordinator import connection_semaphore
 from custom_components.bthome_writable.entity import LOGBOOK_ENTRY
 
-from .conftest import UUID_TEMPLATE, settle, setup_device
+from .conftest import DEFAULT_ADDRESS, UUID_TEMPLATE, settle, setup_device
 
 pytestmark = pytest.mark.usefixtures("custom_integration")
 
@@ -121,8 +123,11 @@ async def test_a_batch_that_fails_part_way_reports_what_did_arrive(
 
     gatt.fail_after = 1
     batch: list = []
+    now = time.monotonic()
     with pytest.raises(RuntimeError):
-        await coordinator._write_now([(1, b"\x01", True), (2, b"\x01", True)], batch)
+        await coordinator._write_now(
+            [(1, b"\x01", True, now), (2, b"\x01", True, now)], batch
+        )
 
     assert [item[0] for item in batch] == [1]
     assert coordinator.value_of(1) == b"\x01"
@@ -155,3 +160,48 @@ def test_the_connection_cap_is_one_semaphore_for_the_whole_host() -> None:
     """D-003: the cap protects the adapter's slots, a host resource."""
     assert connection_semaphore(2) is connection_semaphore(2)
     assert connection_semaphore(2) is not connection_semaphore(3)
+
+
+async def test_a_write_reports_where_its_time_went(
+    hass: HomeAssistant, radio, gatt
+) -> None:
+    """The one boundary a receiver can measure and a user cares about: from the
+    command arriving to the device acknowledging the write. Split, because the
+    interesting part is `connect_ms` -- mostly the wait to catch the device
+    advertising, which is what its advertising interval costs (D-050)."""
+    events: list[dict] = []
+    hass.bus.async_listen(EVENT_WRITE, lambda event: events.append(event.data))
+
+    await setup_device(hass, radio, "single-light")
+    gatt.declare(1)
+    await hass.services.async_call(
+        "switch", "turn_on", {"entity_id": LIGHT}, blocking=True
+    )
+    await settle(hass)
+
+    assert len(events) == 1
+    timing = events[0]
+    assert timing["entry"] == 1
+    assert timing["address"] == DEFAULT_ADDRESS
+    for phase in ("queued_ms", "connect_ms", "write_ms", "total_ms"):
+        assert timing[phase] >= 0
+    # The total covers the whole journey, so it cannot be shorter than its parts.
+    assert timing["total_ms"] >= timing["connect_ms"] + timing["write_ms"] - 0.1
+
+
+async def test_a_failed_write_reports_no_timing(
+    hass: HomeAssistant, radio, gatt
+) -> None:
+    """A write that never landed has no delivery time to report."""
+    events: list[dict] = []
+    hass.bus.async_listen(EVENT_WRITE, lambda event: events.append(event.data))
+
+    await setup_device(hass, radio, "single-light")
+    gatt.declare(1)
+    gatt.fail_on_write = RuntimeError("device disconnected")
+    await hass.services.async_call(
+        "switch", "turn_on", {"entity_id": LIGHT}, blocking=True
+    )
+    await settle(hass)
+
+    assert events == []

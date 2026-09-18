@@ -79,16 +79,29 @@ Witness: the device's own light sensor, read back as a Home Assistant sensor.
 
 | Interval | First command | Spread | Following commands | Failed |
 |---|---|---|---|---|
-| 100 ms | 4.99 s | 1.23 – 12.49 | 1.51 s | 1 |
-| 200 ms | 1.43 s | 1.24 – 1.63 | 1.73 s | 1 |
-| 500 ms | 3.40 s | 3.19 – 3.60 | 2.09 s | 1 |
-| 1 s | 3.70 s | 2.02 – 5.49 | 3.05 s | 1 |
-| 2 s | 8.27 s | 7.69 – 8.94 | 2.60 s | — |
-| 5 s | 11.47 s | 8.48 – 14.75 | 9.88 s | 1 |
-| 10 s | 24.55 s | 14.39 – 33.99 | 17.94 s | 2 |
+| 100 ms | 1.65 s | 0.85 – 2.41 | 1.35 s | — |
+| 200 ms | 2.43 s | 0.87 – 3.23 | 2.80 s | 1 |
+| 500 ms | 2.27 s | 2.00 – 2.80 | 2.28 s | 1 |
+| 1 s | 3.96 s | 2.03 – 5.89 | 1.35 s | 1 |
+| 2 s | 4.98 s | 2.79 – 8.59 | 12.39 s | 3 |
+| 5 s | 24.12 s | 19.86 – 28.38 | 2.06 s | 3 |
+| 10 s | 21.75 s | 18.97 – 24.54 | 1.53 s | 1 |
 
-Seven of 49 commands never produced a visible effect. Home Assistant logged each
-on the entity: *the command did not reach the device … Failed to connect.*
+Ten of 49 commands never produced a visible effect. Home Assistant logged each
+on the entity: *the command did not reach the device … Failed to connect.* The
+2 s row rests on a single surviving sample of the following commands, which is
+why it reads worse than its neighbours; treat it as noise rather than as shape.
+
+**Before and after D-051**, which made a write republish at once. The figures
+above are the "after"; the earlier run is kept in
+`data/ha-puck-switch-before-d051.json`. The effect is where it was predicted, in
+the commands that follow one another:
+
+| Interval | Following commands, before | after |
+|---|---|---|
+| 1 s | 3.05 s | 1.35 s |
+| 5 s | 9.88 s | 2.06 s |
+| 10 s | 17.94 s | 1.53 s |
 
 ### nice!nano text, through Home Assistant
 
@@ -146,10 +159,10 @@ interval, watched on the air by a host scanner:
 
 And with the link already open, Home Assistant showed the change 0.3–0.7 s after
 the write. So the device answers in well under a second at any interval, and
-what remains in the through-Home-Assistant tables above is Home Assistant
-opening a connection — which is also where its failures are. Those tables were
-measured before the fix; the curve they show for the Puck's following commands
-is the behaviour D-051 removed.
+what remains in the through-Home-Assistant tables is Home Assistant opening a
+connection — which is also where its failures are. The Puck's table above was
+re-measured after the fix and its following-commands column no longer climbs
+with the interval.
 
 **The receiver matters as much as the device.** At a 5 s interval the same kind
 of first command takes 33 s from this Windows host and 8 s through Home
