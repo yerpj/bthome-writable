@@ -1,6 +1,6 @@
 # BTHome Writable — protocol specification
 
-**Version:** 2.0-draft.1 · **Status:** DRAFT, nothing frozen · **License:** MIT
+**Version:** 2.0-draft.2 · **Status:** DRAFT, nothing frozen · **License:** MIT
 
 BTHome standardizes a BLE **uplink**: a device broadcasts its state in
 advertising, a receiver parses it. It has no **downlink**. This document
@@ -222,12 +222,29 @@ Readability is required by §3.2 and optional otherwise. A receiver MUST NOT rea
 characteristic after writing it merely to confirm the write; the write response
 already does that.
 
-### 4.4 MTU and long writes
+### 4.4 Size of a write
 
-Receivers SHOULD negotiate an ATT MTU of at least 64 bytes. Devices SHOULD support
-queued (long) writes so that text is not limited by the MTU. At the default MTU of
-23 a write carries at most 20 bytes, which excludes most text; implementations
-MUST document the limit rather than silently truncate.
+**A write MUST fit in one ATT Write Request, and therefore carries at most
+`ATT_MTU - 3` bytes** — the opcode and the attribute handle take the other three.
+That is the protocol's ceiling on how much can be sent to a device at once.
+
+For an object that is length-prefixed, two of those bytes are its own framing:
+text (`0x53`) carries at most `ATT_MTU - 5` characters. A device MAY accept less
+than the MTU allows, since its characteristic declares a maximum length of its
+own; the effective ceiling is the smaller of the two, and a receiver discovers it
+only by being refused.
+
+**Fragmentation is out of scope.** This specification defines no way to split a
+value across several writes: no sequence numbers, no assembly rule, and no
+statement about what a device shows between the pieces. A receiver MUST NOT
+attempt a queued (long) write, and MUST NOT silently truncate a value that does
+not fit: it refuses the command and says so, as it would for any other write that
+cannot be delivered (§6).
+
+Receivers SHOULD negotiate an ATT MTU of at least 64 bytes, which raises the
+ceiling; at BLE's guaranteed 23 a write carries 20 bytes, enough for every
+fixed-length object and for 18 characters of text. Implementations MUST document
+the limit they end up with rather than leave a user to discover it.
 
 ---
 
@@ -402,3 +419,6 @@ Open items:
 2. **UUIDs are provisional** (D-001).
 3. **Settings revision in the Espruino module.** The upstream `BTHome` module has
    no type for `0x65` yet; devices use its `raw` escape hatch until it does.
+
+Settled since draft.1: the size of a write is `ATT_MTU - 3` and fragmentation is
+out of scope (§4.4, `decisions.md` D-058).

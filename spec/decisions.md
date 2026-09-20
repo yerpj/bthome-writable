@@ -2422,3 +2422,40 @@ Worth noting for anyone reading the latency figures: they were taken in a
 building with five strong access points parked on the one WiFi channel that
 overlaps BLE's first advertising channel. A quieter site should do better, and
 a site with access points on channels 1, 6 and 11 would do worse.
+
+## D-058 — The size of a write is MTU−3, and fragmentation is out of scope  [DECISION, owner]
+
+2026-09-20, ruled by the owner after asking whether a long text is sent as
+several messages. It is not, and now the specification says so rather than
+wishing otherwise.
+
+**The rule (§4.4, rewritten).** A write carries one object in one ATT Write
+Request, so at most `ATT_MTU - 3` bytes: the opcode and the attribute handle take
+the other three. For a length-prefixed object two more are its own framing, so
+text carries `ATT_MTU - 5` characters. A device may accept less, its
+characteristic declaring a maximum of its own; the effective ceiling is the
+smaller of the two.
+
+**What changed.** Draft.1 said devices SHOULD support queued (long) writes "so
+that text is not limited by the MTU". That was aspirational: D-017 measured a
+payload above `MTU - 3` being refused outright by the stack, with no attempt at a
+prepared write, and no implementation has ever done otherwise. The specification
+now states the limit as a limit, requires a receiver not to attempt long writes,
+and forbids silent truncation — a value that does not fit is a command that
+fails, visibly, like any other.
+
+**Fragmentation stays out of scope.** Splitting a value across several writes
+would need sequence numbers, an assembly rule, and a statement about what a
+device displays between the pieces. None of that exists, and inventing it here
+would be inventing a data format, which this extension exists not to do. It also
+would not be free: each piece is a separate command, and a command costs a
+connection — about two seconds on this bench (D-054), so a 300-character message
+would take six.
+
+Consequences recorded elsewhere: `PLATFORMS.md` states the ceiling for the text
+platform, and the integration already refuses an over-long write rather than
+truncating it (`_check_mtu`).
+
+The specification moves to **2.0-draft.2**. Worth mentioning to Gordon as a
+tightening rather than a change of mechanism: it says what every implementation
+already does.

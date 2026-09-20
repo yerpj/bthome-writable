@@ -56,11 +56,11 @@ Without HA, the same loop from a terminal — exit status 0 only if the measured
 illuminance actually moved with the commanded state:
 `python -m tools.closed_loop --address <mac>`.
 
-## What version 2 settled, and what is still open
+## What version 2 settled
 
 Version 1 was a positional bitmask and a write-all payload: every write carried
 every writable object, addressed by where it sat in the packet. Three of the four
-questions that raised are gone with it.
+questions that raised are gone with it, and the fourth has been ruled on.
 
 - **One characteristic per entry.** Entry *k* is served at `2FAAkkkk-…`, and a
   write touches nothing else. Events are writable now: `0x3B command` has no
@@ -72,10 +72,13 @@ questions that raised are gone with it.
   and bumps BTHome's settings revision (`0x65`); a receiver reads them again when
   it changes, and on first sight. Everything else is shown as assumed state.
 
-Still open, and worth an opinion:
+Settled, and worth knowing before you design around it:
 
-1. **MTU−3 is a hard ceiling** for a write; there is no long-write fallback.
-   48 characters of text at MTU 53, ~18 at MTU 23.
+1. **A write is capped at `ATT_MTU − 3` bytes**, and fragmentation is out of
+   scope: 48 characters of text at MTU 53, 18 at BLE's guaranteed 23. Decided
+   rather than left open (§4.4) — splitting a value across writes would need
+   sequence numbers and an assembly rule, which is a data format, which this
+   extension exists not to invent.
 2. **A write-only value has nothing to read back.** That is by design — the
    device is the authority on whether it applied a write — but it means a lost
    write on a text display is invisible to the receiver.

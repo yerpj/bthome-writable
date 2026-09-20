@@ -106,10 +106,12 @@ characteristic. So the entity's state is what the receiver last sent, and it is
 unknown until something is sent — including after a restart. Restoring a
 remembered value would assert something the receiver cannot check.
 
-The maximum length is not knowable from here: it is the smaller of the
-negotiated MTU minus its framing and the device's own write buffer — 48
-characters on one board measured, 126 on another (`decisions.md` D-017, D-035).
-A receiver should let the device refuse rather than guess a limit.
+The maximum length is `ATT_MTU - 5` characters — three bytes of ATT framing and
+two of the object's own (§4.4) — or less, where the device's characteristic
+declares a smaller maximum: 48 characters on one board measured, 126 on another
+(`decisions.md` D-017, D-035). Nothing splits a longer value across several
+writes, by design, so a receiver lets the device refuse rather than guessing, and
+reports the refusal rather than truncating.
 
 ### `button` — event objects
 
