@@ -23,6 +23,37 @@ about 0.5 s longer to establish a link than BlueZ does, and it stops delivering
 advertisements for several seconds after a disconnect (D-047). Where that
 matters, the section says so.
 
+## The radio conditions
+
+Every timing in this file was measured in these conditions, and several of them
+depend on it. Surveyed 2026-09-20; repeat with
+`netsh wlan show networks mode=bssid` on the bench host.
+
+| | |
+|---|---|
+| **2.4 GHz access points in range** | 5, **all on WiFi channel 1**, all at full signal, mean channel utilisation 33 % |
+| **5 GHz access points in range** | 11 — they cost BLE nothing |
+| **Other BLE devices advertising** | 8 to 13, depending on the scan |
+| **Puck.js heard by** | the bench host at −42 dBm, the Raspberry Pi at −56 dBm |
+| **nice!nano heard by** | the bench host at −62 dBm, the Raspberry Pi at −63 dBm |
+
+WiFi channel 1 spans 2401–2423 MHz. BLE advertises on 2402, 2426 and 2480 MHz,
+so **one of the three advertising channels sits under a permanently busy
+transmitter** — and it is channel 37, the first one a scanner listens on. The
+building has nothing on WiFi channels 6 or 11, which would otherwise impair
+channel 38 as well.
+
+This is not a footnote. A device at −66 dBm should have 24 dB of margin against a
+BLE receiver's −90 dBm sensitivity, yet at that level a first command took five
+times as long as at −44 dBm (§ below, and D-056). A quieter site will do better
+than these figures; a site with access points spread over channels 1, 6 and 11
+will do worse. Treat the numbers here as this building's, not the protocol's.
+
+The two devices are also 20 dB apart as one receiver hears them, the nice!nano
+being the weaker despite sitting closer to the bench host — a property of that
+board's antenna and matching, and the reason its figures are slightly worse
+throughout (D-056).
+
 ---
 
 ## 1. From a command to the write acknowledgement
