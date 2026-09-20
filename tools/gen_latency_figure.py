@@ -2,7 +2,9 @@
 
 Reads the JSON `tools.latency_sweep` writes and renders one figure with a curve
 per device and per case — the first command after an idle period, and the
-commands that follow it. The x axis is logarithmic because the sweep is:
+commands that follow it. Each point is the mean of that interval's samples, and
+nothing is drawn around it: the figure is for the shape of the curve, and the
+spread belongs in the tables. The x axis is logarithmic because the sweep is:
 100 ms to 5 s spans most of two decades, and the interesting part is at the top.
 
     python -m tools.gen_latency_figure docs/data/*.json \
@@ -52,25 +54,20 @@ def totals(samples: list[dict]) -> list[float]:
 
 
 def series(dataset: dict, case: str) -> list[tuple[int, float, float, float]]:
-    """(interval, median, min, max) per interval, for one case.
+    """(interval, mean) per interval, for one case.
 
-    The median, not the mean: a connection attempt that misses its advertising
-    window waits out another interval, so every interval has a few samples far
-    above the rest. A mean follows those; the median says what usually happens,
-    and the whiskers show how far the rest reach.
+    One number per point and nothing else. These distributions are skewed -- a
+    connection attempt that misses its advertising window waits out another one,
+    so every interval has a few samples far above the rest -- and the figure no
+    longer says so: it is the shape of the curve, not the spread around it. The
+    spread is in `measurements.md`, which gives the median, the mean and the
+    full range side by side.
     """
     out = []
     for row in dataset["results"]:
         values = totals(row[case])
         if values:
-            out.append(
-                (
-                    row["interval_ms"],
-                    statistics.median(values),
-                    min(values),
-                    max(values),
-                )
-            )
+            out.append((row["interval_ms"], statistics.fmean(values)))
     return sorted(out)
 
 
@@ -86,18 +83,20 @@ def y_of(seconds: float, top: float) -> float:
 def svg(datasets: list[dict]) -> str:
     peak = max(
         (
-            point[3]
+            point[1]
             for data in datasets
             for case in ("first", "consecutive")
             for point in series(data, case)
         ),
         default=1.0,
     )
-    top = math.ceil(peak / 5) * 5 or 5
+    # Round up to the next tick rather than the next five, so that dropping the
+    # whiskers actually buys the vertical room it was supposed to.
+    step = 5 if peak > 24 else (2 if peak > 9 else 1)
+    top = math.ceil(peak / step) * step or step
     parts: list[str] = []
 
     # Horizontal grid and the seconds axis.
-    step = 5 if top > 12 else (2 if top > 6 else 1)
     value = 0
     while value <= top:
         y = y_of(value, top)
@@ -144,13 +143,8 @@ def svg(datasets: list[dict]) -> str:
                 f'<path d="{path}" fill="none" stroke="{colour}" stroke-width="2.4"'
                 f' stroke-dasharray="{dash}" stroke-linejoin="round"/>'
             )
-            for interval, mean, low, high in points:
+            for interval, mean in points:
                 x = x_of(interval)
-                parts.append(
-                    f'<line x1="{x:.1f}" y1="{y_of(low, top):.1f}" x2="{x:.1f}"'
-                    f' y2="{y_of(high, top):.1f}" stroke="{colour}" stroke-width="1"'
-                    f' opacity="0.45"/>'
-                )
                 parts.append(
                     f'<circle cx="{x:.1f}" cy="{y_of(mean, top):.1f}" r="3.4"'
                     f' fill="{"#fff" if case == "consecutive" else colour}"'
@@ -209,8 +203,8 @@ def render(datasets: list[dict]) -> str:
 </style>
 <h1>Response time against advertising interval</h1>
 <p class="sub">From the command reaching Home Assistant to the device acknowledging the
-GATT write. Median of ten commands issued after a quiet period, and of eight issued
-straight afterwards; whiskers span every sample.</p>
+GATT write. Mean of ten commands issued after a quiet period, and of eight issued
+straight afterwards.</p>
 <div style="position:relative">
 <svg width="{W}" height="{H}" viewBox="0 0 {W} {H}">
 {body}

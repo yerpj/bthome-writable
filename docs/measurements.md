@@ -62,7 +62,9 @@ throughout (D-056).
 connection build (D-059). The sweep is `tools/latency_sweep_write.py`;
 `tools/summarise_latency.py` prints the tables below from the raw samples in
 `data/`, and the figure is
-[`figures/latency-vs-interval.png`](figures/latency-vs-interval.png).
+[`figures/latency-vs-interval.png`](figures/latency-vs-interval.png) — which plots
+the mean alone, with nothing drawn around it, so the curve's shape reads at a
+glance. The spread stays here, in the tables.
 
 ```
 python -m tools.latency_sweep_write --device puck --out docs/data/write-puck-switch.json
