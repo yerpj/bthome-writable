@@ -2340,3 +2340,49 @@ connection time measured in seconds.
 **Where it will cost something** is power, not latency: a peripheral with a less
 certain sleep clock must widen its receive windows around each connection event.
 That is a battery question, and this project has not measured battery.
+
+## D-056 — Signal level does change the first command, and by a lot  [VERIFY]
+
+2026-09-20, on the owner's question of whether RSSI explains the difference
+between the two devices. Unlike the clock (D-055), this one has a mechanism that
+operates at the right scale: a central cannot connect until it catches an
+advertising event, and an advertisement lost to a weak link costs a whole
+advertising interval.
+
+**The experiment.** One device, one position, one advertising interval (1.2 s),
+ten first commands per setting, and the only thing that changes is the device's
+transmit power. `tools/tx_power_experiment.py`.
+
+| Transmit power | Heard at | First command, median | worst | Lost |
+|---|---|---|---|---|
+| +4 dBm | −44 dBm | **0.38 s** | 3.52 s | 0 |
+| −8 dBm | −51 dBm | **0.67 s** | 5.29 s | 0 |
+| −20 dBm | −66 dBm | **1.87 s** | 7.11 s | 0 |
+
+**Twenty-two decibels multiply the median by five**, at a constant advertising
+interval, and nothing is lost: this is not a link that fails, it is a link that
+misses advertisements and waits out another interval each time. Roughly +0.3 s
+per 7 dB at this interval, which is a quarter of an interval per 7 dB.
+
+**And the two bench devices are far apart.** Measured in a single scan from one
+receiver, so the comparison is fair: **Puck.js −42 dBm, nice!nano −62 dBm**. The
+nice!nano radiates about 20 dB weaker although it sits closer to that receiver —
+an antenna or matching property of that board, not of the protocol. At the
+Raspberry Pi the gap is smaller, about 7 dB, which by the slope above predicts
+the nice!nano being a few tenths of a second slower at a 1.2 s interval. D-054
+measured it 0.84 s slower there: same sign, same order, and still inside the
+spread of ten samples.
+
+**So the ranking of causes for a slow first command is:** the advertising
+interval first, the link budget second, and the device's clock nowhere (D-055).
+
+### Two measurement notes worth keeping
+
+- **Home Assistant's RSSI is not a measurement.** Its diagnostics reported −62
+  then −65 dBm while the device's radiated level fell by 24 dB. It is whatever
+  the last advertisement happened to carry, and the scanner had not caught up.
+  The experiment therefore measures the level itself, with a scan.
+- **A background run can outlive its completion notice.** The first attempt at
+  this experiment was still driving the device's transmit power while a manual
+  check drove it too; both readings were worthless. Killed and re-run. Worth
+  remembering before trusting any bench result that overlapped another job.
