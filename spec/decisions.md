@@ -2386,3 +2386,39 @@ interval first, the link budget second, and the device's clock nowhere (D-055).
   this experiment was still driving the device's transmit power while a manual
   check drove it too; both readings were worthless. Killed and re-run. Worth
   remembering before trusting any bench result that overlapped another job.
+
+## D-057 — The band is busy where it matters, and that is as far as the evidence goes
+
+2026-09-20, on the owner's reading of D-056: if a merely 22 dB drop costs a
+factor of five, the link margin must be going somewhere, and a noisy 2.4 GHz
+band is the obvious candidate. Two measurements, one conclusive and one not.
+
+**The band, surveyed from the bench host.** Five access points in 2.4 GHz, *all
+of them on channel 1*, all at full signal, mean channel utilisation 33 %.
+WiFi channel 1 spans 2401–2423 MHz. BLE advertises on 2402, 2426 and 2480 MHz,
+so **one of the three advertising channels sits under a permanently busy
+transmitter**, and the other 11 access points in range are on 5 GHz where they
+cost nothing. That is a real, measured impairment of a third of the advertising
+surface, and it is consistent with what D-056 found: a link at −66 dBm, which
+should be comfortable against a −90 dBm sensitivity, behaving as if it were
+marginal.
+
+**The packet loss itself was not isolated.** The attempt: have the nice!nano
+scan for the Puck's advertisements at a known 1 s interval, counting what
+arrives, with the Puck at +4 and at −20 dBm. Alternating the two settings twice
+gave 49 %, 47 %, 78 %, 78 % of the expected events — the same numbers for both
+power levels, varying by run rather than by condition. The listener's own scan
+duty cycle dominates, and at this distance 24 dB of transmit power changes
+nothing it hears. Measuring reception properly needs a receiver whose scan
+window can be opened fully, which Espruino's `NRF.setScan` does not expose.
+
+**So:** the environment is demonstrably hostile on advertising channel 37, which
+is a good explanation for D-056's steep dependence on level, and it remains an
+explanation rather than a demonstration. What is measured stands on its own —
+level matters, and by a factor of five over 22 dB — whatever the reason turns
+out to be.
+
+Worth noting for anyone reading the latency figures: they were taken in a
+building with five strong access points parked on the one WiFi channel that
+overlaps BLE's first advertising channel. A quieter site should do better, and
+a site with access points on channels 1, 6 and 11 would do worse.
