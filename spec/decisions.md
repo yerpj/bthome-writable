@@ -2578,3 +2578,72 @@ changed nothing and the nice!nano's changed one boolean.
 twice over now. Each command opens its own connection, so every command in a
 burst re-enters the fast window, and the flat 0.3–0.5 s above is what that buys.
 Without it, D-059 would have made a burst cost one full first command per step.
+
+
+## D-061 — The tail at slow intervals is the receiver retrying, not the protocol  [VERIFY]
+
+**Status:** measured 2026-09-21, at the owner's request. *"Refais la mesure à 3.2
+et 5 secondes, je pense qu'il y a eu une anomalie quelque part."* There was one.
+
+**What looked wrong.** In D-060 the ladder stopped behaving at its last two
+paliers: the nice!nano's median first command *fell* from 11.72 s at 3.2 s to
+8.87 s at 5 s, and both devices dropped to 1.8× the interval there after sitting
+at 2.4–3.9× everywhere else.
+
+**The first thing found was that the numbers were not reproducible.** Re-running
+the same two paliers with twenty first commands each moved the median by 30 to
+50 %, on both devices, in both directions:
+
+| | 3.2 s, first run | re-run | 5 s, first run | re-run |
+|---|---|---|---|---|
+| Puck.js | 8.66 s | 5.59 s | 9.22 s | 13.46 s |
+| nice!nano | 11.68 s | 8.94 s | 8.83 s | 11.32 s |
+
+Noise around a true value does not move a median that far in both directions on
+both devices. Something discrete was being sampled.
+
+**Pooling both runs shows what.** 120 first commands at those two intervals, and
+the time to open the link falls into two groups separated by an **eleven-second
+hole with nothing in it**:
+
+| | n | range |
+|---|---|---|
+| opened the link | 103 | 0.1 – **19.4 s** |
+| *nothing* | 0 | 19.4 – 30.5 s |
+| opened it late | 12 | **30.5** – 49.8 s |
+
+The far group is 10 % of first commands, mean 37.7 s — and it **does not scale
+with the advertising interval** while the near group does. A cost identical at
+3.2 s and at 5 s is not made of advertising events.
+
+**It is `establish_connection(..., max_attempts=2)`.** An attempt that times out
+is followed by a second one, and the pair costs a fixed penalty on top of
+whatever the interval was going to cost. The five commands lost across the two
+campaigns are the case where the second attempt failed as well, inside the
+sweep's 60 s window. With ten samples per palier, catching one retry instead of
+three moves the median by seconds, which is exactly the instability observed.
+
+**What it does not change.** Not the protocol, and not the first five rows,
+where no sample fell in the far group. Excluding the retried commands, the link
+opens in **1.9–2.9× the interval** at 3.2 s and 5 s — the same two to three
+advertising events as everywhere else (D-060). The slow end of the ladder is not
+where the mechanism degrades; it is where a fixed 20-odd-second penalty becomes
+visible against a longer baseline instead of hiding in it.
+
+**What it does change.**
+
+- `docs/measurements.md` quotes those two rows from thirty samples, marked †,
+  and carries the two-group table. Every other row is still ten.
+- Ten samples is enough where the spread is one interval wide and not enough
+  where a second mechanism is mixed in. Any future ladder should run the slow
+  paliers longer, or filter the retried commands out and count them separately.
+- **Worth deciding before release:** whether `max_attempts=2` is right. It buys
+  a command that would otherwise be lost, at the price of a 40-second one. A
+  receiver that reported the failure at 20 s and let the user retry would be
+  more predictable; a receiver that retried in the background would be less
+  visible. This is the owner's call, and nothing here forces it.
+
+The figure plots the mean, which at these paliers includes the retry group: the
+nice!nano's *following* curve rises to 3.6 s at 5 s on the strength of two
+samples out of sixteen, the other fourteen sitting between 0.27 and 1.30 s. The
+tables give the median beside it.

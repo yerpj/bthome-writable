@@ -90,8 +90,8 @@ It is not left to the arithmetic of the idle waits. The sweep stamps every
 connection to the device, the ones that set the interval included, and records
 with each sample how long the device had been left alone **when the command was
 issued**. A first command counts only if that exceeds `fastTimeout`, a following
-one only if it does not; anything else is flagged and dropped. Across both
-campaigns, **251 delivered commands, none on the wrong side**.
+one only if it does not; anything else is flagged and dropped. Across every run
+here, **359 delivered commands, none on the wrong side**.
 
 The window was set to 8 s for the sweep (`bw.setFastTimeout(8000)`, restored to
 30 s afterwards) with a 12 s idle wait plus a random fraction of one interval
@@ -100,8 +100,10 @@ stays inside the window, short enough that waiting it out does not dominate the
 campaign. The sweep refuses to start unless the idle wait clears the window by
 3 s and the burst gap falls inside it.
 
-Ten first commands and eight following ones per interval, per device — 252
-measurements in all.
+Ten first commands and eight following ones per interval, per device. The two
+rows marked † pool a second run of the same paliers, made on 2026-09-21 because
+the first one's numbers there did not look right: thirty first commands each,
+and the reason is the subject of *The retries* below. **364 commands in all.**
 
 ### Puck.js light switch
 
@@ -112,8 +114,8 @@ measurements in all.
 | 400 ms | 1.01 s | 1.41 s | 0.35 – 5.12 | 0.98 s (2.4×) | 36 ms | 0.35 s | 0.00 s | — |
 | 800 ms | 1.99 s | 3.65 s | 0.33 – 14.36 | 1.95 s (2.4×) | 36 ms | 0.33 s | 0.00 s | — |
 | 1.6 s | 5.09 s | 5.87 s | 1.89 – 12.99 | 5.06 s (3.2×) | 36 ms | 0.46 s | 0.00 s | — |
-| 3.2 s | 8.70 s | 14.02 s | 3.39 – 40.20 | 8.66 s (2.7×) | 36 ms | 0.31 s | 0.00 s | — |
-| 5 s | 9.26 s | 13.75 s | 5.22 – 49.84 | 9.22 s (1.8×) | 36 ms | 0.38 s | 0.00 s | — |
+| 3.2 s † | 6.53 s | 9.84 s | 3.18 – 40.20 | 6.49 s (2.0×) | 36 ms | 0.32 s | 0.00 s | — |
+| 5 s † | 12.34 s | 14.50 s | 0.97 – 49.84 | 12.31 s (2.5×) | 36 ms | 0.36 s | 0.00 s | 1 |
 
 ### nice!nano OLED text
 
@@ -124,8 +126,8 @@ measurements in all.
 | 400 ms | 0.82 s | 1.19 s | 0.56 – 2.92 | 0.78 s (1.9×) | 43 ms | 0.42 s | 0.00 s | — |
 | 800 ms | 3.23 s | 3.86 s | 1.07 – 10.91 | 3.10 s (3.9×) | 43 ms | 0.71 s | 0.00 s | — |
 | 1.6 s | 5.79 s | 6.01 s | 1.74 – 11.79 | 5.68 s (3.5×) | 43 ms | 0.50 s | 0.00 s | — |
-| 3.2 s | 11.72 s | 12.86 s | 3.92 – 35.12 | 11.68 s (3.6×) | 43 ms | 0.37 s | 0.00 s | — |
-| 5 s | 8.87 s | 13.11 s | 0.50 – 39.62 | 8.83 s (1.8×) | 43 ms | 0.76 s | 0.00 s | 1 |
+| 3.2 s † | 9.43 s | 11.72 s | 0.18 – 37.40 | 9.39 s (2.9×) | 43 ms | 0.43 s | 0.00 s | 2 |
+| 5 s † | 11.29 s | 14.55 s | 0.50 – 39.62 | 11.24 s (2.3×) | 43 ms | 0.48 s | 0.00 s | 2 |
 
 ### What the numbers say
 
@@ -157,16 +159,47 @@ exactly what the two-speed advertising exists to provide.
 **The write itself is never the cost**: 36 ms on the Puck, 43 ms on the
 nice!nano, one byte or a whole string.
 
-**One command out of 252 was lost**, on the nice!nano at a 5 s interval: no
-acknowledgement inside 60 s. Nothing stalled past 5 s. The weaker of the two
-links (§ the radio conditions) failing once at the slowest interval is the shape
-one would expect; it is one sample, not a rate.
+**Five commands out of 364 were lost** — one on the Puck, four on the
+nice!nano, all at 3.2 s or 5 s, none acknowledged inside 60 s. Nothing stalled
+past 5 s.
 
-**The mean is worth reading next to the median.** They agree at short intervals
-and diverge above 400 ms — 8.70 s against 14.02 s on the Puck at 3.2 s. Each
-missed advertising event costs a whole interval, so the tail is made of samples
-that waited two or three more of them. The median says what usually happens; the
-gap says how often it does not.
+**The mean is worth reading next to the median**, and above 800 ms the gap
+between them is not the advertising interval's doing. See below.
+
+### The retries, and why the slow rows were re-measured
+
+The first run's numbers at 3.2 s and 5 s were not reproducible: re-measuring
+them moved the median by 30 to 50 %, in both directions, on both devices. That
+is not a small sample being noisy around a true value — something discrete was
+being sampled. Pooling both runs, 120 first commands at those two intervals, the
+time to open the link falls into **two groups with an eleven-second hole between
+them**:
+
+| | n | range |
+|---|---|---|
+| Opened the link | 103 | 0.1 – **19.4 s** |
+| *nothing at all* | 0 | 19.4 – 30.5 s |
+| Opened it late | 12 | **30.5** – 49.8 s |
+
+The far group is **10 % of first commands**, its mean is 37.7 s, and — the part
+that identifies it — **it does not scale with the advertising interval** while
+the near group does. A cost that is the same at 3.2 s and at 5 s is not made of
+advertising events.
+
+It is the receiver's own connection layer. `establish_connection` is called with
+`max_attempts=2`: an attempt that times out is followed by a second one, and the
+pair costs a fixed penalty on top of whatever the advertising interval was going
+to cost. The five lost commands are the case where the second attempt failed
+too, inside the sweep's 60 s window.
+
+**What this changes.** Nothing about the protocol, and nothing about the first
+five rows, where no sample fell in the far group. But at 3.2 s and 5 s it
+inflates the mean by several seconds and it dominates the range, so those two
+rows are quoted here from thirty samples rather than ten. Excluding the retried
+commands, the link opens in **1.9–2.9× the interval** at these paliers —
+the same two-to-three advertising events as everywhere else in the table. The
+slow end of the ladder is not where the protocol degrades; it is where the
+receiver's retry becomes visible against a longer baseline.
 
 ### How this run was set up, and why
 

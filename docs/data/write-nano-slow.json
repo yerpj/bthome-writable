@@ -1,0 +1,626 @@
+{
+  "address": "CD:F5:77:3A:B2:16",
+  "label": "nice!nano text (OLED), command to write acknowledged",
+  "entity": "text.espruino_b216_text",
+  "measures": "Home Assistant command to the device's GATT write acknowledgement, as the integration times it",
+  "idle_wait_s": 12.0,
+  "fast_timeout_ms": 8000,
+  "fast_window_note": "Every sample carries idle_for_s, the time since anything last connected to the device, and device_idle, whether that exceeds fast_timeout_ms. A first command is only counted when the device had fallen back to the interval under test; a following one only when it had not.",
+  "results": [
+    {
+      "interval_ms": 3200,
+      "first": [
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.9,
+          "connect_ms": 3436.7,
+          "write_ms": 40.2,
+          "total_ms": 3477.8,
+          "idle_for_s": 14.86,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 5545.0,
+          "write_ms": 43.2,
+          "total_ms": 5588.9,
+          "idle_for_s": 14.81,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 37327.8,
+          "write_ms": 71.7,
+          "total_ms": 37400.3,
+          "idle_for_s": 13.47,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 14480.4,
+          "write_ms": 43.3,
+          "total_ms": 14524.5,
+          "idle_for_s": 13.16,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 10719.0,
+          "write_ms": 43.2,
+          "total_ms": 10762.8,
+          "idle_for_s": 12.48,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 4900.8,
+          "write_ms": 341.0,
+          "total_ms": 5242.5,
+          "idle_for_s": 14.66,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "failed": true,
+          "idle_for_s": 12.45,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "failed": true,
+          "idle_for_s": 13.08,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 11099.9,
+          "write_ms": 95.6,
+          "total_ms": 11196.3,
+          "idle_for_s": 12.69,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.8,
+          "connect_ms": 12476.6,
+          "write_ms": 57.3,
+          "total_ms": 12534.7,
+          "idle_for_s": 14.77,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 4840.6,
+          "write_ms": 43.1,
+          "total_ms": 4884.5,
+          "idle_for_s": 14.81,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 8845.4,
+          "write_ms": 41.3,
+          "total_ms": 8887.4,
+          "idle_for_s": 14.22,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 142.4,
+          "write_ms": 41.8,
+          "total_ms": 184.9,
+          "idle_for_s": 13.12,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.9,
+          "connect_ms": 5036.8,
+          "write_ms": 442.0,
+          "total_ms": 5479.7,
+          "idle_for_s": 14.59,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.8,
+          "connect_ms": 9032.6,
+          "write_ms": 43.5,
+          "total_ms": 9076.9,
+          "idle_for_s": 14.14,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 9867.8,
+          "write_ms": 43.2,
+          "total_ms": 9911.7,
+          "idle_for_s": 12.97,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.8,
+          "connect_ms": 3653.8,
+          "write_ms": 43.4,
+          "total_ms": 3698.0,
+          "idle_for_s": 13.36,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.6,
+          "connect_ms": 14917.3,
+          "write_ms": 43.0,
+          "total_ms": 14961.0,
+          "idle_for_s": 14.86,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.6,
+          "connect_ms": 5395.1,
+          "write_ms": 40.9,
+          "total_ms": 5436.6,
+          "idle_for_s": 15.03,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.8,
+          "connect_ms": 36132.0,
+          "write_ms": 69.8,
+          "total_ms": 36202.5,
+          "idle_for_s": 14.45,
+          "device_idle": true,
+          "fast_window_ok": true
+        }
+      ],
+      "consecutive": [
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.8,
+          "connect_ms": 244.0,
+          "write_ms": 40.9,
+          "total_ms": 285.7,
+          "idle_for_s": 0.0,
+          "device_idle": false,
+          "fast_window_ok": true
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.8,
+          "connect_ms": 1050.7,
+          "write_ms": 43.1,
+          "total_ms": 1094.7,
+          "idle_for_s": 1.11,
+          "device_idle": false,
+          "fast_window_ok": true
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 850.1,
+          "write_ms": 43.6,
+          "total_ms": 894.5,
+          "idle_for_s": 1.23,
+          "device_idle": false,
+          "fast_window_ok": true
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 447.8,
+          "write_ms": 41.6,
+          "total_ms": 490.1,
+          "idle_for_s": 1.08,
+          "device_idle": false,
+          "fast_window_ok": true
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.8,
+          "connect_ms": 382.9,
+          "write_ms": 43.7,
+          "total_ms": 427.5,
+          "idle_for_s": 1.16,
+          "device_idle": false,
+          "fast_window_ok": true
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 187.3,
+          "write_ms": 43.3,
+          "total_ms": 231.4,
+          "idle_for_s": 1.12,
+          "device_idle": false,
+          "fast_window_ok": true
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 594.5,
+          "write_ms": 42.9,
+          "total_ms": 638.1,
+          "idle_for_s": 1.08,
+          "device_idle": false,
+          "fast_window_ok": true
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.8,
+          "connect_ms": 196.1,
+          "write_ms": 44.2,
+          "total_ms": 241.1,
+          "idle_for_s": 1.09,
+          "device_idle": false,
+          "fast_window_ok": true
+        }
+      ]
+    },
+    {
+      "interval_ms": 5000,
+      "first": [
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.8,
+          "connect_ms": 6170.0,
+          "write_ms": 359.8,
+          "total_ms": 6530.6,
+          "idle_for_s": 12.92,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 3.2,
+          "connect_ms": 6046.3,
+          "write_ms": 43.0,
+          "total_ms": 6092.5,
+          "idle_for_s": 16.23,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.8,
+          "connect_ms": 10675.7,
+          "write_ms": 42.8,
+          "total_ms": 10719.2,
+          "idle_for_s": 16.58,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 18180.1,
+          "write_ms": 42.5,
+          "total_ms": 18223.4,
+          "idle_for_s": 13.95,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.8,
+          "connect_ms": 15494.9,
+          "write_ms": 41.9,
+          "total_ms": 15537.6,
+          "idle_for_s": 16.78,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 2.9,
+          "connect_ms": 11316.1,
+          "write_ms": 43.4,
+          "total_ms": 11362.3,
+          "idle_for_s": 15.95,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.8,
+          "connect_ms": 19364.4,
+          "write_ms": 39.6,
+          "total_ms": 19404.8,
+          "idle_for_s": 12.91,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 8963.3,
+          "write_ms": 167.4,
+          "total_ms": 9131.5,
+          "idle_for_s": 13.3,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 6988.5,
+          "write_ms": 42.2,
+          "total_ms": 7031.4,
+          "idle_for_s": 15.28,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 1.5,
+          "connect_ms": 34985.1,
+          "write_ms": 71.9,
+          "total_ms": 35058.6,
+          "idle_for_s": 14.02,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.8,
+          "connect_ms": 11825.1,
+          "write_ms": 43.1,
+          "total_ms": 11869.0,
+          "idle_for_s": 13.45,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.9,
+          "connect_ms": 36686.7,
+          "write_ms": 63.9,
+          "total_ms": 36751.4,
+          "idle_for_s": 12.66,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 3.1,
+          "connect_ms": 11723.5,
+          "write_ms": 42.0,
+          "total_ms": 11768.7,
+          "idle_for_s": 13.55,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.8,
+          "connect_ms": 9451.7,
+          "write_ms": 43.2,
+          "total_ms": 9495.7,
+          "idle_for_s": 12.45,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.9,
+          "connect_ms": 15142.0,
+          "write_ms": 43.1,
+          "total_ms": 15186.0,
+          "idle_for_s": 12.16,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.8,
+          "connect_ms": 9792.3,
+          "write_ms": 43.0,
+          "total_ms": 9836.2,
+          "idle_for_s": 12.5,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.8,
+          "connect_ms": 4930.6,
+          "write_ms": 40.7,
+          "total_ms": 4972.2,
+          "idle_for_s": 12.36,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.8,
+          "connect_ms": 11172.9,
+          "write_ms": 43.3,
+          "total_ms": 11217.0,
+          "idle_for_s": 16.12,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.8,
+          "connect_ms": 39067.3,
+          "write_ms": 90.1,
+          "total_ms": 39158.2,
+          "idle_for_s": 15.28,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "failed": true,
+          "idle_for_s": 16.44,
+          "device_idle": true,
+          "fast_window_ok": true
+        }
+      ],
+      "consecutive": [
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 40894.6,
+          "write_ms": 71.2,
+          "total_ms": 40966.6,
+          "idle_for_s": 0.0,
+          "device_idle": false,
+          "fast_window_ok": true
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 277.0,
+          "write_ms": 43.2,
+          "total_ms": 320.9,
+          "idle_for_s": 1.06,
+          "device_idle": false,
+          "fast_window_ok": true
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.9,
+          "connect_ms": 217.7,
+          "write_ms": 66.8,
+          "total_ms": 285.3,
+          "idle_for_s": 1.16,
+          "device_idle": false,
+          "fast_window_ok": true
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 452.7,
+          "write_ms": 43.6,
+          "total_ms": 497.0,
+          "idle_for_s": 1.06,
+          "device_idle": false,
+          "fast_window_ok": true
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 259.8,
+          "write_ms": 43.5,
+          "total_ms": 303.9,
+          "idle_for_s": 1.03,
+          "device_idle": false,
+          "fast_window_ok": true
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.8,
+          "connect_ms": 363.5,
+          "write_ms": 43.5,
+          "total_ms": 407.7,
+          "idle_for_s": 1.03,
+          "device_idle": false,
+          "fast_window_ok": true
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 251.6,
+          "write_ms": 43.4,
+          "total_ms": 295.8,
+          "idle_for_s": 1.19,
+          "device_idle": false,
+          "fast_window_ok": true
+        },
+        {
+          "address": "CD:F5:77:3A:B2:16",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 419.3,
+          "write_ms": 43.4,
+          "total_ms": 463.4,
+          "idle_for_s": 1.08,
+          "device_idle": false,
+          "fast_window_ok": true
+        }
+      ]
+    }
+  ]
+}

@@ -203,7 +203,7 @@ def render(datasets: list[dict]) -> str:
 </style>
 <h1>Response time against advertising interval</h1>
 <p class="sub">From the command reaching Home Assistant to the device acknowledging the
-GATT write. Mean of ten commands issued after a quiet period, and of eight issued
+GATT write. Mean of the commands issued after a quiet period, and of those issued
 straight afterwards.</p>
 <div style="position:relative">
 <svg width="{W}" height="{H}" viewBox="0 0 {W} {H}">
