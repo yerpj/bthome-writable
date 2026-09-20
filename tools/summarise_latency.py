@@ -28,7 +28,25 @@ because averaging it in describes neither case."""
 
 
 def phases(row: dict, case: str) -> list[dict]:
-    return [s for s in row[case] if not s.get("failed")]
+    """Delivered samples, taken on the side of the fast window they claim.
+
+    A first command is only a first command if the device had fallen back to
+    the interval under test; a following one only if it had not. The sweep
+    records `fast_window_ok` per sample, and one that fails it measures the
+    other case under this one's label -- worse than a lost sample, because it
+    looks like data.
+    """
+    return [
+        s for s in row[case] if not s.get("failed") and s.get("fast_window_ok", True)
+    ]
+
+
+def mislabelled(row: dict) -> int:
+    return sum(
+        1
+        for s in row["first"] + row["consecutive"]
+        if not s.get("failed") and not s.get("fast_window_ok", True)
+    )
 
 
 def describe(path: Path) -> None:
@@ -37,12 +55,15 @@ def describe(path: Path) -> None:
     print(f"  {data.get('measures', '')}")
     print(
         f"\n  {'interval':>9}  {'n':>3}  {'median':>7}  {'mean':>7}  {'spread':>13}"
-        f"  {'connect':>8}  {'/interval':>9}  {'following':>9}  {'lost':>4}"
+        f"  {'connect':>8}  {'/interval':>9}  {'following':>9}  {'queued':>8}"
+        f"  {'lost':>4}"
     )
 
     stalls = 0
     writes = 0
+    wrong_window = 0
     for row in data["results"]:
+        wrong_window += mislabelled(row)
         interval = row["interval_ms"]
         first = phases(row, "first")
         following = phases(row, "consecutive")
@@ -56,6 +77,7 @@ def describe(path: Path) -> None:
         totals = [s["total_ms"] / 1000 for s in first]
         connect = [s["connect_ms"] / 1000 for s in first]
         follow = [s["total_ms"] / 1000 for s in following]
+        queued = [s["queued_ms"] / 1000 for s in following]
         print(
             f"  {interval:>7} ms  {len(first):>3}"
             f"  {statistics.median(totals):>6.2f}s"
@@ -64,11 +86,18 @@ def describe(path: Path) -> None:
             f"  {statistics.median(connect):>7.2f}s"
             f"  {statistics.median(connect) / (interval / 1000):>8.2f}x"
             f"  {statistics.median(follow) if follow else 0:>8.2f}s"
+            f"  {statistics.median(queued) if queued else 0:>7.2f}s"
             f"  {lost:>4}"
         )
 
     seconds = STALLED_WRITE_MS / 1000
     print(f"\n  writes that stalled past {seconds:.0f} s: {stalls} of {writes}")
+    fast = data.get("fast_timeout_ms")
+    if fast is not None:
+        print(
+            f"  fast window during the sweep: {fast} ms; samples dropped for "
+            f"falling on its wrong side: {wrong_window}"
+        )
 
 
 def main() -> int:

@@ -2506,3 +2506,75 @@ batching and its 250 ms pause in place, and its "of which queued" column is
 mostly that pause. The *first command* figures — the subject of that campaign —
 never waited on it and stand unchanged. `docs/measurements.md` now says so;
 re-running the following-command half before release would be worth the hour.
+
+
+## D-060 — The sweep re-run on one command per connection  [VERIFY]
+
+**Status:** measured 2026-09-20, at the owner's request, after D-059. Both
+devices, 100 ms to 5 s in seven steps, 252 commands. Raw samples in
+`docs/data/write-puck-switch.json` and `write-nano-text.json`; the pre-D-059
+campaign is kept beside them in `data/archive/write-*-batched.json`.
+
+**The instruction included a methodological one:** make sure `fastTimeout` does
+not contaminate two measurements on the same node. It is the right thing to
+worry about — a first command and a following command are the two sides of the
+fast window, so a sample on the wrong side measures the other case under this
+one's label, which is worse than a lost sample because it looks like data.
+
+**How it is now guaranteed rather than assumed.** The sweep stamps every
+connection to the device, including the ones that set the interval, and records
+with each sample how long the device had been left alone *when the command was
+issued*. A first command counts only if that exceeds `fastTimeout`, a following
+one only if it does not; anything else is flagged and dropped from the summary.
+The run is refused outright unless the idle wait clears the window by 3 s and
+the burst gap falls inside it. Settings: window 8 s, idle 12 s plus a uniform
+random fraction of one interval, burst gap 1 s, window restored to 30 s at the
+end. **251 delivered commands, none on the wrong side.**
+
+**Median first command, and the link's share of it, in seconds:**
+
+| | 100 ms | 200 ms | 400 ms | 800 ms | 1.6 s | 3.2 s | 5 s |
+|---|---|---|---|---|---|---|---|
+| Puck.js | 0.31 | 0.59 | 1.01 | 1.99 | 5.09 | 8.70 | 9.26 |
+| connect / interval | 2.8× | 2.8× | 2.4× | 2.4× | 3.2× | 2.7× | 1.8× |
+| nice!nano | 0.47 | 0.50 | 0.82 | 3.23 | 5.79 | 11.72 | 8.87 |
+| connect / interval | 4.2× | 2.0× | 1.9× | 3.9× | 3.5× | 3.6× | 1.8× |
+
+**A first command costs two to three advertising events, not one.** The expected
+answer was one to two. The multiple sits at 1.8–3.2× on the Puck and 1.8–4.2× on
+the nice!nano, and there is no interval where either device managed one. The
+explanation consistent with it: a receiver does not listen continuously, it scans
+with a duty cycle and splits its attention across three advertising channels, so
+several of a device's events go by before one is caught — and on this bench one
+of those three channels sits under a permanently busy WiFi transmitter (D-057).
+Neither cause was isolated here, so 2–3× is this bench's figure, not the
+protocol's. It is also the only part of the cost the protocol cannot shorten:
+30 to 50 ms remain once the connect time is subtracted.
+
+**Following commands collapsed, and that is D-059 showing.** Median **0.34 s on
+the Puck and 0.52 s on the nice!nano**, flat at every interval, with **0.00 s**
+of queue everywhere. The previous campaign measured 1.9 s, of which 1.4–1.6 s
+was the integration holding the second command behind the first. Removing the
+batching removed the pause it needed. The warm path is now bounded by the radio
+— a connection to a device already advertising at 100 ms — which is exactly what
+the two-speed advertising exists to provide, and it means the receiver is no
+longer the thing to fix.
+
+**One command of 252 was lost**, on the nice!nano at 5 s: no acknowledgement
+inside 60 s. Nothing stalled past 5 s. The weaker link failing once at the
+slowest interval is the expected shape; one sample is not a rate.
+
+**A correction, stated because it was nearly invisible.** The sweep first
+stamped the idle time *after* each command returned, charging the command's own
+duration to it, and flagged a 9.6 s following command on the nice!nano as though
+it had been issued outside the fast window — it had been issued 1.9 s after the
+previous one. The tool now reads the idle time at issue, and both datasets carry
+the corrected annotation, derived exactly as `idle_for_s - total_ms/1000`. The
+correction is an upper bound on the true idle time, so it is conservative in the
+direction that matters. No timing was touched; recomputing the Puck's data
+changed nothing and the nice!nano's changed one boolean.
+
+**What this says about the two-speed advertising (§4.3).** It earns its keep
+twice over now. Each command opens its own connection, so every command in a
+burst re-enters the fast window, and the flat 0.3–0.5 s above is what that buys.
+Without it, D-059 would have made a burst cost one full first command per step.

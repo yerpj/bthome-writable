@@ -3,7 +3,7 @@
 Reads the JSON `tools.latency_sweep` writes and renders one figure with a curve
 per device and per case — the first command after an idle period, and the
 commands that follow it. The x axis is logarithmic because the sweep is:
-100 ms to 10 s is two decades, and the interesting part is at the top.
+100 ms to 5 s spans most of two decades, and the interesting part is at the top.
 
     python -m tools.gen_latency_figure docs/data/*.json \
         --out docs/figures/latency-vs-interval.html
@@ -27,7 +27,7 @@ PLOT_W = W - LEFT - RIGHT
 PLOT_H = H - TOP - BOTTOM
 
 COLOURS = ("#0b5394", "#0b6e4f", "#8a3ffc")
-TICKS = (100, 200, 400, 700, 1200, 2000, 4000)
+TICKS = (100, 200, 400, 800, 1600, 3200, 5000)
 
 
 def totals(samples: list[dict]) -> list[float]:
@@ -40,7 +40,7 @@ def totals(samples: list[dict]) -> list[float]:
     """
     out = []
     for s in samples:
-        if s.get("failed"):
+        if s.get("failed") or not s.get("fast_window_ok", True):
             continue
         if "total_ms" in s:
             out.append(s["total_ms"] / 1000)
@@ -124,8 +124,13 @@ def svg(datasets: list[dict]) -> str:
     legend: list[str] = []
     for index, data in enumerate(datasets):
         colour = COLOURS[index % len(COLOURS)]
+        # The idle wait is a property of the run, not of the drawing: a figure
+        # that hard-codes it goes stale the first time the sweep is re-run with
+        # a different one, and says so in a caption nobody re-reads.
+        idle = data.get("idle_wait_s")
+        after = f"after {idle:.0f} s idle" if idle else "after a quiet period"
         for case, dash, name in (
-            ("first", "", "first command after 35 s idle"),
+            ("first", "", f"first command {after}"),
             ("consecutive", "6 4", "commands that follow"),
         ):
             points = series(data, case)

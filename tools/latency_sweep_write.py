@@ -38,6 +38,7 @@ from pathlib import Path
 import random
 import statistics
 import sys
+import time
 
 import aiohttp
 
@@ -57,12 +58,18 @@ DEVICES = {
     },
 }
 
-DEFAULT_INTERVALS = (100, 200, 400, 700, 1200, 2000, 4000)
-"""Seven points, each about 1.8x the one below it, stopping at 4 s.
+DEFAULT_INTERVALS = (100, 200, 400, 800, 1600, 3200, 5000)
+"""Seven points, each about twice the one below it, stopping at 5 s.
 
 Above that the measurement stops being a latency and becomes a failure rate --
 at 10 s, three of three first commands were never delivered -- and a mean over
 delivered commands would flatter a device nobody could reach."""
+
+FAST_WINDOW_MARGIN = 3.0
+"""Seconds of slack demanded between the fast window closing and the next first
+command. The device's timer, the receiver's scan and this host's clock are three
+different clocks; a first command taken a hair early would be a fast-advertising
+sample wearing an idle label."""
 
 
 class Bus:
@@ -129,6 +136,50 @@ class Bus:
                 await self._reader
         if self.ws is not None:
             await self.ws.close()
+
+
+class FastWindow:
+    """Which side of the device's fast window each sample was taken on.
+
+    After any connection the device advertises at `fastInterval` for
+    `fastTimeout`, then drops back to the interval under test (D-024). The two
+    cases this sweep separates are exactly the two sides of that window, so
+    mislabelling one as the other is the one error that would make the whole
+    table meaningless -- a "first" command taken while the device is still fast
+    measures the fast interval, not the one in the column header.
+
+    Rather than trust the arithmetic of idle waits, every connection to the
+    device is stamped here, including the ones that set the interval, and every
+    sample carries how long the device had been left alone when it was issued.
+    A sample on the wrong side of the window is flagged and left out of the
+    summary rather than quietly averaged in.
+    """
+
+    def __init__(self, fast_timeout_ms: int) -> None:
+        self.seconds = fast_timeout_ms / 1000
+        self.last_contact = time.monotonic()
+
+    def touched(self) -> None:
+        """Something connected to the device: the window has just reopened."""
+        self.last_contact = time.monotonic()
+
+    def idle_for(self) -> float:
+        """How long the device has been left alone, as of now.
+
+        Read when the command is issued, never after it comes back: a command
+        that takes ten seconds would otherwise charge its own duration to the
+        idle time and look like a first command.
+        """
+        return time.monotonic() - self.last_contact
+
+    def classify(self, case: str, idle_for: float) -> dict:
+        device_idle = idle_for >= self.seconds
+        wanted_idle = case == "first"
+        return {
+            "idle_for_s": round(idle_for, 2),
+            "device_idle": device_idle,
+            "fast_window_ok": device_idle == wanted_idle,
+        }
 
 
 async def command(bus: Bus, config: dict, index: int, timeout: float) -> dict:
@@ -230,21 +281,25 @@ async def run(args) -> int:
     config = DEVICES[args.device]
     results: list[dict] = []
     index = 0
+    window = FastWindow(args.fast_timeout)
 
     connector = aiohttp.TCPConnector(resolver=aiohttp.ThreadedResolver())
     async with aiohttp.ClientSession(connector=connector) as session:
         bus = Bus(session)
         await bus.open()
         try:
-            if args.fast_timeout is not None:
-                print(
-                    f"fast window set to {args.fast_timeout} ms for the sweep",
-                    flush=True,
-                )
-                await set_fast_timeout(config, args.fast_timeout)
+            print(
+                f"fast window set to {args.fast_timeout} ms for the sweep; "
+                f"a first command waits {args.idle:.0f} s + jitter after the last "
+                "connection, a following one goes out inside the window",
+                flush=True,
+            )
+            await set_fast_timeout(config, args.fast_timeout)
+            window.touched()
             for interval in args.intervals:
                 print(f"\n=== {interval} ms ===", flush=True)
                 await set_interval(config, interval)
+                window.touched()
 
                 first, following = [], []
                 for _ in range(args.first_reps):
@@ -260,13 +315,25 @@ async def run(args) -> int:
                     )
                     await asyncio.sleep(args.idle + jitter)
                     index += 1
+                    idle_for = window.idle_for()
                     got = await command(bus, config, index, args.timeout)
+                    got |= window.classify("first", idle_for)
+                    # The window reopens when this command's link closes, which
+                    # is now: the device starts counting fastTimeout down from
+                    # the disconnect, not from the connect.
+                    window.touched()
                     report("first", got, interval)
                     first.append(got)
 
                 for _ in range(args.burst):
                     index += 1
+                    idle_for = window.idle_for()
                     got = await command(bus, config, index, args.timeout)
+                    got |= window.classify("next", idle_for)
+                    # The window reopens when this command's link closes, which
+                    # is now: the device starts counting fastTimeout down from
+                    # the disconnect, not from the connect.
+                    window.touched()
                     report("next", got, interval)
                     following.append(got)
                     # Jittered too, so a burst cannot fall into lockstep with the
@@ -279,10 +346,9 @@ async def run(args) -> int:
                 if args.out:
                     write_out(args, config, results)
         finally:
-            if args.fast_timeout is not None:
-                with contextlib.suppress(Exception):
-                    await set_fast_timeout(config, 30000)
-                    print("fast window restored to 30000 ms", flush=True)
+            with contextlib.suppress(Exception):
+                await set_fast_timeout(config, 30000)
+                print("fast window restored to 30000 ms", flush=True)
             await bus.close()
 
     for row in results:
@@ -294,20 +360,33 @@ async def run(args) -> int:
 
 
 def report(case: str, got: dict, interval: int) -> None:
+    where = (
+        "" if got.get("fast_window_ok", True) else "  << WRONG SIDE OF THE FAST WINDOW"
+    )
     if got.get("failed"):
-        print(f"  {case:<6} FAILED (no write acknowledged)", flush=True)
+        print(f"  {case:<6} FAILED (no write acknowledged){where}", flush=True)
         return
     total = got["total_ms"] / 1000
     print(
         f"  {case:<6} {total:6.2f} s = {got['queued_ms'] / 1000:.2f} queued"
         f" + {got['connect_ms'] / 1000:.2f} connect + {got['write_ms']:.0f} ms write"
-        f"   ({total / (interval / 1000):.1f} intervals)",
+        f"   ({total / (interval / 1000):.1f} intervals)"
+        f"   [idle {got.get('idle_for_s', 0):.1f} s]{where}",
         flush=True,
     )
 
 
+def usable_totals(samples: list[dict]) -> list[float]:
+    """Delivered, and taken on the side of the fast window it was labelled with."""
+    return [
+        s["total_ms"] / 1000
+        for s in samples
+        if not s.get("failed") and s.get("fast_window_ok", True)
+    ]
+
+
 def mean_total(samples: list[dict]) -> float:
-    usable = [s["total_ms"] / 1000 for s in samples if not s.get("failed")]
+    usable = usable_totals(samples)
     return statistics.fmean(usable) if usable else 0.0
 
 
@@ -323,6 +402,12 @@ def write_out(args, config: dict, results: list[dict]) -> None:
                 "measures": "Home Assistant command to the device's GATT write "
                 "acknowledgement, as the integration times it",
                 "idle_wait_s": args.idle,
+                "fast_timeout_ms": args.fast_timeout,
+                "fast_window_note": "Every sample carries idle_for_s, the time "
+                "since anything last connected to the device, and device_idle, "
+                "whether that exceeds fast_timeout_ms. A first command is only "
+                "counted when the device had fallen back to the interval under "
+                "test; a following one only when it had not.",
                 "results": results,
             },
             indent=2,
@@ -340,17 +425,36 @@ def main() -> int:
     )
     parser.add_argument("--first-reps", type=int, default=10)
     parser.add_argument("--burst", type=int, default=8)
-    parser.add_argument("--idle", type=float, default=32.0)
+    parser.add_argument("--idle", type=float, default=12.0)
     parser.add_argument("--gap", type=float, default=1.0)
     parser.add_argument("--timeout", type=float, default=60.0)
     parser.add_argument(
         "--fast-timeout",
         type=int,
-        help="shorten the device's fast-advertising window for the sweep, in "
-        "milliseconds, and put it back afterwards",
+        default=8000,
+        help="the device's fast-advertising window during the sweep, in "
+        "milliseconds, put back to 30000 afterwards. Long enough that a burst "
+        "stays inside it, short enough that waiting it out between first "
+        "commands does not dominate the campaign",
     )
     parser.add_argument("--out")
     args = parser.parse_args()
+
+    # The two ends of the sweep sit on opposite sides of the fast window, so the
+    # window has to be shorter than the idle wait and longer than a burst gap.
+    # Getting either wrong silently relabels samples, which is worse than
+    # stopping.
+    fast = args.fast_timeout / 1000
+    if args.idle < fast + FAST_WINDOW_MARGIN:
+        raise SystemExit(
+            f"--idle {args.idle:.0f} s leaves no margin after a {fast:.0f} s fast "
+            f"window; use at least {fast + FAST_WINDOW_MARGIN:.0f} s"
+        )
+    if args.gap >= fast:
+        raise SystemExit(
+            f"--gap {args.gap:.1f} s is not inside a {fast:.0f} s fast window, so "
+            "a following command would be a first command with another name"
+        )
 
     if not os.environ.get("HA_TOKEN"):
         raise SystemExit("HA_TOKEN is not set")

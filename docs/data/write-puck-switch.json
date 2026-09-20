@@ -1,9 +1,11 @@
 {
   "address": "C8:80:32:AD:F7:B9",
-  "label": "Puck.js switch (light)",
+  "label": "Puck.js switch (light), command to write acknowledged",
   "entity": "switch.bureau_mobilesensf7b9_light",
   "measures": "Home Assistant command to the device's GATT write acknowledgement, as the integration times it",
-  "idle_wait_s": 5.0,
+  "idle_wait_s": 12.0,
+  "fast_timeout_ms": 8000,
+  "fast_window_note": "Every sample carries idle_for_s, the time between the previous connection closing and this command being issued, and device_idle, whether that exceeds fast_timeout_ms. A first command is only counted when the device had fallen back to the interval under test; a following one only when it had not. The sweep originally stamped that time after the command returned, which charged the command's own duration to it; the field here is the corrected issue-time value, derived exactly as idle_for_s - total_ms/1000. The timings themselves are as measured.",
   "results": [
     {
       "interval_ms": 100,
@@ -11,148 +13,202 @@
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
-          "queued_ms": 0.8,
-          "connect_ms": 356.0,
-          "write_ms": 35.8,
-          "total_ms": 392.6
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 0.8,
-          "connect_ms": 434.8,
+          "queued_ms": 0.7,
+          "connect_ms": 275.1,
           "write_ms": 36.0,
-          "total_ms": 471.6
+          "total_ms": 311.8,
+          "idle_for_s": 14.55,
+          "device_idle": true,
+          "fast_window_ok": true
         },
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
           "queued_ms": 0.7,
-          "connect_ms": 718.0,
+          "connect_ms": 222.5,
+          "write_ms": 26.5,
+          "total_ms": 249.7,
+          "idle_for_s": 14.77,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 288.3,
+          "write_ms": 26.2,
+          "total_ms": 315.3,
+          "idle_for_s": 14.66,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 191.0,
+          "write_ms": 36.1,
+          "total_ms": 227.8,
+          "idle_for_s": 14.79,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.8,
+          "connect_ms": 505.7,
           "write_ms": 28.4,
-          "total_ms": 747.2
+          "total_ms": 534.9,
+          "idle_for_s": 14.45,
+          "device_idle": true,
+          "fast_window_ok": true
         },
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
           "queued_ms": 0.7,
-          "connect_ms": 179.8,
-          "write_ms": 36.2,
-          "total_ms": 216.7
+          "connect_ms": 317.4,
+          "write_ms": 36.0,
+          "total_ms": 354.0,
+          "idle_for_s": 14.65,
+          "device_idle": true,
+          "fast_window_ok": true
         },
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
-          "queued_ms": 0.8,
-          "connect_ms": 413.0,
-          "write_ms": 35.9,
-          "total_ms": 449.7
+          "queued_ms": 1.3,
+          "connect_ms": 338.6,
+          "write_ms": 28.4,
+          "total_ms": 368.3,
+          "idle_for_s": 14.63,
+          "device_idle": true,
+          "fast_window_ok": true
         },
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
-          "queued_ms": 0.6,
-          "connect_ms": 265.9,
-          "write_ms": 28.9,
-          "total_ms": 295.5
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 0.8,
-          "connect_ms": 836.5,
-          "write_ms": 36.2,
-          "total_ms": 873.6
+          "queued_ms": 0.9,
+          "connect_ms": 157.9,
+          "write_ms": 36.0,
+          "total_ms": 194.8,
+          "idle_for_s": 14.83,
+          "device_idle": true,
+          "fast_window_ok": true
         },
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
           "queued_ms": 0.7,
-          "connect_ms": 219.9,
-          "write_ms": 35.7,
-          "total_ms": 256.4
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 1.7,
-          "connect_ms": 313.9,
-          "write_ms": 141.2,
-          "total_ms": 456.9
+          "connect_ms": 351.5,
+          "write_ms": 36.0,
+          "total_ms": 388.2,
+          "idle_for_s": 14.59,
+          "device_idle": true,
+          "fast_window_ok": true
         },
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
           "queued_ms": 0.8,
-          "connect_ms": 296.3,
-          "write_ms": 36.2,
-          "total_ms": 333.3
+          "connect_ms": 184.0,
+          "write_ms": 25.4,
+          "total_ms": 210.3,
+          "idle_for_s": 14.81,
+          "device_idle": true,
+          "fast_window_ok": true
         }
       ],
       "consecutive": [
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
-          "queued_ms": 2232.0,
-          "connect_ms": 256.6,
-          "write_ms": 35.3,
-          "total_ms": 2523.9
+          "queued_ms": 0.8,
+          "connect_ms": 300.7,
+          "write_ms": 35.2,
+          "total_ms": 336.7,
+          "idle_for_s": 2.66,
+          "device_idle": false,
+          "fast_window_ok": true
         },
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
-          "queued_ms": 1524.5,
-          "connect_ms": 260.9,
-          "write_ms": 28.5,
-          "total_ms": 1814.0
+          "queued_ms": 0.7,
+          "connect_ms": 206.4,
+          "write_ms": 37.6,
+          "total_ms": 244.7,
+          "idle_for_s": 3.74,
+          "device_idle": false,
+          "fast_window_ok": true
         },
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
-          "queued_ms": 1574.7,
-          "connect_ms": 228.2,
-          "write_ms": 26.0,
-          "total_ms": 1828.9
+          "queued_ms": 0.6,
+          "connect_ms": 502.1,
+          "write_ms": 27.7,
+          "total_ms": 530.5,
+          "idle_for_s": 3.47,
+          "device_idle": false,
+          "fast_window_ok": true
         },
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
-          "queued_ms": 1689.5,
-          "connect_ms": 415.5,
-          "write_ms": 25.5,
-          "total_ms": 2130.5
+          "queued_ms": 0.6,
+          "connect_ms": 561.1,
+          "write_ms": 35.8,
+          "total_ms": 597.6,
+          "idle_for_s": 3.42,
+          "device_idle": false,
+          "fast_window_ok": true
         },
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
-          "queued_ms": 1415.6,
-          "connect_ms": 220.1,
-          "write_ms": 26.4,
-          "total_ms": 1662.2
+          "queued_ms": 0.8,
+          "connect_ms": 327.4,
+          "write_ms": 36.0,
+          "total_ms": 364.2,
+          "idle_for_s": 3.65,
+          "device_idle": false,
+          "fast_window_ok": true
         },
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
-          "queued_ms": 1517.3,
-          "connect_ms": 420.2,
-          "write_ms": 34.9,
-          "total_ms": 1972.6
+          "queued_ms": 1.0,
+          "connect_ms": 265.6,
+          "write_ms": 36.5,
+          "total_ms": 303.0,
+          "idle_for_s": 3.67,
+          "device_idle": false,
+          "fast_window_ok": true
         },
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
-          "queued_ms": 1313.0,
-          "connect_ms": 314.7,
-          "write_ms": 36.2,
-          "total_ms": 1663.9
+          "queued_ms": 0.7,
+          "connect_ms": 321.0,
+          "write_ms": 25.9,
+          "total_ms": 347.7,
+          "idle_for_s": 3.67,
+          "device_idle": false,
+          "fast_window_ok": true
         },
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
-          "queued_ms": 1432.6,
-          "connect_ms": 521.3,
-          "write_ms": 26.0,
-          "total_ms": 1980.0
+          "queued_ms": 0.8,
+          "connect_ms": 226.3,
+          "write_ms": 35.9,
+          "total_ms": 263.1,
+          "idle_for_s": 3.74,
+          "device_idle": false,
+          "fast_window_ok": true
         }
       ]
     },
@@ -162,148 +218,202 @@
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
-          "queued_ms": 64.3,
-          "connect_ms": 1773.6,
-          "write_ms": 661.4,
-          "total_ms": 2499.3
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 0.7,
-          "connect_ms": 215.1,
-          "write_ms": 27.1,
-          "total_ms": 243.0
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
           "queued_ms": 0.8,
-          "connect_ms": 477.2,
-          "write_ms": 36.1,
-          "total_ms": 514.1
+          "connect_ms": 388.6,
+          "write_ms": 28.5,
+          "total_ms": 417.9,
+          "idle_for_s": 14.47,
+          "device_idle": true,
+          "fast_window_ok": true
         },
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
           "queued_ms": 0.7,
-          "connect_ms": 215.1,
-          "write_ms": 36.2,
-          "total_ms": 252.1
+          "connect_ms": 448.0,
+          "write_ms": 28.8,
+          "total_ms": 477.5,
+          "idle_for_s": 14.5,
+          "device_idle": true,
+          "fast_window_ok": true
         },
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
           "queued_ms": 0.7,
-          "connect_ms": 242.5,
-          "write_ms": 36.2,
-          "total_ms": 279.5
+          "connect_ms": 560.1,
+          "write_ms": 36.5,
+          "total_ms": 597.4,
+          "idle_for_s": 14.4,
+          "device_idle": true,
+          "fast_window_ok": true
         },
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
           "queued_ms": 0.7,
-          "connect_ms": 539.8,
+          "connect_ms": 615.7,
           "write_ms": 35.5,
-          "total_ms": 576.1
+          "total_ms": 652.0,
+          "idle_for_s": 14.37,
+          "device_idle": true,
+          "fast_window_ok": true
         },
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
-          "queued_ms": 1.0,
-          "connect_ms": 659.3,
-          "write_ms": 38.2,
-          "total_ms": 698.6
+          "queued_ms": 0.9,
+          "connect_ms": 557.7,
+          "write_ms": 25.2,
+          "total_ms": 583.8,
+          "idle_for_s": 14.42,
+          "device_idle": true,
+          "fast_window_ok": true
         },
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
-          "queued_ms": 0.7,
-          "connect_ms": 168.0,
-          "write_ms": 36.1,
-          "total_ms": 204.8
+          "queued_ms": 3.7,
+          "connect_ms": 346.8,
+          "write_ms": 36.5,
+          "total_ms": 387.0,
+          "idle_for_s": 14.59,
+          "device_idle": true,
+          "fast_window_ok": true
         },
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
           "queued_ms": 0.8,
-          "connect_ms": 1068.1,
-          "write_ms": 28.0,
-          "total_ms": 1096.9
+          "connect_ms": 985.5,
+          "write_ms": 35.9,
+          "total_ms": 1022.2,
+          "idle_for_s": 13.98,
+          "device_idle": true,
+          "fast_window_ok": true
         },
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
           "queued_ms": 0.7,
-          "connect_ms": 797.0,
-          "write_ms": 27.2,
-          "total_ms": 825.0
+          "connect_ms": 564.8,
+          "write_ms": 26.8,
+          "total_ms": 592.3,
+          "idle_for_s": 14.43,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.8,
+          "connect_ms": 316.0,
+          "write_ms": 24.8,
+          "total_ms": 341.6,
+          "idle_for_s": 16.69,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.8,
+          "connect_ms": 775.4,
+          "write_ms": 35.9,
+          "total_ms": 812.1,
+          "idle_for_s": 14.14,
+          "device_idle": true,
+          "fast_window_ok": true
         }
       ],
       "consecutive": [
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
-          "queued_ms": 2170.8,
-          "connect_ms": 188.9,
-          "write_ms": 36.2,
-          "total_ms": 2396.0
+          "queued_ms": 0.7,
+          "connect_ms": 231.3,
+          "write_ms": 36.7,
+          "total_ms": 268.7,
+          "idle_for_s": 2.73,
+          "device_idle": false,
+          "fast_window_ok": true
         },
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
-          "queued_ms": 1573.2,
-          "connect_ms": 278.7,
+          "queued_ms": 2.7,
+          "connect_ms": 203.1,
+          "write_ms": 36.1,
+          "total_ms": 241.9,
+          "idle_for_s": 3.76,
+          "device_idle": false,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 344.5,
+          "write_ms": 44.0,
+          "total_ms": 389.2,
+          "idle_for_s": 3.63,
+          "device_idle": false,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.8,
+          "connect_ms": 212.1,
           "write_ms": 35.8,
-          "total_ms": 1887.7
+          "total_ms": 248.7,
+          "idle_for_s": 3.73,
+          "device_idle": false,
+          "fast_window_ok": true
         },
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
-          "queued_ms": 1641.4,
-          "connect_ms": 172.8,
+          "queued_ms": 0.7,
+          "connect_ms": 353.6,
           "write_ms": 35.9,
-          "total_ms": 1850.2
+          "total_ms": 390.3,
+          "idle_for_s": 3.63,
+          "device_idle": false,
+          "fast_window_ok": true
         },
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
-          "queued_ms": 1544.7,
-          "connect_ms": 380.9,
-          "write_ms": 35.7,
-          "total_ms": 1961.4
+          "queued_ms": 0.8,
+          "connect_ms": 286.9,
+          "write_ms": 27.5,
+          "total_ms": 315.2,
+          "idle_for_s": 3.66,
+          "device_idle": false,
+          "fast_window_ok": true
         },
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
-          "queued_ms": 1534.4,
-          "connect_ms": 289.7,
-          "write_ms": 27.9,
-          "total_ms": 1852.2
+          "queued_ms": 1.7,
+          "connect_ms": 226.4,
+          "write_ms": 25.8,
+          "total_ms": 253.8,
+          "idle_for_s": 3.77,
+          "device_idle": false,
+          "fast_window_ok": true
         },
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
-          "queued_ms": 1592.4,
-          "connect_ms": 569.2,
-          "write_ms": 38.3,
-          "total_ms": 2200.0
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 1259.3,
-          "connect_ms": 292.5,
-          "write_ms": 36.3,
-          "total_ms": 1588.1
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 1597.3,
-          "connect_ms": 189.0,
-          "write_ms": 36.2,
-          "total_ms": 1822.6
+          "queued_ms": 0.7,
+          "connect_ms": 285.0,
+          "write_ms": 35.9,
+          "total_ms": 321.6,
+          "idle_for_s": 5.71,
+          "device_idle": false,
+          "fast_window_ok": true
         }
       ]
     },
@@ -313,756 +423,1024 @@
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
-          "queued_ms": 1.2,
-          "connect_ms": 256.2,
-          "write_ms": 38.8,
-          "total_ms": 296.2
+          "queued_ms": 0.7,
+          "connect_ms": 784.8,
+          "write_ms": 25.3,
+          "total_ms": 810.8,
+          "idle_for_s": 14.57,
+          "device_idle": true,
+          "fast_window_ok": true
         },
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
           "queued_ms": 0.7,
-          "connect_ms": 442.4,
-          "write_ms": 36.1,
-          "total_ms": 479.3
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 0.9,
-          "connect_ms": 337.3,
-          "write_ms": 36.3,
-          "total_ms": 374.6
+          "connect_ms": 1886.1,
+          "write_ms": 35.8,
+          "total_ms": 1922.6,
+          "idle_for_s": 14.1,
+          "device_idle": true,
+          "fast_window_ok": true
         },
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
           "queued_ms": 0.7,
-          "connect_ms": 834.0,
-          "write_ms": 35.9,
-          "total_ms": 870.7
+          "connect_ms": 885.2,
+          "write_ms": 28.6,
+          "total_ms": 914.6,
+          "idle_for_s": 14.09,
+          "device_idle": true,
+          "fast_window_ok": true
         },
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
           "queued_ms": 0.7,
-          "connect_ms": 727.1,
-          "write_ms": 35.9,
-          "total_ms": 763.7
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 0.9,
-          "connect_ms": 570.2,
-          "write_ms": 25.4,
-          "total_ms": 596.5
+          "connect_ms": 320.7,
+          "write_ms": 26.0,
+          "total_ms": 347.3,
+          "idle_for_s": 14.65,
+          "device_idle": true,
+          "fast_window_ok": true
         },
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
           "queued_ms": 0.8,
-          "connect_ms": 884.5,
-          "write_ms": 24.0,
-          "total_ms": 909.4
+          "connect_ms": 646.2,
+          "write_ms": 36.5,
+          "total_ms": 683.5,
+          "idle_for_s": 14.3,
+          "device_idle": true,
+          "fast_window_ok": true
         },
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
-          "queued_ms": 0.7,
-          "connect_ms": 982.9,
+          "queued_ms": 1.1,
+          "connect_ms": 1402.1,
+          "write_ms": 36.1,
+          "total_ms": 1439.3,
+          "idle_for_s": 14.56,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.8,
+          "connect_ms": 547.1,
+          "write_ms": 36.5,
+          "total_ms": 584.5,
+          "idle_for_s": 14.42,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.8,
+          "connect_ms": 5087.4,
           "write_ms": 36.2,
-          "total_ms": 1019.8
+          "total_ms": 5124.4,
+          "idle_for_s": 13.9,
+          "device_idle": true,
+          "fast_window_ok": true
         },
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
-          "queued_ms": 0.7,
-          "connect_ms": 278.1,
-          "write_ms": 27.1,
-          "total_ms": 305.9
+          "queued_ms": 1.8,
+          "connect_ms": 1153.3,
+          "write_ms": 36.3,
+          "total_ms": 1191.5,
+          "idle_for_s": 14.79,
+          "device_idle": true,
+          "fast_window_ok": true
         },
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
-          "queued_ms": 0.6,
-          "connect_ms": 1627.7,
-          "write_ms": 36.4,
-          "total_ms": 1664.8
+          "queued_ms": 0.8,
+          "connect_ms": 1065.5,
+          "write_ms": 35.3,
+          "total_ms": 1101.6,
+          "idle_for_s": 14.92,
+          "device_idle": true,
+          "fast_window_ok": true
         }
       ],
       "consecutive": [
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
-          "queued_ms": 2285.7,
-          "connect_ms": 375.4,
-          "write_ms": 36.0,
-          "total_ms": 2697.2
+          "queued_ms": 0.7,
+          "connect_ms": 405.7,
+          "write_ms": 35.7,
+          "total_ms": 442.1,
+          "idle_for_s": 2.56,
+          "device_idle": false,
+          "fast_window_ok": true
         },
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
-          "queued_ms": 1452.7,
-          "connect_ms": 255.3,
-          "write_ms": 36.0,
-          "total_ms": 1743.9
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 1608.2,
-          "connect_ms": 373.6,
-          "write_ms": 35.9,
-          "total_ms": 2017.8
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 1384.2,
-          "connect_ms": 464.3,
-          "write_ms": 36.2,
-          "total_ms": 1884.8
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 1407.8,
-          "connect_ms": 263.8,
-          "write_ms": 26.9,
-          "total_ms": 1698.6
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 1585.0,
-          "connect_ms": 254.3,
-          "write_ms": 35.9,
-          "total_ms": 1875.3
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 1648.2,
-          "connect_ms": 573.2,
-          "write_ms": 24.0,
-          "total_ms": 2245.5
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 1179.1,
-          "connect_ms": 442.5,
+          "queued_ms": 2.6,
+          "connect_ms": 309.1,
           "write_ms": 36.5,
-          "total_ms": 1658.1
-        }
-      ]
-    },
-    {
-      "interval_ms": 700,
-      "first": [
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 0.8,
-          "connect_ms": 187.0,
-          "write_ms": 28.6,
-          "total_ms": 216.4
+          "total_ms": 348.2,
+          "idle_for_s": 3.65,
+          "device_idle": false,
+          "fast_window_ok": true
         },
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
           "queued_ms": 0.7,
-          "connect_ms": 496.1,
-          "write_ms": 24.8,
-          "total_ms": 521.7
+          "connect_ms": 314.2,
+          "write_ms": 36.1,
+          "total_ms": 351.1,
+          "idle_for_s": 3.63,
+          "device_idle": false,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 197.0,
+          "write_ms": 35.8,
+          "total_ms": 233.6,
+          "idle_for_s": 3.77,
+          "device_idle": false,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 178.2,
+          "write_ms": 36.3,
+          "total_ms": 215.2,
+          "idle_for_s": 3.78,
+          "device_idle": false,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 316.8,
+          "write_ms": 37.2,
+          "total_ms": 354.7,
+          "idle_for_s": 3.67,
+          "device_idle": false,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 269.2,
+          "write_ms": 35.7,
+          "total_ms": 305.6,
+          "idle_for_s": 3.69,
+          "device_idle": false,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 1315.1,
+          "write_ms": 36.1,
+          "total_ms": 1351.9,
+          "idle_for_s": 3.65,
+          "device_idle": false,
+          "fast_window_ok": true
+        }
+      ]
+    },
+    {
+      "interval_ms": 800,
+      "first": [
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 1.3,
+          "connect_ms": 2737.6,
+          "write_ms": 36.3,
+          "total_ms": 2775.2,
+          "idle_for_s": 14.88,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 1251.5,
+          "write_ms": 35.8,
+          "total_ms": 1288.0,
+          "idle_for_s": 14.73,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 1023.4,
+          "write_ms": 27.3,
+          "total_ms": 1051.5,
+          "idle_for_s": 14.95,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.8,
+          "connect_ms": 976.3,
+          "write_ms": 36.3,
+          "total_ms": 1013.4,
+          "idle_for_s": 14.99,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.8,
+          "connect_ms": 1873.9,
+          "write_ms": 36.2,
+          "total_ms": 1911.0,
+          "idle_for_s": 15.09,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 2035.2,
+          "write_ms": 27.2,
+          "total_ms": 2063.1,
+          "idle_for_s": 14.95,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 296.0,
+          "write_ms": 35.0,
+          "total_ms": 331.7,
+          "idle_for_s": 14.67,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.8,
+          "connect_ms": 5500.8,
+          "write_ms": 36.1,
+          "total_ms": 5537.7,
+          "idle_for_s": 15.45,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.8,
+          "connect_ms": 14328.1,
+          "write_ms": 26.3,
+          "total_ms": 14355.1,
+          "idle_for_s": 14.65,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 6179.4,
+          "write_ms": 35.7,
+          "total_ms": 6215.8,
+          "idle_for_s": 14.77,
+          "device_idle": true,
+          "fast_window_ok": true
+        }
+      ],
+      "consecutive": [
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 1.1,
+          "connect_ms": 446.8,
+          "write_ms": 26.4,
+          "total_ms": 474.2,
+          "idle_for_s": 2.53,
+          "device_idle": false,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.8,
+          "connect_ms": 190.2,
+          "write_ms": 28.5,
+          "total_ms": 219.5,
+          "idle_for_s": 3.78,
+          "device_idle": false,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 2.8,
+          "connect_ms": 193.2,
+          "write_ms": 36.3,
+          "total_ms": 232.2,
+          "idle_for_s": 3.77,
+          "device_idle": false,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 293.2,
+          "write_ms": 36.0,
+          "total_ms": 329.9,
+          "idle_for_s": 3.67,
+          "device_idle": false,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.8,
+          "connect_ms": 870.6,
+          "write_ms": 36.5,
+          "total_ms": 907.9,
+          "idle_for_s": 3.1,
+          "device_idle": false,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.9,
+          "connect_ms": 434.2,
+          "write_ms": 36.2,
+          "total_ms": 471.4,
+          "idle_for_s": 3.52,
+          "device_idle": false,
+          "fast_window_ok": true
         },
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
           "queued_ms": 0.6,
-          "connect_ms": 2831.9,
-          "write_ms": 35.4,
-          "total_ms": 2868.0
+          "connect_ms": 220.1,
+          "write_ms": 35.8,
+          "total_ms": 256.6,
+          "idle_for_s": 3.74,
+          "device_idle": false,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 298.3,
+          "write_ms": 36.3,
+          "total_ms": 335.2,
+          "idle_for_s": 3.67,
+          "device_idle": false,
+          "fast_window_ok": true
+        }
+      ]
+    },
+    {
+      "interval_ms": 1600,
+      "first": [
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 1849.2,
+          "write_ms": 35.7,
+          "total_ms": 1885.7,
+          "idle_for_s": 14.45,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 6122.7,
+          "write_ms": 36.1,
+          "total_ms": 6159.5,
+          "idle_for_s": 14.84,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 4637.7,
+          "write_ms": 28.1,
+          "total_ms": 4666.5,
+          "idle_for_s": 14.34,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.8,
+          "connect_ms": 2314.8,
+          "write_ms": 36.0,
+          "total_ms": 2351.6,
+          "idle_for_s": 15.64,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.8,
+          "connect_ms": 9484.9,
+          "write_ms": 28.6,
+          "total_ms": 9514.3,
+          "idle_for_s": 14.49,
+          "device_idle": true,
+          "fast_window_ok": true
         },
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
           "queued_ms": 1.0,
-          "connect_ms": 3488.3,
-          "write_ms": 36.1,
-          "total_ms": 3525.4
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 0.7,
-          "connect_ms": 289.4,
-          "write_ms": 35.0,
-          "total_ms": 325.1
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 0.7,
-          "connect_ms": 1862.8,
-          "write_ms": 36.2,
-          "total_ms": 1899.7
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 0.9,
-          "connect_ms": 328.3,
-          "write_ms": 28.6,
-          "total_ms": 357.9
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 0.7,
-          "connect_ms": 2476.2,
-          "write_ms": 28.4,
-          "total_ms": 2505.3
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 0.6,
-          "connect_ms": 931.2,
-          "write_ms": 25.4,
-          "total_ms": 957.3
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 0.7,
-          "connect_ms": 2173.7,
-          "write_ms": 36.2,
-          "total_ms": 2210.6
-        }
-      ],
-      "consecutive": [
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 2615.4,
-          "connect_ms": 443.3,
-          "write_ms": 35.6,
-          "total_ms": 3094.4
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 1358.1,
-          "connect_ms": 743.3,
-          "write_ms": 27.9,
-          "total_ms": 2129.4
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 1004.9,
-          "connect_ms": 220.3,
-          "write_ms": 27.2,
-          "total_ms": 1252.4
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 1600.0,
-          "connect_ms": 555.2,
-          "write_ms": 35.9,
-          "total_ms": 2191.1
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 1340.4,
-          "connect_ms": 247.6,
-          "write_ms": 24.8,
-          "total_ms": 1612.9
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 1508.5,
-          "connect_ms": 465.6,
-          "write_ms": 27.7,
-          "total_ms": 2001.9
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 1412.7,
-          "connect_ms": 209.6,
-          "write_ms": 36.2,
-          "total_ms": 1658.6
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 1500.7,
-          "connect_ms": 143.8,
-          "write_ms": 36.0,
-          "total_ms": 1680.5
-        }
-      ]
-    },
-    {
-      "interval_ms": 1200,
-      "first": [
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 0.7,
-          "connect_ms": 233.9,
+          "connect_ms": 2511.0,
           "write_ms": 35.8,
-          "total_ms": 270.5
+          "total_ms": 2547.8,
+          "idle_for_s": 15.45,
+          "device_idle": true,
+          "fast_window_ok": true
         },
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
           "queued_ms": 0.8,
-          "connect_ms": 3452.7,
-          "write_ms": 35.9,
-          "total_ms": 3489.4
+          "connect_ms": 5473.5,
+          "write_ms": 38.0,
+          "total_ms": 5512.3,
+          "idle_for_s": 14.49,
+          "device_idle": true,
+          "fast_window_ok": true
         },
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
-          "queued_ms": 0.8,
-          "connect_ms": 2127.2,
-          "write_ms": 35.7,
-          "total_ms": 2163.8
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 0.7,
-          "connect_ms": 1449.4,
+          "queued_ms": 1.2,
+          "connect_ms": 9488.6,
           "write_ms": 36.3,
-          "total_ms": 1486.4
+          "total_ms": 9526.1,
+          "idle_for_s": 14.48,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.8,
+          "connect_ms": 12955.5,
+          "write_ms": 36.1,
+          "total_ms": 12992.4,
+          "idle_for_s": 15.01,
+          "device_idle": true,
+          "fast_window_ok": true
         },
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
           "queued_ms": 0.7,
-          "connect_ms": 620.0,
-          "write_ms": 36.2,
-          "total_ms": 656.9
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 0.7,
-          "connect_ms": 311.1,
-          "write_ms": 28.6,
-          "total_ms": 340.4
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 0.6,
-          "connect_ms": 7268.6,
-          "write_ms": 35.6,
-          "total_ms": 7304.9
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 0.6,
-          "connect_ms": 9114.8,
-          "write_ms": 36.2,
-          "total_ms": 9151.7
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 1.3,
-          "connect_ms": 1599.3,
-          "write_ms": 35.7,
-          "total_ms": 1636.3
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 0.9,
-          "connect_ms": 3458.4,
-          "write_ms": 35.8,
-          "total_ms": 3495.1
+          "connect_ms": 3543.2,
+          "write_ms": 26.4,
+          "total_ms": 3570.4,
+          "idle_for_s": 15.43,
+          "device_idle": true,
+          "fast_window_ok": true
         }
       ],
       "consecutive": [
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
-          "queued_ms": 2210.5,
-          "connect_ms": 467.6,
-          "write_ms": 26.9,
-          "total_ms": 2705.1
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 1326.0,
-          "connect_ms": 330.9,
-          "write_ms": 36.2,
-          "total_ms": 1693.1
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 1485.4,
-          "connect_ms": 143.3,
-          "write_ms": 36.1,
-          "total_ms": 1664.8
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 1793.4,
-          "connect_ms": 210.5,
-          "write_ms": 28.6,
-          "total_ms": 2032.6
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 1730.0,
-          "connect_ms": 449.9,
-          "write_ms": 36.1,
-          "total_ms": 2215.9
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 1358.0,
-          "connect_ms": 729.0,
-          "write_ms": 36.0,
-          "total_ms": 2122.9
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 984.2,
-          "connect_ms": 666.7,
-          "write_ms": 35.9,
-          "total_ms": 1686.9
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 1073.7,
-          "connect_ms": 203.5,
-          "write_ms": 35.9,
-          "total_ms": 1313.2
-        }
-      ]
-    },
-    {
-      "interval_ms": 2000,
-      "first": [
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
           "queued_ms": 0.7,
-          "connect_ms": 11967.6,
-          "write_ms": 36.0,
-          "total_ms": 12004.3
+          "connect_ms": 547.4,
+          "write_ms": 36.2,
+          "total_ms": 584.3,
+          "idle_for_s": 2.41,
+          "device_idle": false,
+          "fast_window_ok": true
         },
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
           "queued_ms": 3.1,
-          "connect_ms": 11420.3,
-          "write_ms": 28.6,
-          "total_ms": 11452.0
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 0.8,
-          "connect_ms": 472.8,
-          "write_ms": 36.1,
-          "total_ms": 509.7
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 0.7,
-          "connect_ms": 3836.1,
+          "connect_ms": 803.6,
           "write_ms": 36.2,
-          "total_ms": 3873.1
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 0.9,
-          "connect_ms": 5291.4,
-          "write_ms": 35.2,
-          "total_ms": 5327.6
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 0.8,
-          "connect_ms": 266.3,
-          "write_ms": 36.3,
-          "total_ms": 303.3
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 0.9,
-          "connect_ms": 4551.8,
-          "write_ms": 27.9,
-          "total_ms": 4580.7
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 0.9,
-          "connect_ms": 11510.0,
-          "write_ms": 26.4,
-          "total_ms": 11537.3
+          "total_ms": 842.9,
+          "idle_for_s": 3.19,
+          "device_idle": false,
+          "fast_window_ok": true
         },
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
           "queued_ms": 0.7,
-          "connect_ms": 4208.0,
-          "write_ms": 36.4,
-          "total_ms": 4245.1
+          "connect_ms": 358.9,
+          "write_ms": 25.9,
+          "total_ms": 385.5,
+          "idle_for_s": 3.59,
+          "device_idle": false,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 645.2,
+          "write_ms": 28.4,
+          "total_ms": 674.4,
+          "idle_for_s": 3.33,
+          "device_idle": false,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 397.2,
+          "write_ms": 24.6,
+          "total_ms": 422.6,
+          "idle_for_s": 3.57,
+          "device_idle": false,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 463.4,
+          "write_ms": 36.0,
+          "total_ms": 500.0,
+          "idle_for_s": 3.53,
+          "device_idle": false,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.6,
+          "connect_ms": 264.1,
+          "write_ms": 35.0,
+          "total_ms": 299.8,
+          "idle_for_s": 3.68,
+          "device_idle": false,
+          "fast_window_ok": true
         },
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
           "queued_ms": 0.9,
-          "connect_ms": 211.7,
-          "write_ms": 26.1,
-          "total_ms": 238.7
-        }
-      ],
-      "consecutive": [
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 2494.7,
-          "connect_ms": 202.2,
-          "write_ms": 28.2,
-          "total_ms": 2725.2
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 1663.8,
-          "connect_ms": 323.9,
-          "write_ms": 36.5,
-          "total_ms": 2024.1
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 1579.4,
-          "connect_ms": 542.1,
-          "write_ms": 35.3,
-          "total_ms": 2156.8
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 1243.1,
-          "connect_ms": 209.5,
-          "write_ms": 36.3,
-          "total_ms": 1488.9
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 1582.5,
-          "connect_ms": 314.7,
-          "write_ms": 36.3,
-          "total_ms": 1933.6
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 1608.6,
-          "connect_ms": 637.3,
-          "write_ms": 35.4,
-          "total_ms": 2281.4
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 1189.2,
-          "connect_ms": 632.6,
+          "connect_ms": 252.9,
           "write_ms": 35.8,
-          "total_ms": 1857.6
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 1094.5,
-          "connect_ms": 1539.0,
-          "write_ms": 36.0,
-          "total_ms": 2669.5
+          "total_ms": 289.6,
+          "idle_for_s": 3.71,
+          "device_idle": false,
+          "fast_window_ok": true
         }
       ]
     },
     {
-      "interval_ms": 4000,
+      "interval_ms": 3200,
       "first": [
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
-          "queued_ms": 0.9,
-          "connect_ms": 7204.0,
+          "queued_ms": 0.7,
+          "connect_ms": 5476.5,
+          "write_ms": 35.0,
+          "total_ms": 5512.3,
+          "idle_for_s": 14.24,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.8,
+          "connect_ms": 30508.2,
+          "write_ms": 51.7,
+          "total_ms": 30560.7,
+          "idle_for_s": 14.44,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 10484.9,
           "write_ms": 35.6,
-          "total_ms": 7240.5
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 0.9,
-          "connect_ms": 14291.3,
-          "write_ms": 36.3,
-          "total_ms": 14328.6
+          "total_ms": 10521.3,
+          "idle_for_s": 15.49,
+          "device_idle": true,
+          "fast_window_ok": true
         },
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
           "queued_ms": 0.8,
-          "connect_ms": 8459.8,
-          "write_ms": 36.2,
-          "total_ms": 8496.8
+          "connect_ms": 4813.2,
+          "write_ms": 35.6,
+          "total_ms": 4849.6,
+          "idle_for_s": 17.15,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 19292.3,
+          "write_ms": 36.0,
+          "total_ms": 19329.0,
+          "idle_for_s": 15.67,
+          "device_idle": true,
+          "fast_window_ok": true
         },
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
           "queued_ms": 0.8,
-          "connect_ms": 5126.9,
-          "write_ms": 36.4,
-          "total_ms": 5164.1
+          "connect_ms": 6370.7,
+          "write_ms": 35.9,
+          "total_ms": 6407.4,
+          "idle_for_s": 16.58,
+          "device_idle": true,
+          "fast_window_ok": true
         },
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
           "queued_ms": 0.7,
-          "connect_ms": 11557.5,
-          "write_ms": 28.8,
-          "total_ms": 11587.0
+          "connect_ms": 40141.9,
+          "write_ms": 56.7,
+          "total_ms": 40199.4,
+          "idle_for_s": 16.8,
+          "device_idle": true,
+          "fast_window_ok": true
         },
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
-          "queued_ms": 0.7,
-          "connect_ms": 44420.8,
-          "write_ms": 56.0,
-          "total_ms": 44477.6
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 0.7,
-          "connect_ms": 19747.9,
-          "write_ms": 43.5,
-          "total_ms": 19792.2
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 0.9,
-          "connect_ms": 10146.5,
-          "write_ms": 36.2,
-          "total_ms": 10183.7
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 0.7,
-          "connect_ms": 4733.4,
-          "write_ms": 24.8,
-          "total_ms": 4758.9
-        },
-        {
-          "address": "C8:80:32:AD:F7:B9",
-          "entry": 1,
-          "queued_ms": 0.7,
-          "connect_ms": 7590.3,
+          "queued_ms": 0.8,
+          "connect_ms": 3357.3,
           "write_ms": 36.1,
-          "total_ms": 7627.1
+          "total_ms": 3394.3,
+          "idle_for_s": 15.62,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 6841.7,
+          "write_ms": 35.9,
+          "total_ms": 6878.2,
+          "idle_for_s": 16.14,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.8,
+          "connect_ms": 12504.5,
+          "write_ms": 26.9,
+          "total_ms": 12532.2,
+          "idle_for_s": 16.45,
+          "device_idle": true,
+          "fast_window_ok": true
         }
       ],
       "consecutive": [
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
-          "queued_ms": 2861.6,
-          "connect_ms": 537.0,
-          "write_ms": 25.4,
-          "total_ms": 3424.1
+          "queued_ms": 0.7,
+          "connect_ms": 241.9,
+          "write_ms": 36.1,
+          "total_ms": 278.6,
+          "idle_for_s": 2.71,
+          "device_idle": false,
+          "fast_window_ok": true
         },
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
-          "queued_ms": 1185.8,
-          "connect_ms": 232.6,
-          "write_ms": 41.6,
-          "total_ms": 1460.1
+          "queued_ms": 0.7,
+          "connect_ms": 275.1,
+          "write_ms": 36.1,
+          "total_ms": 311.9,
+          "idle_for_s": 3.7,
+          "device_idle": false,
+          "fast_window_ok": true
         },
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
-          "queued_ms": 1604.7,
-          "connect_ms": 316.5,
+          "queued_ms": 0.8,
+          "connect_ms": 397.3,
+          "write_ms": 28.7,
+          "total_ms": 426.8,
+          "idle_for_s": 3.57,
+          "device_idle": false,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 263.2,
+          "write_ms": 36.2,
+          "total_ms": 300.1,
+          "idle_for_s": 3.72,
+          "device_idle": false,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.8,
+          "connect_ms": 836.4,
+          "write_ms": 35.9,
+          "total_ms": 873.2,
+          "idle_for_s": 3.13,
+          "device_idle": false,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 1.0,
+          "connect_ms": 286.2,
+          "write_ms": 27.1,
+          "total_ms": 314.2,
+          "idle_for_s": 3.67,
+          "device_idle": false,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 2.9,
+          "connect_ms": 179.0,
+          "write_ms": 36.2,
+          "total_ms": 218.1,
+          "idle_for_s": 3.78,
+          "device_idle": false,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.9,
+          "connect_ms": 272.1,
+          "write_ms": 36.1,
+          "total_ms": 309.2,
+          "idle_for_s": 3.69,
+          "device_idle": false,
+          "fast_window_ok": true
+        }
+      ]
+    },
+    {
+      "interval_ms": 5000,
+      "first": [
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 6886.4,
+          "write_ms": 60.1,
+          "total_ms": 6947.2,
+          "idle_for_s": 18.71,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 3.2,
+          "connect_ms": 15085.9,
+          "write_ms": 36.2,
+          "total_ms": 15125.3,
+          "idle_for_s": 14.89,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 2.8,
+          "connect_ms": 49772.9,
+          "write_ms": 61.5,
+          "total_ms": 49837.2,
+          "idle_for_s": 15.14,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 2.9,
+          "connect_ms": 8483.8,
+          "write_ms": 35.8,
+          "total_ms": 8522.5,
+          "idle_for_s": 16.5,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 11439.5,
+          "write_ms": 35.8,
+          "total_ms": 11476.0,
+          "idle_for_s": 18.52,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.9,
+          "connect_ms": 15908.3,
+          "write_ms": 36.0,
+          "total_ms": 15945.3,
+          "idle_for_s": 19.03,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.8,
+          "connect_ms": 7766.4,
+          "write_ms": 28.4,
+          "total_ms": 7795.7,
+          "idle_for_s": 17.2,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.8,
+          "connect_ms": 5180.2,
           "write_ms": 35.6,
-          "total_ms": 1956.8
+          "total_ms": 5216.7,
+          "idle_for_s": 14.78,
+          "device_idle": true,
+          "fast_window_ok": true
         },
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
-          "queued_ms": 1436.6,
-          "connect_ms": 510.2,
+          "queued_ms": 0.7,
+          "connect_ms": 6563.9,
+          "write_ms": 34.9,
+          "total_ms": 6599.5,
+          "idle_for_s": 18.42,
+          "device_idle": true,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.9,
+          "connect_ms": 9961.2,
           "write_ms": 36.4,
-          "total_ms": 1983.3
+          "total_ms": 9998.5,
+          "idle_for_s": 15.0,
+          "device_idle": true,
+          "fast_window_ok": true
+        }
+      ],
+      "consecutive": [
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 456.5,
+          "write_ms": 25.3,
+          "total_ms": 482.6,
+          "idle_for_s": 2.52,
+          "device_idle": false,
+          "fast_window_ok": true
         },
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
-          "queued_ms": 1318.1,
-          "connect_ms": 319.5,
-          "write_ms": 36.1,
-          "total_ms": 1673.7
+          "queued_ms": 0.7,
+          "connect_ms": 260.6,
+          "write_ms": 36.3,
+          "total_ms": 297.5,
+          "idle_for_s": 3.7,
+          "device_idle": false,
+          "fast_window_ok": true
         },
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
-          "queued_ms": 1542.9,
-          "connect_ms": 209.4,
-          "write_ms": 36.4,
-          "total_ms": 1788.7
+          "queued_ms": 0.7,
+          "connect_ms": 587.0,
+          "write_ms": 26.7,
+          "total_ms": 614.4,
+          "idle_for_s": 3.41,
+          "device_idle": false,
+          "fast_window_ok": true
         },
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
-          "queued_ms": 1584.1,
-          "connect_ms": 314.8,
-          "write_ms": 36.1,
-          "total_ms": 1935.1
+          "queued_ms": 0.7,
+          "connect_ms": 316.2,
+          "write_ms": 35.7,
+          "total_ms": 352.6,
+          "idle_for_s": 3.65,
+          "device_idle": false,
+          "fast_window_ok": true
         },
         {
           "address": "C8:80:32:AD:F7:B9",
           "entry": 1,
-          "queued_ms": 1543.3,
-          "connect_ms": 193.3,
-          "write_ms": 36.1,
-          "total_ms": 1772.7
+          "queued_ms": 0.7,
+          "connect_ms": 499.9,
+          "write_ms": 25.9,
+          "total_ms": 526.5,
+          "idle_for_s": 3.45,
+          "device_idle": false,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 238.5,
+          "write_ms": 36.3,
+          "total_ms": 275.5,
+          "idle_for_s": 3.74,
+          "device_idle": false,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.9,
+          "connect_ms": 200.8,
+          "write_ms": 28.9,
+          "total_ms": 230.6,
+          "idle_for_s": 3.75,
+          "device_idle": false,
+          "fast_window_ok": true
+        },
+        {
+          "address": "C8:80:32:AD:F7:B9",
+          "entry": 1,
+          "queued_ms": 0.7,
+          "connect_ms": 380.5,
+          "write_ms": 36.0,
+          "total_ms": 417.3,
+          "idle_for_s": 3.58,
+          "device_idle": false,
+          "fast_window_ok": true
         }
       ]
     }
-  ],
-  "receiver": "Home Assistant on a Raspberry Pi 3, its own adapter; the ESP32 proxy disabled",
-  "method": "each first command is issued after the idle wait plus a random fraction of one advertising interval, so the device's advertising phase is sampled uniformly rather than at one point"
+  ]
 }
