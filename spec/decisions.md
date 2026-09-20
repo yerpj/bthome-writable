@@ -2278,3 +2278,65 @@ it.
 
 Superseded runs are kept under `docs/data/archive/`: with the proxy, with three
 samples, and with the LED driven (D-053).
+
+## D-055 — The low-frequency clocks, and why they are not the story  [VERIFY]
+
+2026-09-20, on the owner's hypothesis that the nice!nano connects less well
+because its crystal is not properly tuned. Measured rather than argued.
+
+**Drift against the host clock, over four minutes** (`getTime()` on the device
+compared with `perf_counter()` on the bench host, through the serial console for
+the nice!nano and the BLE console for the Puck):
+
+| Device | Drift |
+|---|---|
+| Puck.js, nRF52832 | **+23 ppm** |
+| nice!nano, nRF52840 | **−62 ppm** |
+
+The nice!nano is three times further from nominal, which is the shape of the
+owner's hypothesis. It is also far too small to matter here: 62 ppm of a 4 s
+advertising interval is 250 µs, against scan windows measured in milliseconds
+and a BLE sleep-clock requirement of ±500 ppm. It is three to four orders of
+magnitude below the seconds the sweep measures.
+
+**And the devices do not actually differ in connection cost.** Connect time as a
+multiple of the interval, median per interval, from D-054:
+
+| | 100 ms | 200 ms | 400 ms | 700 ms | 1.2 s | 2 s | 4 s |
+|---|---|---|---|---|---|---|---|
+| Puck.js | 3.35 | 2.54 | 1.62 | 2.00 | 1.55 | 2.19 | 2.33 |
+| nice!nano | 2.56 | 3.92 | 1.81 | 2.56 | 2.25 | 1.84 | 3.64 |
+
+Mean 2.23× against 2.65×, paired difference +0.43 with a standard deviation of
+0.81 over seven intervals, and the sign changes twice. Not distinguishable from
+zero on this data.
+
+### Is it the nRF52832 versus the nRF52840?
+
+No — the difference is in the board's clock configuration, not the chip family.
+Read from the devices themselves (`peek32`, stable across repeated samples):
+
+| Register | Puck.js | nice!nano |
+|---|---|---|
+| `FICR.INFO.PART` | `52832` | `52840` |
+| `FICR.INFO.VARIANT` | `AAE0` | `AAD0` |
+| `CLOCK.LFCLKSRC` | 0 = RC | 1 = crystal |
+| `CLOCK.LFCLKSTAT` | `0x10000` = running, source RC | `0x10000` = running, source RC |
+
+Both parts offer the same low-frequency options — an internal RC oscillator,
+calibrated by the SoftDevice against the high-frequency clock, or an external
+32.768 kHz crystal. The Puck.js asks for the RC, which is right for a board that
+fits no crystal. **The nice!nano asks for the crystal and appears to be running
+on the RC anyway**, which is what "not properly tuned" would look like at its
+worst: an LFXO that never starts, and a silent fall back.
+
+Two cautions on that reading. The CLOCK peripheral belongs to the SoftDevice, so
+a register read from the application is indicative rather than authoritative;
+and the way to settle it — driving LFXO by hand — is not worth doing on a device
+that is part of a working bench. What is settled is the part that matters: both
+clocks are within ±62 ppm, which is fine for BLE, and neither explains a
+connection time measured in seconds.
+
+**Where it will cost something** is power, not latency: a peripheral with a less
+certain sleep clock must widen its receive windows around each connection event.
+That is a battery question, and this project has not measured battery.
