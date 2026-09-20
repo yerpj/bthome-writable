@@ -43,10 +43,6 @@ DEFAULT_MTU_PAYLOAD: Final = 20
 """What fits in a write at BLE's default 23-byte MTU. Most writes are a couple
 of bytes, so the MTU is only worth asking about above this."""
 
-WRITE_DEBOUNCE: Final = 0.25
-"""Seconds to let rapid changes pile up behind a write in flight -- a slider drag
-must produce one follow-up write, not one per pixel."""
-
 READ_RETRY: Final = 10.0
 """Seconds before a failed state read is tried again. An Espruino device serves
 one central at a time, so a read can fail simply because a phone or the Web IDE

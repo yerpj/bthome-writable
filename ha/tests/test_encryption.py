@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-import time
 from unittest.mock import patch
 
 from homeassistant.core import HomeAssistant
@@ -202,7 +201,7 @@ async def test_a_keyed_device_that_advertises_in_clear_is_refused_loudly(
     coordinator.advertises_encrypted = False
 
     with pytest.raises(WriteFailed, match="advertising in clear"):
-        await coordinator._write_now([(1, b"\x01", True, time.monotonic())], [])
+        await coordinator._write_now(1, b"\x01")
 
 
 async def test_a_keyed_device_still_seals_before_the_first_advertisement(
@@ -226,4 +225,4 @@ async def test_a_keyed_device_still_seals_before_the_first_advertisement(
         ),
         pytest.raises(WriteFailed, match="not reachable"),
     ):
-        await coordinator._write_now([(1, b"\x01", True, time.monotonic())], [])
+        await coordinator._write_now(1, b"\x01")

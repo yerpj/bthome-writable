@@ -149,7 +149,6 @@ class FakeGattClient:
         self.writes: list[tuple[str, bytes]] = []
         self.reads: list[str] = []
         self.fail_on_write: Exception | None = None
-        self.fail_after: int | None = None
         self.fail_on_read: Exception | None = None
         self.connections = 0
         self.disconnects = 0
@@ -171,9 +170,7 @@ class FakeGattClient:
 
     async def write_gatt_char(self, characteristic, payload, response=True) -> None:
         assert response, "PROTOCOL.md §4.2: writes are with response"
-        if self.fail_after is not None and len(self.writes) >= self.fail_after:
-            raise self.fail_on_write or RuntimeError("link dropped")
-        if self.fail_after is None and self.fail_on_write is not None:
+        if self.fail_on_write is not None:
             raise self.fail_on_write
         self.writes.append((characteristic.uuid, bytes(payload)))
 
@@ -205,7 +202,6 @@ def gatt():
             f"{module}.bluetooth.async_ble_device_from_address", return_value=object()
         ),
         patch(f"{module}.establish_connection", connect),
-        patch(f"{module}.WRITE_DEBOUNCE", 0.01),
     ):
         yield client
 

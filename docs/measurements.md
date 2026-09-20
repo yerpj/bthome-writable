@@ -127,11 +127,18 @@ which of those dominates depends on where in the cycle the command lands.
 nice!nano, one byte or a whole string.
 
 **Following commands are flat** at about 1.9 s on both devices at every
-interval — and most of that is the receiver's own queue, not the radio: the
-*queued* column reads 1.4–1.6 s, which is this integration holding a second
-command behind the first (`WRITE_DEBOUNCE`, D-020). The radio part of a
-following command is a few hundred milliseconds. So the interval is a cold-start
-dial, not a latency dial, and the warm path is bounded by the receiver.
+interval — and most of that was the receiver's own queue, not the radio: the
+*queued* column reads 1.4–1.6 s, which was this integration holding a second
+command behind the first. So the interval is a cold-start dial, not a latency
+dial, and the warm path was bounded by the receiver.
+
+> Measured before D-059. The 250 ms pause that produced most of that queued time
+> went with the batching it served, and a following command now reconnects as
+> soon as the one before it is acknowledged. The *first command* column, which is
+> the protocol's own cost and the subject of this report, is unaffected — it never
+> waited on that pause. The following-command figures are kept as the record of
+> what was measured, not as a prediction of what the current code does; they are
+> worth re-running before release.
 
 **Nothing was lost.** 252 commands, 0 failures, 0 writes stalled past 5 s.
 

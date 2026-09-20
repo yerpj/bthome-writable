@@ -30,7 +30,6 @@ from .const import (
     READ_RETRY,
     RESYNC_JUMP,
     SERVICE_UUID,
-    WRITE_DEBOUNCE,
 )
 from .protocol import (
     Declaration,
@@ -324,12 +323,14 @@ class BTHomeWritableCoordinator:
     async def async_write(
         self, entry: int, value: bytes, *, coalesce: bool = True
     ) -> None:
-        """Queue a value for an entry; the flush starts at once if none runs.
+        """Queue a value for an entry; the queue drains one command per connection.
 
         Coalescing is per entry, last value wins, and happens behind the write in
         flight rather than in front of it: dragging a slider produces one write
-        for where it started and one for where it stopped. Events are queued with
-        `coalesce=False`: two presses are two presses.
+        for where it started and one for where it stopped. It is what keeps a
+        source faster than the link from growing the queue without bound, which
+        is why it stays while the batching did not (D-059). Events are queued
+        with `coalesce=False`: two presses are two presses.
         """
         async with self._pending_lock:
             if coalesce:
@@ -360,42 +361,44 @@ class BTHomeWritableCoordinator:
             listener(entries, error)
 
     async def _flush_soon(self) -> None:
-        """Write what is queued in one connection, then whatever arrived meanwhile.
+        """Drain the queue, one command per connection.
 
-        Leading edge, not trailing: the first change goes out immediately and
+        Connect, write one object, wait for the device to acknowledge it, close.
+        Nothing is bundled and nothing waits for a companion: a command that
+        cannot be delivered fails on its own and takes nothing else with it, and
+        the link is held for exactly as long as one write needs it (D-059).
+
+        Leading edge, not trailing: the first change goes out immediately, and
         only what piles up behind it is coalesced (D-020).
         """
         while True:
             async with self._pending_lock:
-                batch, self._pending = self._pending, []
-            if not batch:
-                return
-
-            written: list[tuple[int, bytes, bool, float]] = []
-            try:
-                await self._write_now(batch, written)
-            except Exception as caught:  # broad on purpose: reported to listeners
-                _LOGGER.warning("%s: write failed: %s", self.address, caught)
-                done = {item[0] for item in written}
-                self._report(done, None)
-                self._report({item[0] for item in batch} - done, caught)
-            else:
-                self._report({item[0] for item in batch}, None)
-
-            async with self._pending_lock:
                 if not self._pending:
                     return
-            await asyncio.sleep(WRITE_DEBOUNCE)
+                entry, value, coalesce, queued_at = self._pending.pop(0)
+
+            try:
+                await self._write_now(entry, value, coalesce, queued_at)
+            except Exception as caught:  # broad on purpose: reported to listeners
+                _LOGGER.warning("%s: write failed: %s", self.address, caught)
+                self._report({entry}, caught)
+            else:
+                self._report({entry}, None)
 
     async def _write_now(
         self,
-        batch: list[tuple[int, bytes, bool, float]],
-        written: list[tuple[int, bytes, bool, float]],
+        number: int,
+        value: bytes,
+        coalesce: bool = True,
+        queued_at: float | None = None,
     ) -> None:
-        """Deliver a batch over one connection, one write with response each.
+        """Deliver one command: connect, write with response, close.
 
-        `written` collects what went through, so a failure part-way reports the
-        entries that did arrive as delivered.
+        The whole of the receiver's side of §4.2, and deliberately the whole of
+        it: one object, one connection, no bundling of commands that happen to
+        be queued together. The link is opened when there is something to say
+        and dropped as soon as the device has acknowledged it, which is what a
+        device that serves one central at a time needs from us (D-003, D-059).
         """
         if (
             self.bindkey is not None
@@ -425,6 +428,18 @@ class BTHomeWritableCoordinator:
         if device is None:
             raise WriteFailed(f"{self.address}: not reachable by any adapter or proxy")
 
+        entry = self.entry(number)
+        if entry is None:
+            raise WriteFailed(
+                f"{self.address}: entry {number} is not in the declaration"
+            )
+
+        payload = encode_object(entry, value)
+        if self.bindkey is not None:
+            payload = seal_write(
+                payload, self.bindkey, self.address, self.next_write_counter()
+            )
+
         started = time.monotonic()
         async with self._semaphore:
             client = await establish_connection(
@@ -435,45 +450,23 @@ class BTHomeWritableCoordinator:
             )
             connected = time.monotonic()
             try:
-                for number, value, coalesce, queued_at in batch:
-                    entry = self.entry(number)
-                    if entry is None:
-                        raise WriteFailed(
-                            f"{self.address}: entry {number} is not in the declaration"
-                        )
-                    payload = encode_object(entry, value)
-                    if self.bindkey is not None:
-                        payload = seal_write(
-                            payload,
-                            self.bindkey,
-                            self.address,
-                            self.next_write_counter(),
-                        )
-                    await self._check_mtu(client, payload)
-                    write_started = time.monotonic()
-                    await self._write_characteristic(client, entry, payload)
-                    acknowledged = time.monotonic()
-                    if coalesce:
-                        # Events leave no state behind; everything else does.
-                        self._values[number] = value
-                    written.append((number, value, coalesce, queued_at))
-                    self._report_timing(
-                        number,
-                        queued_at=queued_at,
-                        connect_started=started,
-                        connected=connected,
-                        write_started=write_started,
-                        acknowledged=acknowledged,
-                    )
+                await self._check_mtu(client, payload)
+                write_started = time.monotonic()
+                await self._write_characteristic(client, entry, payload)
+                acknowledged = time.monotonic()
             finally:
                 await client.disconnect()
 
-        _LOGGER.debug(
-            "%s: wrote %d entr%s in %.0f ms",
-            self.address,
-            len(batch),
-            "y" if len(batch) == 1 else "ies",
-            (time.monotonic() - started) * 1000,
+        if coalesce:
+            # Events leave no state behind; everything else does.
+            self._values[number] = value
+        self._report_timing(
+            number,
+            queued_at=started if queued_at is None else queued_at,
+            connect_started=started,
+            connected=connected,
+            write_started=write_started,
+            acknowledged=acknowledged,
         )
 
     def _report_timing(

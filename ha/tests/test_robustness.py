@@ -1,14 +1,13 @@
 """T4.1: what happens when the connection fails, and where the user sees it.
 
 Run against a fake GATT client, so the connection path itself is exercised: a
-link that drops mid-write, a device that is not reachable, a batch that fails
-part-way. Both incidents of 2026-09-15 were connection failures that presented
-as something else (D-042, D-043).
+link that drops mid-write, a device that is not reachable, a command that
+fails without touching the one before it. Both incidents of 2026-09-15 were
+connection failures that presented as something else (D-042, D-043).
 """
 
 from __future__ import annotations
 
-import time
 from unittest.mock import patch
 
 from homeassistant.const import STATE_ON, STATE_UNKNOWN
@@ -112,27 +111,26 @@ async def test_an_unreachable_device_fails_before_it_connects(
     assert "not reachable" in logbook_entries[-1]["message"]
 
 
-async def test_a_batch_that_fails_part_way_reports_what_did_arrive(
+async def test_a_command_that_fails_takes_nothing_else_with_it(
     hass: HomeAssistant, radio, gatt
 ) -> None:
-    """Two entries queued behind a write in flight share one connection. If the
-    link drops after the first, the first is applied and the second is not."""
+    """One connection carries one command (D-059). Two entries queued together
+    are two connections, so a link that drops on the second leaves the first
+    applied -- and, unlike a batch, the second is retried by nothing and
+    reported on its own."""
     await setup_device(hass, radio, "two-lights-and-display")
     gatt.declare(3)
     coordinator = hass.config_entries.async_entries("bthome_writable")[0].runtime_data
 
-    gatt.fail_after = 1
-    batch: list = []
-    now = time.monotonic()
+    await coordinator._write_now(1, b"\x01")
+    gatt.fail_on_write = RuntimeError("device disconnected")
     with pytest.raises(RuntimeError):
-        await coordinator._write_now(
-            [(1, b"\x01", True, now), (2, b"\x01", True, now)], batch
-        )
+        await coordinator._write_now(2, b"\x01")
 
-    assert [item[0] for item in batch] == [1]
     assert coordinator.value_of(1) == b"\x01"
     assert coordinator.value_of(2) is None
     assert gatt.writes == [(UUID_TEMPLATE.format(1), bytes.fromhex("1e01"))]
+    assert gatt.connections == gatt.disconnects == 2
 
 
 async def test_a_write_failure_does_not_wedge_the_queue(

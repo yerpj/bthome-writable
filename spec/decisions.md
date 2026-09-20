@@ -2459,3 +2459,50 @@ truncating it (`_check_mtu`).
 The specification moves to **2.0-draft.2**. Worth mentioning to Gordon as a
 tightening rather than a change of mechanism: it says what every implementation
 already does.
+
+
+## D-059 — One connection carries one command  [DECISION, owner]
+
+**Status:** decided by the owner 2026-09-20, implemented the same day.
+
+> *"Ne considérons pas de commandes multiples. On reste sur un mécanisme simple :
+> on ouvre la connexion, on envoie la commande unique, dès qu'on a la
+> confirmation GATT on ferme la connexion. On reste simple, pour maximiser la
+> fiabilité de notre Release à venir."*
+
+**The rule.** Connect, write one object, wait for the device to acknowledge it,
+disconnect. Nothing is bundled. Commands that happen to be queued together are
+delivered one connection each, in order.
+
+**What it replaces.** The coordinator used to drain its queue as a *batch*: one
+connection carried every command waiting for the device, then paused 250 ms
+(`WRITE_DEBOUNCE`) to let anything that arrived meanwhile ride the next
+connection. The constant is gone, and so is the pause; a following command now
+reconnects as soon as the one before it is acknowledged.
+
+**Why simplicity wins here.** A batch has a failure mode a single command does
+not: the link can drop part-way, so some commands are delivered and some are
+not, and the receiver has to work out which, report both outcomes, and decide
+whether it may retry any of them. That bookkeeping (`written`, partial
+reporting) existed only to serve batching. With one command per connection a
+failure is unambiguous — that command failed, nothing else is in doubt — which
+is what a release is easier to trust for.
+
+**What it costs.** A burst pays a connection per command instead of one
+connection for the burst. On this bench that is about two seconds each (D-054)
+rather than two seconds plus a few tens of milliseconds. The cost is real and
+accepted: bursts are the rare case, and the common case — one click — is
+unaffected, since a single command never benefited from batching.
+
+**Coalescing stays**, and is now the only guard against an unbounded queue. A
+source faster than the link — a slider dragged, an automation re-asserting state
+— would otherwise queue a connection per change forever. Per entry, last value
+wins, still *behind* the write in flight rather than in front of it (D-020), so
+the first change goes out immediately. Events (`coalesce=False`) are exempt: two
+presses stay two presses.
+
+**Measurement note.** D-054's *following command* figures were taken with the
+batching and its 250 ms pause in place, and its "of which queued" column is
+mostly that pause. The *first command* figures — the subject of that campaign —
+never waited on it and stand unchanged. `docs/measurements.md` now says so;
+re-running the following-command half before release would be worth the hour.
