@@ -2872,3 +2872,80 @@ warned about: an interrupted deployment left the sketch stopped, so the device
 advertised nothing and could not be connected to in order to be fixed. The OOTY
 rail switch recovered it in one power cycle, which is what it is on the bench
 for.
+
+
+## D-065 — A regression guard for reliability and latency  [T4]
+
+**Status:** built and calibrated 2026-09-21, baseline recorded at `c4e3c88`.
+`tools/regression.py`, documented in `docs/regression.md`.
+
+**Why, in one line:** every change that moved this project's numbers passed
+every test while doing it.
+
+| What moved | By how much | What caught it |
+|---|---|---|
+| The batching's pause behind a second command | 1.5 s per command | a hardware campaign (D-059, D-060) |
+| One connection in ten timed out and was retried | 30–50 s, reported as success | a re-measure the owner asked for (D-061) |
+| A re-created entry restarted its write counter at 0 | every encrypted write refused, silently | the first encrypted hardware test (D-063) |
+
+575 unit tests across three suites, and not one of them could have seen any of
+those. They are not the kind of fault a unit test is shaped to find: nothing
+threw, nothing returned the wrong bytes, and the integration behaved exactly as
+written. What changed was how long it took and whether it arrived.
+
+**What it does.** One advertising interval — 1 s, a guard rather than the ladder
+of D-060 — eight first commands and sixteen repeated ones per device, about
+three minutes each. It compares seven numbers with a recorded baseline and exits
+non-zero on a regression, so it can gate a release.
+
+**The baseline, 2026-09-21:**
+
+| | Puck.js | nice!nano |
+|---|---|---|
+| First command, median | 1.74 s | 2.54 s |
+| First command, p90 | 5.58 s | 5.12 s |
+| Repeated command, median | 0.31 s | 0.28 s |
+| Repeated command, p90 | 0.51 s | 0.58 s |
+| The write itself | 36 ms | 43 ms |
+| Delivered | 100 % | 100 % |
+| Connected without a retry | 100 % | 100 % |
+
+**Calibrated by running it, not by choosing numbers.** A second run against that
+baseline passed with the first-command median at 2.25 s against 1.74 (Puck) and
+2.98 against 2.54 (nano) — a quarter to a third of run-to-run movement on an
+unchanged build, which is the same order as the 30–50 % seen at the slow paliers
+(D-061). The thresholds are ×1.6 plus a floor for a median, ×2.0 plus a floor
+for a 90th percentile, and ten to twenty points for a fraction. Generous on
+purpose: the faults above were factors of five and twenty, and a guard that
+fails on weather is a guard someone switches off.
+
+**Three refusals worth naming**, because each is a way this kind of harness
+usually rots:
+
+- **A run containing a sample on the wrong side of the fast window is not
+  judged at all.** That sample measures the other case under this one's label
+  (D-060). It is a broken measurement, not a regression, and the run says so.
+- **A suspiciously fast result is flagged rather than celebrated.** Through the
+  ESP32 proxy, first commands came back faster than catching an advertisement
+  allows, because it reuses a recent link (D-054). A number far below the
+  baseline means the bench stopped measuring the same thing.
+- **The bench is configured by the harness, not by memory.** `tools/ha_bench.py`
+  disables the proxy and the OLED automation and restores exactly what it
+  changed. Both were disabled by hand before every campaign so far, which is one
+  more way for a run to be quietly incomparable.
+
+**The policy is pure and tested without a radio.** `compare()` and `summarise()`
+take dictionaries and return verdicts; ten tests in `tools/tests/test_regression.py`
+pin the judgement — what counts as noise, what counts as a regression, what
+counts as the bench having changed. Changing a threshold is a reviewable diff
+rather than a number buried in a run.
+
+**The one way this becomes worthless** is a baseline quietly re-recorded to make
+a run pass. `docs/regression.md` says so, and the baseline carries the date, the
+commit and the bench it was taken on so that a re-recording is visible in the
+history.
+
+**Not covered, and worth knowing.** One bench, one interval, two devices: this
+guards against *this project* getting slower or less reliable, not against a
+different radio environment. The encrypted path is not in it either — it needs a
+device reflashed with a key, which is a hardware step rather than a command.

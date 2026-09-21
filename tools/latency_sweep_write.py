@@ -42,21 +42,7 @@ import time
 
 import aiohttp
 
-DEVICES = {
-    "puck": {
-        "address": "C8:80:32:AD:F7:B9",
-        "label": "Puck.js switch (light), command to write acknowledged",
-        "entity": "switch.bureau_mobilesensf7b9_light",
-        "kind": "switch",
-    },
-    "nano": {
-        "address": "CD:F5:77:3A:B2:16",
-        "label": "nice!nano text (OLED), command to write acknowledged",
-        "entity": "text.espruino_b216_text",
-        "kind": "text",
-        "port": "COM15",
-    },
-}
+from tools.devices import DEVICES
 
 DEFAULT_INTERVALS = (100, 200, 400, 800, 1600, 3200, 5000)
 """Seven points, each about twice the one below it, stopping at 5 s.

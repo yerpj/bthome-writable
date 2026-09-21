@@ -1,0 +1,34 @@
+{
+  "recorded": "2026-09-21",
+  "commit": "c4e3c88",
+  "interval_ms": 1000,
+  "first_reps": 8,
+  "repeat_reps": 16,
+  "fast_timeout_ms": 8000,
+  "bench": "ESP32 proxy disabled, OLED automation off, Home Assistant on the Raspberry Pi's own adapter",
+  "thresholds": "in tools/regression.py, compare()",
+  "devices": {
+    "puck": {
+      "commands": 24,
+      "delivered_fraction": 1.0,
+      "direct_fraction": 1.0,
+      "first_median_s": 1.739,
+      "first_p90_s": 5.58,
+      "repeat_median_s": 0.308,
+      "repeat_p90_s": 0.512,
+      "write_median_ms": 36.0,
+      "samples_on_the_wrong_side_of_the_fast_window": 0
+    },
+    "nano": {
+      "commands": 24,
+      "delivered_fraction": 1.0,
+      "direct_fraction": 1.0,
+      "first_median_s": 2.544,
+      "first_p90_s": 5.123,
+      "repeat_median_s": 0.284,
+      "repeat_p90_s": 0.584,
+      "write_median_ms": 43.0,
+      "samples_on_the_wrong_side_of_the_fast_window": 0
+    }
+  }
+}
