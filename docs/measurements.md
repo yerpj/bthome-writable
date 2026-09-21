@@ -63,8 +63,11 @@ connection build (D-059). The sweep is `tools/latency_sweep_write.py`;
 `tools/summarise_latency.py` prints the tables below from the raw samples in
 `data/`, and the figure is
 [`figures/latency-vs-interval.png`](figures/latency-vs-interval.png) — which plots
-the mean alone, with nothing drawn around it, so the curve's shape reads at a
-glance. The spread stays here, in the tables.
+the median alone, with nothing drawn around it, so the curve's shape reads at a
+glance. The median and not the mean, because the figure is asked what the
+mechanism typically does and the mean at the slow paliers is carrying this
+receiver's connection retries (*The retries*, below). The mean, the spread and
+the retry count all stay here, in the tables.
 
 ```
 python -m tools.latency_sweep_write --device puck --out docs/data/write-puck-switch.json
@@ -91,7 +94,7 @@ connection to the device, the ones that set the interval included, and records
 with each sample how long the device had been left alone **when the command was
 issued**. A first command counts only if that exceeds `fastTimeout`, a following
 one only if it does not; anything else is flagged and dropped. Across every run
-here, **359 delivered commands, none on the wrong side**.
+here, **439 delivered commands, none on the wrong side**.
 
 The window was set to 8 s for the sweep (`bw.setFastTimeout(8000)`, restored to
 30 s afterwards) with a 12 s idle wait plus a random fraction of one interval
@@ -103,7 +106,9 @@ campaign. The sweep refuses to start unless the idle wait clears the window by
 Ten first commands and eight following ones per interval, per device. The two
 rows marked † pool a second run of the same paliers, made on 2026-09-21 because
 the first one's numbers there did not look right: thirty first commands each,
-and the reason is the subject of *The retries* below. **364 commands in all.**
+and the reason is the subject of *The retries* below. The cell marked ‡ pools a
+third run of repeated commands only, for the reason given under the tables.
+**444 commands in all.**
 
 ### Puck.js light switch
 
@@ -127,7 +132,7 @@ and the reason is the subject of *The retries* below. **364 commands in all.**
 | 800 ms | 3.23 s | 3.86 s | 1.07 – 10.91 | 3.10 s (3.9×) | 43 ms | 0.71 s | 0.00 s | — |
 | 1.6 s | 5.79 s | 6.01 s | 1.74 – 11.79 | 5.68 s (3.5×) | 43 ms | 0.50 s | 0.00 s | — |
 | 3.2 s † | 9.43 s | 11.72 s | 0.18 – 37.40 | 9.39 s (2.9×) | 43 ms | 0.43 s | 0.00 s | 2 |
-| 5 s † | 11.29 s | 14.55 s | 0.50 – 39.62 | 11.24 s (2.3×) | 43 ms | 0.48 s | 0.00 s | 2 |
+| 5 s † | 11.29 s | 14.55 s | 0.50 – 39.62 | 11.24 s (2.3×) | 43 ms | 0.37 s ‡ | 0.00 s | 2 |
 
 ### What the numbers say
 
@@ -148,8 +153,8 @@ receiver scanning at a higher duty cycle, should do better; neither was isolated
 in this campaign, so treat 2–3× as this bench's figure rather than the
 protocol's.
 
-**Following commands are now flat and cheap**: median **0.34 s on the Puck and
-0.52 s on the nice!nano**, at every interval, and the queue contributes **0.00 s**
+**Following commands are now flat and cheap**: median **0.33 s on the Puck and
+0.40 s on the nice!nano**, at every interval, and the queue contributes **0.00 s**
 everywhere. This is where D-059 shows: the previous campaign measured 1.9 s, of
 which 1.4–1.6 s was the integration holding the second command behind the first.
 Removing the batching removed the pause it needed, and a following command is
@@ -159,7 +164,16 @@ exactly what the two-speed advertising exists to provide.
 **The write itself is never the cost**: 36 ms on the Puck, 43 ms on the
 nice!nano, one byte or a whole string.
 
-**Five commands out of 364 were lost** — one on the Puck, four on the
+‡ **The nice!nano's repeated commands at 5 s were measured on their own**, on
+2026-09-21, because sixteen samples there were being decided by two of them: one
+retried connection at 41 s and one slow one at 9.6 s put the mean at 3.6 s while
+the other fourteen sat between 0.27 and 1.30 s. Ten separate bursts of eight —
+separate, so that one lucky stretch of air could not stand for the rest — give
+**eighty samples, none lost, none retried**: median **0.36 s**, quartiles 0.29
+and 0.44, ninth decile 0.59, worst 1.94. That is the mechanism's own figure for a
+repeated command, and the table's cell now pools all ninety-six samples.
+
+**Five commands out of 444 were lost** — one on the Puck, four on the
 nice!nano, all at 3.2 s or 5 s, none acknowledged inside 60 s. Nothing stalled
 past 5 s.
 

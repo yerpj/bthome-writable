@@ -29,28 +29,26 @@
 </style>
 <h1>Response time against advertising interval</h1>
 <p class="sub">From the command reaching Home Assistant to the device acknowledging the
-GATT write. Mean of the commands issued after a quiet period, and of those issued
+GATT write. Median of the commands issued after a quiet period, and of those issued
 straight afterwards.</p>
 <div style="position:relative">
 <svg width="1080" height="660" viewBox="0 0 1080 660">
 <line class="grid" x1="84" y1="584.0" x2="780" y2="584.0"/>
 <text class="tick y" x="72" y="588.0">0 s</text>
-<line class="grid" x1="84" y1="520.2" x2="780" y2="520.2"/>
-<text class="tick y" x="72" y="524.2">2 s</text>
-<line class="grid" x1="84" y1="456.5" x2="780" y2="456.5"/>
-<text class="tick y" x="72" y="460.5">4 s</text>
-<line class="grid" x1="84" y1="392.8" x2="780" y2="392.8"/>
-<text class="tick y" x="72" y="396.8">6 s</text>
-<line class="grid" x1="84" y1="329.0" x2="780" y2="329.0"/>
-<text class="tick y" x="72" y="333.0">8 s</text>
-<line class="grid" x1="84" y1="265.2" x2="780" y2="265.2"/>
-<text class="tick y" x="72" y="269.2">10 s</text>
-<line class="grid" x1="84" y1="201.5" x2="780" y2="201.5"/>
-<text class="tick y" x="72" y="205.5">12 s</text>
-<line class="grid" x1="84" y1="137.8" x2="780" y2="137.8"/>
-<text class="tick y" x="72" y="141.8">14 s</text>
+<line class="grid" x1="84" y1="511.1" x2="780" y2="511.1"/>
+<text class="tick y" x="72" y="515.1">2 s</text>
+<line class="grid" x1="84" y1="438.3" x2="780" y2="438.3"/>
+<text class="tick y" x="72" y="442.3">4 s</text>
+<line class="grid" x1="84" y1="365.4" x2="780" y2="365.4"/>
+<text class="tick y" x="72" y="369.4">6 s</text>
+<line class="grid" x1="84" y1="292.6" x2="780" y2="292.6"/>
+<text class="tick y" x="72" y="296.6">8 s</text>
+<line class="grid" x1="84" y1="219.7" x2="780" y2="219.7"/>
+<text class="tick y" x="72" y="223.7">10 s</text>
+<line class="grid" x1="84" y1="146.9" x2="780" y2="146.9"/>
+<text class="tick y" x="72" y="150.9">12 s</text>
 <line class="grid" x1="84" y1="74.0" x2="780" y2="74.0"/>
-<text class="tick y" x="72" y="78.0">16 s</text>
+<text class="tick y" x="72" y="78.0">14 s</text>
 <line class="grid v" x1="84.0" y1="74" x2="84.0" y2="584"/>
 <text class="tick x" x="84.0" y="608">100 ms</text>
 <line class="grid v" x1="207.3" y1="74" x2="207.3" y2="584"/>
@@ -65,38 +63,38 @@ straight afterwards.</p>
 <text class="tick x" x="700.6" y="608">3.2 s</text>
 <line class="grid v" x1="780.0" y1="74" x2="780.0" y2="584"/>
 <text class="tick x" x="780.0" y="608">5 s</text>
-<path d="M84.0 573.9 L207.3 565.2 L330.6 539.0 L454.0 467.5 L577.3 396.8 L700.6 270.4 L780.0 121.8" fill="none" stroke="#0b5394" stroke-width="2.4" stroke-dasharray="" stroke-linejoin="round"/>
-<circle cx="84.0" cy="573.9" r="3.4" fill="#0b5394" stroke="#0b5394" stroke-width="2"/>
-<circle cx="207.3" cy="565.2" r="3.4" fill="#0b5394" stroke="#0b5394" stroke-width="2"/>
-<circle cx="330.6" cy="539.0" r="3.4" fill="#0b5394" stroke="#0b5394" stroke-width="2"/>
-<circle cx="454.0" cy="467.5" r="3.4" fill="#0b5394" stroke="#0b5394" stroke-width="2"/>
-<circle cx="577.3" cy="396.8" r="3.4" fill="#0b5394" stroke="#0b5394" stroke-width="2"/>
-<circle cx="700.6" cy="270.4" r="3.4" fill="#0b5394" stroke="#0b5394" stroke-width="2"/>
-<circle cx="780.0" cy="121.8" r="3.4" fill="#0b5394" stroke="#0b5394" stroke-width="2"/>
-<path d="M84.0 572.1 L207.3 574.3 L330.6 569.6 L454.0 571.1 L577.3 568.1 L700.6 572.6 L780.0 571.9" fill="none" stroke="#0b5394" stroke-width="2.4" stroke-dasharray="6 4" stroke-linejoin="round"/>
-<circle cx="84.0" cy="572.1" r="3.4" fill="#fff" stroke="#0b5394" stroke-width="2"/>
-<circle cx="207.3" cy="574.3" r="3.4" fill="#fff" stroke="#0b5394" stroke-width="2"/>
-<circle cx="330.6" cy="569.6" r="3.4" fill="#fff" stroke="#0b5394" stroke-width="2"/>
-<circle cx="454.0" cy="571.1" r="3.4" fill="#fff" stroke="#0b5394" stroke-width="2"/>
-<circle cx="577.3" cy="568.1" r="3.4" fill="#fff" stroke="#0b5394" stroke-width="2"/>
-<circle cx="700.6" cy="572.6" r="3.4" fill="#fff" stroke="#0b5394" stroke-width="2"/>
-<circle cx="780.0" cy="571.9" r="3.4" fill="#fff" stroke="#0b5394" stroke-width="2"/>
-<path d="M84.0 553.3 L207.3 559.9 L330.6 546.1 L454.0 461.1 L577.3 392.4 L700.6 210.5 L780.0 120.3" fill="none" stroke="#0b6e4f" stroke-width="2.4" stroke-dasharray="" stroke-linejoin="round"/>
-<circle cx="84.0" cy="553.3" r="3.4" fill="#0b6e4f" stroke="#0b6e4f" stroke-width="2"/>
-<circle cx="207.3" cy="559.9" r="3.4" fill="#0b6e4f" stroke="#0b6e4f" stroke-width="2"/>
-<circle cx="330.6" cy="546.1" r="3.4" fill="#0b6e4f" stroke="#0b6e4f" stroke-width="2"/>
-<circle cx="454.0" cy="461.1" r="3.4" fill="#0b6e4f" stroke="#0b6e4f" stroke-width="2"/>
-<circle cx="577.3" cy="392.4" r="3.4" fill="#0b6e4f" stroke="#0b6e4f" stroke-width="2"/>
-<circle cx="700.6" cy="210.5" r="3.4" fill="#0b6e4f" stroke="#0b6e4f" stroke-width="2"/>
-<circle cx="780.0" cy="120.3" r="3.4" fill="#0b6e4f" stroke="#0b6e4f" stroke-width="2"/>
-<path d="M84.0 565.1 L207.3 564.0 L330.6 569.8 L454.0 557.5 L577.3 560.7 L700.6 567.9 L780.0 467.9" fill="none" stroke="#0b6e4f" stroke-width="2.4" stroke-dasharray="6 4" stroke-linejoin="round"/>
-<circle cx="84.0" cy="565.1" r="3.4" fill="#fff" stroke="#0b6e4f" stroke-width="2"/>
-<circle cx="207.3" cy="564.0" r="3.4" fill="#fff" stroke="#0b6e4f" stroke-width="2"/>
-<circle cx="330.6" cy="569.8" r="3.4" fill="#fff" stroke="#0b6e4f" stroke-width="2"/>
-<circle cx="454.0" cy="557.5" r="3.4" fill="#fff" stroke="#0b6e4f" stroke-width="2"/>
-<circle cx="577.3" cy="560.7" r="3.4" fill="#fff" stroke="#0b6e4f" stroke-width="2"/>
-<circle cx="700.6" cy="567.9" r="3.4" fill="#fff" stroke="#0b6e4f" stroke-width="2"/>
-<circle cx="780.0" cy="467.9" r="3.4" fill="#fff" stroke="#0b6e4f" stroke-width="2"/>
+<path d="M84.0 572.6 L207.3 562.6 L330.6 547.3 L454.0 511.6 L577.3 398.6 L700.6 346.3 L780.0 134.5" fill="none" stroke="#0b5394" stroke-width="2.4" stroke-dasharray="" stroke-linejoin="round"/>
+<circle cx="84.0" cy="572.6" r="3.4" fill="#0b5394" stroke="#0b5394" stroke-width="2"/>
+<circle cx="207.3" cy="562.6" r="3.4" fill="#0b5394" stroke="#0b5394" stroke-width="2"/>
+<circle cx="330.6" cy="547.3" r="3.4" fill="#0b5394" stroke="#0b5394" stroke-width="2"/>
+<circle cx="454.0" cy="511.6" r="3.4" fill="#0b5394" stroke="#0b5394" stroke-width="2"/>
+<circle cx="577.3" cy="398.6" r="3.4" fill="#0b5394" stroke="#0b5394" stroke-width="2"/>
+<circle cx="700.6" cy="346.3" r="3.4" fill="#0b5394" stroke="#0b5394" stroke-width="2"/>
+<circle cx="780.0" cy="134.5" r="3.4" fill="#0b5394" stroke="#0b5394" stroke-width="2"/>
+<path d="M84.0 571.5 L207.3 573.4 L330.6 571.3 L454.0 571.9 L577.3 567.2 L700.6 572.5 L780.0 570.8" fill="none" stroke="#0b5394" stroke-width="2.4" stroke-dasharray="6 4" stroke-linejoin="round"/>
+<circle cx="84.0" cy="571.5" r="3.4" fill="#fff" stroke="#0b5394" stroke-width="2"/>
+<circle cx="207.3" cy="573.4" r="3.4" fill="#fff" stroke="#0b5394" stroke-width="2"/>
+<circle cx="330.6" cy="571.3" r="3.4" fill="#fff" stroke="#0b5394" stroke-width="2"/>
+<circle cx="454.0" cy="571.9" r="3.4" fill="#fff" stroke="#0b5394" stroke-width="2"/>
+<circle cx="577.3" cy="567.2" r="3.4" fill="#fff" stroke="#0b5394" stroke-width="2"/>
+<circle cx="700.6" cy="572.5" r="3.4" fill="#fff" stroke="#0b5394" stroke-width="2"/>
+<circle cx="780.0" cy="570.8" r="3.4" fill="#fff" stroke="#0b5394" stroke-width="2"/>
+<path d="M84.0 567.0 L207.3 565.8 L330.6 554.1 L454.0 466.2 L577.3 373.0 L700.6 240.4 L780.0 172.7" fill="none" stroke="#0b6e4f" stroke-width="2.4" stroke-dasharray="" stroke-linejoin="round"/>
+<circle cx="84.0" cy="567.0" r="3.4" fill="#0b6e4f" stroke="#0b6e4f" stroke-width="2"/>
+<circle cx="207.3" cy="565.8" r="3.4" fill="#0b6e4f" stroke="#0b6e4f" stroke-width="2"/>
+<circle cx="330.6" cy="554.1" r="3.4" fill="#0b6e4f" stroke="#0b6e4f" stroke-width="2"/>
+<circle cx="454.0" cy="466.2" r="3.4" fill="#0b6e4f" stroke="#0b6e4f" stroke-width="2"/>
+<circle cx="577.3" cy="373.0" r="3.4" fill="#0b6e4f" stroke="#0b6e4f" stroke-width="2"/>
+<circle cx="700.6" cy="240.4" r="3.4" fill="#0b6e4f" stroke="#0b6e4f" stroke-width="2"/>
+<circle cx="780.0" cy="172.7" r="3.4" fill="#0b6e4f" stroke="#0b6e4f" stroke-width="2"/>
+<path d="M84.0 563.2 L207.3 570.6 L330.6 568.6 L454.0 558.3 L577.3 565.8 L700.6 568.2 L780.0 570.5" fill="none" stroke="#0b6e4f" stroke-width="2.4" stroke-dasharray="6 4" stroke-linejoin="round"/>
+<circle cx="84.0" cy="563.2" r="3.4" fill="#fff" stroke="#0b6e4f" stroke-width="2"/>
+<circle cx="207.3" cy="570.6" r="3.4" fill="#fff" stroke="#0b6e4f" stroke-width="2"/>
+<circle cx="330.6" cy="568.6" r="3.4" fill="#fff" stroke="#0b6e4f" stroke-width="2"/>
+<circle cx="454.0" cy="558.3" r="3.4" fill="#fff" stroke="#0b6e4f" stroke-width="2"/>
+<circle cx="577.3" cy="565.8" r="3.4" fill="#fff" stroke="#0b6e4f" stroke-width="2"/>
+<circle cx="700.6" cy="568.2" r="3.4" fill="#fff" stroke="#0b6e4f" stroke-width="2"/>
+<circle cx="780.0" cy="570.5" r="3.4" fill="#fff" stroke="#0b6e4f" stroke-width="2"/>
 <line class="axis" x1="84" y1="584" x2="780" y2="584"/>
 <line class="axis" x1="84" y1="74" x2="84" y2="584"/>
 <text class="axis-label" x="432" y="638">advertising interval (logarithmic)</text>

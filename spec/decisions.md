@@ -2643,7 +2643,52 @@ visible against a longer baseline instead of hiding in it.
   more predictable; a receiver that retried in the background would be less
   visible. This is the owner's call, and nothing here forces it.
 
-The figure plots the mean, which at these paliers includes the retry group: the
-nice!nano's *following* curve rises to 3.6 s at 5 s on the strength of two
-samples out of sixteen, the other fourteen sitting between 0.27 and 1.30 s. The
-tables give the median beside it.
+The figure plotted the mean, which at these paliers carries the retry group: the
+nice!nano's *following* curve rose to 3.6 s at 5 s on the strength of two samples
+out of sixteen, the other fourteen sitting between 0.27 and 1.30 s. That point is
+re-measured and the figure's statistic is changed in D-062.
+
+
+## D-062 — A repeated command costs a third of a second, and the figure says so  [VERIFY]
+
+**Status:** measured 2026-09-21, at the owner's request. *"Refais les mesures
+pour le NiceNano à 5 secondes, pour le délai des commandes répétées uniquement,
+car je veux exprimer ici le comportement typique du mécanisme, non les
+particularités du banc d'essai ci-présent."*
+
+**The measurement.** Ten separate bursts of eight repeated commands, each burst
+preceded by one command that opens the device's fast-advertising window —
+separate bursts rather than one long one, so that a single lucky stretch of air
+cannot stand for the rest. **Eighty samples, none lost, none retried:**
+
+| | |
+|---|---|
+| median | **0.36 s** |
+| quartiles | 0.29 / 0.44 s |
+| ninth decile | 0.59 s |
+| range | 0.21 – 1.94 s |
+| mean | 0.43 s |
+
+The distribution is tight and has no far group at all. For comparison, the
+sixteen samples this replaces had a median of 0.48 s and a mean of **3.64 s** —
+that mean being two samples, one retried connection at 41.0 s and one slow one at
+9.6 s, against fourteen between 0.27 and 1.30 s.
+
+**The table's cell pools all ninety-six samples**, nothing discarded, and reads
+0.37 s. `docs/data/write-nano-repeat-5s.json` holds the dedicated run on its own.
+
+**The figure now plots the median.** It had been changed to the mean for
+legibility, which was right about the whiskers and wrong about the statistic:
+the mean follows the retry group, and the retry group is this receiver's
+connection policy on this bench (D-061), not what the mechanism does. A figure
+asked to show typical behaviour has to use the statistic that describes it. The
+mean, the full range and the retry count stay in the tables, per interval, where
+a number meant for comparison belongs.
+
+**What it settles about the warm path.** A repeated command costs about a third
+of a second on both devices — 0.33 s median on the Puck, 0.40 s on the
+nice!nano across every interval — and the advertising interval does not enter
+into it, because the device is advertising at 100 ms throughout (§4.3). The
+worst of eighty samples was 1.94 s. That is the number to quote for a burst, and
+it is bounded by the radio rather than by the receiver for the first time since
+D-020.

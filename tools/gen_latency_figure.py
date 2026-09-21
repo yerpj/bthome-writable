@@ -2,9 +2,9 @@
 
 Reads the JSON `tools.latency_sweep` writes and renders one figure with a curve
 per device and per case — the first command after an idle period, and the
-commands that follow it. Each point is the mean of that interval's samples, and
-nothing is drawn around it: the figure is for the shape of the curve, and the
-spread belongs in the tables. The x axis is logarithmic because the sweep is:
+commands that follow it. Each point is the median of that interval's samples,
+and nothing is drawn around it: the figure is for the shape of the curve, and
+the spread belongs in the tables. The x axis is logarithmic because the sweep is:
 100 ms to 5 s spans most of two decades, and the interesting part is at the top.
 
     python -m tools.gen_latency_figure docs/data/*.json \
@@ -54,20 +54,22 @@ def totals(samples: list[dict]) -> list[float]:
 
 
 def series(dataset: dict, case: str) -> list[tuple[int, float, float, float]]:
-    """(interval, mean) per interval, for one case.
+    """(interval, median) per interval, for one case.
 
-    One number per point and nothing else. These distributions are skewed -- a
-    connection attempt that misses its advertising window waits out another one,
-    so every interval has a few samples far above the rest -- and the figure no
-    longer says so: it is the shape of the curve, not the spread around it. The
-    spread is in `measurements.md`, which gives the median, the mean and the
-    full range side by side.
+    One number per point and nothing else. The median rather than the mean,
+    because the figure is asked to show what the mechanism typically does: these
+    distributions carry a far group made of connection attempts that timed out
+    and were retried, which costs a fixed twenty-odd seconds and belongs to this
+    receiver's retry policy rather than to the advertising interval (D-061). A
+    mean follows that group -- on one point it was decided by two samples out of
+    sixteen -- while the median stays with the other fourteen. The mean, the
+    spread and the retry count are all in `measurements.md`, per interval.
     """
     out = []
     for row in dataset["results"]:
         values = totals(row[case])
         if values:
-            out.append((row["interval_ms"], statistics.fmean(values)))
+            out.append((row["interval_ms"], statistics.median(values)))
     return sorted(out)
 
 
@@ -203,7 +205,7 @@ def render(datasets: list[dict]) -> str:
 </style>
 <h1>Response time against advertising interval</h1>
 <p class="sub">From the command reaching Home Assistant to the device acknowledging the
-GATT write. Mean of the commands issued after a quiet period, and of those issued
+GATT write. Median of the commands issued after a quiet period, and of those issued
 straight afterwards.</p>
 <div style="position:relative">
 <svg width="{W}" height="{H}" viewBox="0 0 {W} {H}">
