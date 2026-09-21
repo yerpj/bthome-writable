@@ -2692,3 +2692,73 @@ into it, because the device is advertising at 100 ms throughout (§4.3). The
 worst of eighty samples was 1.94 s. That is the number to quote for a burst, and
 it is bounded by the radio rather than by the receiver for the first time since
 D-020.
+
+
+## D-063 — Encryption works on hardware; the write counter has no way back  [HW] [DECISION, owner]
+
+**Status:** tested 2026-09-21 on the Puck.js running `encrypted-light.js`, the
+bindkey from `test-vectors.json`. The last gap in version 2's hardware coverage
+is closed, and it found a release blocker.
+
+**What passed.**
+
+| Step | Result |
+|---|---|
+| Device seals its advertising | `41 1b 07 65 dc …`, device-info `0x41` — encrypted, BTHome v2 |
+| Home Assistant recognises it needs a key | discovery raised the `bindkey` step by itself |
+| The key decodes the packet | flow accepted it and read the declaration out of the plaintext |
+| Entry created, entities offered | `switch.…_light`, assumed state |
+| A sealed write reaches the device | acknowledged in 71 ms, `bthome_writable_write` fired, no error |
+| A sealed write is *applied* | **no** — see below |
+| The same write with the right counter | **yes**: 103 → 599 → 100 lx, LED on and off |
+| Advertising decoded off the air here | illuminance read out of the sealed packet with the same key |
+
+The closed loop is therefore proved end to end with nothing in clear: Home
+Assistant's own `seal_write` produced the bytes the device accepted, and the
+confirmation was a physical measurement read out of sealed advertising.
+
+**What failed, and why it matters more than it looks.** The device persists a
+write-counter high-water mark in `.bwctr`; it was at **100135** from earlier
+testing. The config entry had just been re-created, so the receiver's counter
+restarted at 0 and sent 1. The module refused it — `counter_not_increasing`,
+correctly, that is replay protection doing its job — **after** the GATT write had
+been acknowledged, because §3 acknowledges before validating.
+
+So from Home Assistant nothing is wrong. The switch toggles. The write reports
+success, with a timing event and no error. The device never changes. There is no
+message, no log line, no unavailable entity — the one failure mode the whole
+design was meant to avoid.
+
+**And there is no way out.** `Coordinator.resynchronise()` exists, does the right
+thing, and is called by nothing: no service, no button, no automatic trigger.
+`grep` finds one reference, its own log line. §5.3 asks a receiver to offer
+resynchronisation and this one does not.
+
+**How a user reaches this state**, none of it exotic: deleting and re-adding the
+device; restoring Home Assistant from a backup older than the counter; moving the
+device to a second Home Assistant; reinstalling the integration. The device keeps
+its mark across all of them because it is in flash.
+
+**Options, for the owner.**
+
+1. **A service** (`bthome_writable.resynchronise_counter`, an entity target).
+   Smallest change, matches §5.3, but the user has to know it exists — and the
+   symptom gives them nothing to search for.
+2. **Detect and resynchronise automatically.** The receiver cannot see the
+   rejection, but it can see that nothing changed: for a device with readable
+   entries, a read-back that still shows the old value after a write is evidence.
+   For a write-only device there is no evidence at all.
+3. **Ask the device.** A characteristic exposing the current write counter, read
+   once at setup, would remove the failure rather than paper over it — and that
+   is a protocol change, so it goes through Gordon (rule 2).
+4. **Resynchronise on every fresh entry.** A new entry could start its counter
+   from a jump above anything plausible rather than from 0. Cheap, no UI, no
+   protocol change; it spends counter space, which is 32 bits and not scarce.
+
+My recommendation is **4 plus 1**: make a newly created entry start high so the
+common case never occurs, and offer the service for the rest. But the encrypted
+path should not ship until one of these is in, because the failure is silent and
+the user has no move.
+
+**Bench note.** The device's mark is now past 100201. Anything testing writes to
+this Puck with encryption must start above that, or clear `.bwctr`.
