@@ -2854,3 +2854,21 @@ Not chosen, and why: a service would have needed the user to know it exists, and
 the symptom gives them nothing to search for; asking the device for its counter
 would remove the failure outright but is a protocol change, so it goes through
 Gordon (rule 2) rather than in here.
+
+### Verified on hardware, 2026-09-21
+
+Home Assistant restarted onto this build, the Puck.js running
+`encrypted-light.js`, its stored mark past 100201.
+
+| | |
+|---|---|
+| A plain action now blocks until the write lands | 1210 ms, then returns; the LED is on before the call returns |
+| The encrypted entry, deleted and re-created | the exact case that failed in D-063 |
+| A sealed write through Home Assistant | **114 → 601 → 111 lx**, the Puck's own light sensor read back out of sealed advertising |
+| The resynchronisation button | offered on the keyed entry, absent on the plain one |
+
+One incident on the way, worth recording because it is the failure mode D-029
+warned about: an interrupted deployment left the sketch stopped, so the device
+advertised nothing and could not be connected to in order to be fixed. The OOTY
+rail switch recovered it in one power cycle, which is what it is on the bench
+for.
