@@ -14,7 +14,9 @@ presses are two presses.
 from __future__ import annotations
 
 from homeassistant.components.button import ButtonEntity
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.device_registry import CONNECTION_BLUETOOTH, DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import BTHomeWritableConfigEntry
@@ -60,6 +62,12 @@ async def async_setup_entry(
 
     add_entities_as_declared(entry, async_add_entities, is_kind("event"), build)
 
+    # Only for a keyed device: a plain one has no write counter to be out of
+    # step with, and an unexplained button is worse than no button.
+    coordinator = entry.runtime_data
+    if coordinator.bindkey is not None:
+        async_add_entities([BTHomeWritableResyncButton(coordinator)])
+
 
 class BTHomeWritableButton(BTHomeWritableEntity, ButtonEntity):
     """One value of one declared event entry."""
@@ -83,3 +91,40 @@ class BTHomeWritableButton(BTHomeWritableEntity, ButtonEntity):
 
     async def async_press(self) -> None:
         await self.async_apply(event_payload(self._object_id, self._code))
+
+
+class BTHomeWritableResyncButton(ButtonEntity):
+    """Move the write counter past whatever the device has already accepted.
+
+    §5.3 asks a receiver to offer this, and until now this one did not. A device
+    remembers the highest write counter it has accepted and refuses anything
+    below it; a receiver whose counter is behind therefore has every write
+    refused, and refused invisibly, because §3 acknowledges a write before
+    validating it. Seeding a new entry's counter from the clock removes the
+    ordinary way into that state (D-063), but not every way: a device restored
+    from a backup of its own flash, or one given a deliberately high counter,
+    can still be ahead. This is the way out that needs no reflashing.
+
+    Safe to press at any time: a forward jump is what §5.3 requires a device to
+    accept, and the counter is 32 bits wide.
+    """
+
+    _attr_should_poll = False
+    _attr_has_entity_name = True
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_name = "Resynchronise write counter"
+
+    def __init__(self, coordinator: BTHomeWritableCoordinator) -> None:
+        self.coordinator = coordinator
+        self._attr_unique_id = f"{coordinator.address}-resync-write-counter"
+        self._attr_device_info = DeviceInfo(
+            connections={(CONNECTION_BLUETOOTH, coordinator.address)},
+            name=coordinator.name,
+        )
+
+    @property
+    def available(self) -> bool:
+        return self.coordinator.available
+
+    async def async_press(self) -> None:
+        self.coordinator.resynchronise()

@@ -8,6 +8,7 @@ GATT connection, one characteristic per entry. See spec/PROTOCOL.md.
 from __future__ import annotations
 
 import logging
+import time
 
 from homeassistant.components import bluetooth
 from homeassistant.config_entries import ConfigEntry
@@ -18,6 +19,7 @@ from .const import (
     CONF_BINDKEY,
     CONF_MAX_CONNECTIONS,
     CONF_WRITE_COUNTER,
+    COUNTER_EPOCH_SEED,
     DEFAULT_MAX_CONNECTIONS,
     DOMAIN,
 )
@@ -33,6 +35,20 @@ PLATFORMS: list[Platform] = [
 ]
 
 type BTHomeWritableConfigEntry = ConfigEntry[BTHomeWritableCoordinator]
+
+
+def _starting_counter(stored: int) -> int:
+    """Where the write counter resumes: never below the clock (§5.3, D-063).
+
+    The stored mark wins when it is ahead, which is the ordinary case within one
+    installation. The clock wins when the entry is younger than the device --
+    re-created, restored from an old backup, moved to another Home Assistant --
+    which is exactly the case where resuming from the stored value would have
+    every write silently refused as a replay.
+    """
+    if not COUNTER_EPOCH_SEED:
+        return stored
+    return max(stored, int(time.time()))
 
 
 async def async_setup_entry(
@@ -62,7 +78,7 @@ async def async_setup_entry(
             CONF_MAX_CONNECTIONS, DEFAULT_MAX_CONNECTIONS
         ),
         bindkey=bindkey,
-        write_counter=entry.data.get(CONF_WRITE_COUNTER, 0),
+        write_counter=_starting_counter(entry.data.get(CONF_WRITE_COUNTER, 0)),
         on_counter=_remember_counter,
     )
     entry.runtime_data = coordinator

@@ -2762,3 +2762,95 @@ the user has no move.
 
 **Bench note.** The device's mark is now past 100201. Anything testing writes to
 this Puck with encryption must start above that, or clear `.bwctr`.
+
+
+## D-064 — A failed command raises, and a write counter never starts behind  [DECISION, owner]
+
+**Status:** decided by the owner 2026-09-21 after a survey of what Home
+Assistant actually does, implemented the same day. Closes the two questions left
+open by D-061 and D-063.
+
+### What the ecosystem does, since the answer turned on it
+
+Surveyed in the installed packages and in the published sources of the core
+integrations. The convention is a **split across two layers**, and it is the
+same on every radio:
+
+| Layer | Behaviour |
+|---|---|
+| Transport / vendor library | retries silently, `debug` logging only |
+| Integration | raises `HomeAssistantError` when the retries are exhausted |
+
+| | attempts | per attempt | worst case |
+|---|---|---|---|
+| `bleak-retry-connector` 4.7.0 | 4 | 20 s | ~80 s |
+| pySwitchbot | 4 command attempts, each up to 4 connections | | far more |
+| zigpy (ZHA) | 3 | 5 s, 28 s on sleepy devices | ~84 s |
+| Z-Wave JS | 3 | 30 s callback | ~90 s |
+
+Below zigpy there are two further invisible layers — EmberZNet's APS
+retransmits up to three times, 802.15.4's MAC up to three more — so one `turn_on`
+can be dozens of transmissions. Nothing logs a *successful* retry above `debug`,
+nothing raises a repair, and there is **no ADR, no quality-scale rule and no
+timeout** on how long an action may block.
+
+**So our 30–50 s is unremarkable and `max_attempts=2` is already conservative**,
+below the ecosystem default of 4. The nearest precedent is yalexs-ble, which
+uses 2 for a user-initiated write with the comment that such a write *"should
+fail fast and report to the user"*. That is this project's case exactly.
+
+### The decision
+
+**`max_attempts` stays at 2.** The earlier instinct — cut to 1 so that a
+command fails at 20 s rather than arriving at 40 — was wrong, and the data says
+why: all twelve retried connections in D-061 *succeeded*. The retry is not
+futile, it is merely invisible. (Contrast node-zwave-js, which removed its
+retry-after-ACK precisely because that one could not help.)
+
+**What was genuinely out of line is that the action could not fail.**
+`async_apply` queued the write and returned, so the action reported success
+whatever happened afterwards. No integration surveyed does that; the closest,
+Z-Wave's fire-and-forget to a sleeping node, is deliberate store-and-forward
+with the command durably queued in the driver, which this is not — here the
+command is merely late.
+
+The action now **waits for its own write** and raises `HomeAssistantError` with
+a translated message when it does not land, per the Silver `action-exceptions`
+rule (ADR-0022). The logbook entry stays: the exception is for whoever pressed,
+the logbook for whoever reads back later.
+
+Three consequences worth stating:
+
+- **An action can now block for seconds.** That is the ecosystem's price too,
+  and Z-Wave charges more of it.
+- **A superseded command is not a failure.** Coalescing drops a queued value
+  when a newer one arrives for the same entry; nothing failed, so that caller is
+  told it succeeded. Tested.
+- **A stopped queue strands nobody.** Whatever ends the flush loop settles every
+  waiting caller with an error rather than leaving it awaiting a write that will
+  never happen.
+
+### The write counter (D-063's blocker)
+
+**A counter now starts from the wall clock when the stored mark is behind it**
+(`COUNTER_EPOCH_SEED`, `_starting_counter`). Wall time only moves forward, so a
+freshly created entry is above every counter any earlier receiver can have sent,
+without asking the device anything — the device on the bench sat at 100135,
+decades below the clock. It is a forward jump, which §5.3 requires a device to
+accept, and it costs counter space there is plenty of: seconds since 1970 leave
+about 2.5 billion values inside 32 bits. A running installation keeps its own
+place, because the stored mark wins when it is ahead.
+
+That removes every ordinary way in: deleting and re-adding the device, restoring
+a backup, moving the device to another Home Assistant, reinstalling.
+
+**And §5.3's resynchronisation is finally offered**, as a config-category button
+on keyed devices only — *Resynchronise write counter*. `resynchronise()` had
+existed since T2 and was called by nothing. The button covers what the clock
+cannot: a device whose own flash was restored, or one deliberately given a high
+counter. A plain device is offered no such button, because it would do nothing.
+
+Not chosen, and why: a service would have needed the user to know it exists, and
+the symptom gives them nothing to search for; asking the device for its counter
+would remove the failure outright but is a protocol change, so it goes through
+Gordon (rule 2) rather than in here.

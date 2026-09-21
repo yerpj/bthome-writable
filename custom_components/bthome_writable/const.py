@@ -64,6 +64,24 @@ mark ahead of it and resuming *from the mark* gives up the values in between
 rather than reusing them, which is the requirement: never send a counter the
 device may already have accepted."""
 
+COUNTER_EPOCH_SEED: Final = True
+"""Whether a write counter starts from the wall clock rather than from zero.
+
+A device remembers the highest write counter it has accepted, in flash, and
+refuses anything below it -- correctly, that is replay protection. A receiver
+that starts again from zero therefore has every write refused, silently, because
+§3 acknowledges a write before validating it. That happens whenever the config
+entry is re-created: deleting and re-adding the device, restoring a backup older
+than the counter, moving the device to another Home Assistant (D-063, found on
+hardware with the device's mark at 100135 and the new entry at 0).
+
+Seeding from the clock removes the whole class: wall time only moves forward, so
+a counter seeded from it is above every counter any earlier receiver can have
+sent, without having to ask the device anything. It is a forward jump, which
+§5.3 requires a device to accept. The cost is counter space, and there is none
+to speak of -- seconds since 1970 leave about 2.5 billion values inside 32
+bits."""
+
 RESYNC_JUMP: Final = 100_000
 """How far a resynchronisation moves the counter.
 

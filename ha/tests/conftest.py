@@ -258,15 +258,24 @@ def radio():
         yield fake
 
 
-async def setup_device(hass, radio, fixture_name: str, **kwargs: Any):
-    """Bring one configured device up, seeded with a first advertisement."""
+async def setup_device(
+    hass, radio, fixture_name: str, entry_data: dict | None = None, **kwargs: Any
+):
+    """Bring one configured device up, seeded with a first advertisement.
+
+    `entry_data` goes into the config entry -- a bindkey, a stored counter --
+    while the rest shapes the advertisement the radio serves.
+    """
     from pytest_homeassistant_custom_component.common import MockConfigEntry
 
     from custom_components.bthome_writable.const import DOMAIN
 
     radio.last = service_info(fixture_name, **kwargs)
     entry = MockConfigEntry(
-        domain=DOMAIN, unique_id=DEFAULT_ADDRESS, data={}, title="Espruino Light"
+        domain=DOMAIN,
+        unique_id=DEFAULT_ADDRESS,
+        data=entry_data or {},
+        title="Espruino Light",
     )
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)

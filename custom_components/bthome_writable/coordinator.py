@@ -59,6 +59,21 @@ def connection_semaphore(limit: int = DEFAULT_MAX_CONNECTIONS) -> asyncio.Semaph
     return _connection_slots[limit]
 
 
+def _settle(waiter: asyncio.Future[None], error: Exception | None) -> None:
+    """Finish one caller's wait, unless it has already been finished.
+
+    A future can be resolved twice -- a write that fails after its value was
+    superseded, a flush that ends while an item is in flight -- and the second
+    attempt would raise `InvalidStateError` from somewhere unrelated.
+    """
+    if waiter.done():
+        return
+    if error is None:
+        waiter.set_result(None)
+    else:
+        waiter.set_exception(error)
+
+
 class WriteFailed(Exception):
     """The write did not reach the device."""
 
@@ -117,7 +132,7 @@ class BTHomeWritableCoordinator:
 
         self._listeners: list[Callable[[], None]] = []
         self._write_listeners: list[WriteListener] = []
-        self._pending: list[tuple[int, bytes, bool, float]] = []
+        self._pending: list[tuple[int, bytes, bool, float, asyncio.Future[None]]] = []
         self._pending_lock = asyncio.Lock()
         self._flush_task: asyncio.Task[None] | None = None
         self._semaphore = connection_semaphore(max_connections)
@@ -323,26 +338,41 @@ class BTHomeWritableCoordinator:
     async def async_write(
         self, entry: int, value: bytes, *, coalesce: bool = True
     ) -> None:
-        """Queue a value for an entry; the queue drains one command per connection.
+        """Queue a value for an entry and wait for it to reach the device.
+
+        Returns when the device has acknowledged this write, and raises what
+        went wrong when it has not. An action that cannot fail is an action the
+        user cannot trust, and Home Assistant's own rule for one is to raise so
+        that the failure reaches the interface (`action-exceptions`, D-064).
+        Waiting costs the caller the connection time, which is what every other
+        integration on a radio does.
 
         Coalescing is per entry, last value wins, and happens behind the write in
         flight rather than in front of it: dragging a slider produces one write
         for where it started and one for where it stopped. It is what keeps a
         source faster than the link from growing the queue without bound, which
-        is why it stays while the batching did not (D-059). Events are queued
-        with `coalesce=False`: two presses are two presses.
+        is why it stays while the batching did not (D-059). A command dropped
+        that way did not fail -- a newer one for the same entry replaced it --
+        so its caller is told it succeeded. Events are queued with
+        `coalesce=False`: two presses are two presses.
         """
+        waiter: asyncio.Future[None] = self.hass.loop.create_future()
         async with self._pending_lock:
             if coalesce:
-                self._pending = [
-                    item for item in self._pending if not (item[0] == entry and item[2])
-                ]
+                keep = []
+                for item in self._pending:
+                    if item[0] == entry and item[2]:
+                        _settle(item[4], None)
+                    else:
+                        keep.append(item)
+                self._pending = keep
             # Stamped here, where the command arrives, so that what is reported
             # afterwards measures the whole journey rather than the part that
             # happens to be easy to see.
-            self._pending.append((entry, value, coalesce, time.monotonic()))
+            self._pending.append((entry, value, coalesce, time.monotonic(), waiter))
             if self._flush_task is None or self._flush_task.done():
                 self._flush_task = self.hass.async_create_task(self._flush_soon())
+        await waiter
 
     @callback
     def async_add_write_listener(self, listener: WriteListener) -> Callable[[], None]:
@@ -371,19 +401,33 @@ class BTHomeWritableCoordinator:
         Leading edge, not trailing: the first change goes out immediately, and
         only what piles up behind it is coalesced (D-020).
         """
-        while True:
-            async with self._pending_lock:
-                if not self._pending:
-                    return
-                entry, value, coalesce, queued_at = self._pending.pop(0)
+        try:
+            while True:
+                async with self._pending_lock:
+                    if not self._pending:
+                        return
+                    entry, value, coalesce, queued_at, waiter = self._pending.pop(0)
 
-            try:
-                await self._write_now(entry, value, coalesce, queued_at)
-            except Exception as caught:  # broad on purpose: reported to listeners
-                _LOGGER.warning("%s: write failed: %s", self.address, caught)
-                self._report({entry}, caught)
-            else:
-                self._report({entry}, None)
+                try:
+                    await self._write_now(entry, value, coalesce, queued_at)
+                except Exception as caught:  # broad on purpose: reported to callers
+                    _LOGGER.warning("%s: write failed: %s", self.address, caught)
+                    self._report({entry}, caught)
+                    _settle(waiter, caught)
+                else:
+                    self._report({entry}, None)
+                    _settle(waiter, None)
+        finally:
+            # Whatever ends this loop -- an unload, a cancellation, a fault of
+            # its own -- must not leave a caller awaiting a write that will now
+            # never happen.
+            async with self._pending_lock:
+                stranded, self._pending = self._pending, []
+            for item in stranded:
+                _settle(
+                    item[4],
+                    WriteFailed(f"{self.address}: the write queue stopped"),
+                )
 
     async def _write_now(
         self,

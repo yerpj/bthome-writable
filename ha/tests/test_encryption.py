@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import time
 from unittest.mock import patch
 
 from homeassistant.core import HomeAssistant
@@ -22,6 +23,7 @@ from custom_components.bthome_writable.const import (
     COUNTER_STRIDE,
     DEVICE_INFO_BYTE_ADVERTISING,
     DEVICE_INFO_BYTE_WRITE,
+    RESYNC_JUMP,
 )
 from custom_components.bthome_writable.coordinator import (
     BTHomeWritableCoordinator,
@@ -36,6 +38,8 @@ from custom_components.bthome_writable.protocol import (
     seal_write,
     split_sealed,
 )
+
+from .conftest import settle, setup_device
 
 VECTORS = json.loads(
     (
@@ -226,3 +230,65 @@ async def test_a_keyed_device_still_seals_before_the_first_advertisement(
         pytest.raises(WriteFailed, match="not reachable"),
     ):
         await coordinator._write_now(1, b"\x01")
+
+
+def test_a_recreated_entry_does_not_resume_below_the_device(
+    hass: HomeAssistant,
+) -> None:
+    """D-063, found on hardware. A device refuses any write counter at or below
+    the highest it has accepted -- replay protection, working correctly -- and
+    refuses it *after* acknowledging the write, so nothing is visible from Home
+    Assistant. A config entry that is younger than the device therefore writes
+    into a void: the switch toggles, the action reports success, the device
+    never changes.
+
+    Seeding from the clock closes it without asking the device anything, because
+    wall time is above every counter any earlier receiver can have sent. The
+    device in the hardware test sat at 100135, decades below the clock.
+    """
+    from custom_components.bthome_writable import _starting_counter
+
+    fresh = _starting_counter(0)
+    assert fresh > 100_135, "a re-created entry must clear a device's stored mark"
+    assert fresh <= int(time.time())
+
+    # An installation that has been running keeps its own place: the stored mark
+    # is ahead of the clock and must not be thrown away.
+    ahead = int(time.time()) + 10_000
+    assert _starting_counter(ahead) == ahead
+
+
+@pytest.mark.usefixtures("custom_integration")
+async def test_a_keyed_device_offers_a_way_to_resynchronise(
+    hass: HomeAssistant, radio, gatt
+) -> None:
+    """§5.3 asks a receiver to offer resynchronisation. The clock seed covers the
+    ordinary way of falling behind; a device whose own flash was restored can
+    still be ahead, and then this is the only move that is not a reflash."""
+    from custom_components.bthome_writable.const import CONF_BINDKEY
+
+    entry = await setup_device(
+        hass, radio, "single-light", entry_data={CONF_BINDKEY: "00" * 16}
+    )
+    coordinator = entry.runtime_data
+
+    resync = "button.espruino_light_resynchronise_write_counter"
+    assert hass.states.get(resync) is not None
+
+    before = coordinator.next_write_counter()
+    await hass.services.async_call(
+        "button", "press", {"entity_id": resync}, blocking=True
+    )
+    await settle(hass)
+
+    assert coordinator.next_write_counter() > before + RESYNC_JUMP - 1
+
+
+@pytest.mark.usefixtures("custom_integration")
+async def test_a_plain_device_is_offered_no_such_button(
+    hass: HomeAssistant, radio, gatt
+) -> None:
+    """It would have nothing to do, and a control that does nothing is worse
+    than none: the user presses it when something else is wrong."""
+    await setup_device(hass, radio, "single-light")
+    assert hass.states.get("button.espruino_light_resynchronise_write_counter") is None

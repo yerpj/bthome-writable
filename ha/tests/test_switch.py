@@ -7,8 +7,11 @@ coordinator, so the connection path is exercised too.
 
 from __future__ import annotations
 
+import asyncio
+
 from homeassistant.const import STATE_OFF, STATE_ON, STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr
 import pytest
 
@@ -95,9 +98,10 @@ async def test_a_failed_write_is_not_shown_as_applied(
     gatt.declare(1)
     gatt.fail_on_write = RuntimeError("device disconnected")
 
-    await hass.services.async_call(
-        "switch", "turn_on", {"entity_id": LIGHT}, blocking=True
-    )
+    with pytest.raises(HomeAssistantError, match="could not be reached"):
+        await hass.services.async_call(
+            "switch", "turn_on", {"entity_id": LIGHT}, blocking=True
+        )
     await settle(hass)
 
     assert hass.states.get(LIGHT).state == STATE_UNKNOWN
@@ -114,9 +118,10 @@ async def test_a_failed_write_keeps_the_last_value_that_did_arrive(
     )
     await settle(hass)
     gatt.fail_on_write = RuntimeError("device disconnected")
-    await hass.services.async_call(
-        "switch", "turn_off", {"entity_id": LIGHT}, blocking=True
-    )
+    with pytest.raises(HomeAssistantError, match="could not be reached"):
+        await hass.services.async_call(
+            "switch", "turn_off", {"entity_id": LIGHT}, blocking=True
+        )
     await settle(hass)
 
     assert hass.states.get(LIGHT).state == STATE_ON
@@ -189,9 +194,10 @@ async def test_a_characteristic_missing_from_the_cache_drops_the_cache(
     await setup_device(hass, radio, "single-light")
     # No characteristics declared: the cached table is stale.
 
-    await hass.services.async_call(
-        "switch", "turn_on", {"entity_id": LIGHT}, blocking=True
-    )
+    with pytest.raises(HomeAssistantError, match="could not be reached"):
+        await hass.services.async_call(
+            "switch", "turn_on", {"entity_id": LIGHT}, blocking=True
+        )
     await settle(hass)
 
     assert gatt.cache_cleared == 1
@@ -209,3 +215,46 @@ async def test_the_device_merges_with_the_core_bthome_device_card(
     )
     assert device is not None
     assert not device.identifiers
+
+
+async def test_the_action_waits_for_the_write_rather_than_the_queue(
+    hass: HomeAssistant, radio, gatt
+) -> None:
+    """`action-exceptions`, Silver: an action returns when the work is done.
+
+    The write used to be queued and the call returned at once, so a command that
+    never landed still reported success. Now the caller waits for its own write,
+    which is what makes the failure above reportable at all (D-064).
+    """
+    await setup_device(hass, radio, "single-light")
+    gatt.declare(1)
+
+    await hass.services.async_call(
+        "switch", "turn_on", {"entity_id": LIGHT}, blocking=True
+    )
+
+    # No settle(): if the call returned before the write, this is empty.
+    assert gatt.writes == [(UUID_TEMPLATE.format(1), bytes.fromhex("1e01"))]
+
+
+async def test_a_superseded_command_is_not_an_error(
+    hass: HomeAssistant, radio, gatt
+) -> None:
+    """Coalescing drops a queued value when a newer one arrives for the entry.
+
+    Nothing failed -- the user changed their mind, or dragged a slider -- so the
+    dropped call must not raise. Only a command that reached the device and was
+    refused, or could not be delivered at all, is an error (D-064).
+    """
+    await setup_device(hass, radio, "single-light")
+    gatt.declare(1)
+
+    both = [
+        hass.services.async_call("switch", service, {"entity_id": LIGHT}, blocking=True)
+        for service in ("turn_on", "turn_off")
+    ]
+    await asyncio.gather(*both)  # neither raises
+    await settle(hass)
+
+    assert gatt.writes[-1] == (UUID_TEMPLATE.format(1), bytes.fromhex("1e00"))
+    assert hass.states.get(LIGHT).state == STATE_OFF

@@ -12,6 +12,7 @@ from unittest.mock import patch
 
 from homeassistant.const import STATE_ON, STATE_UNKNOWN
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 import pytest
 
 from custom_components.bthome_writable.const import EVENT_WRITE
@@ -39,9 +40,10 @@ async def test_a_link_that_drops_mid_write_leaves_the_value_unapplied(
     gatt.declare(1)
     gatt.fail_on_write = RuntimeError("device disconnected")
 
-    await hass.services.async_call(
-        "switch", "turn_on", {"entity_id": LIGHT}, blocking=True
-    )
+    with pytest.raises(HomeAssistantError, match="could not be reached"):
+        await hass.services.async_call(
+            "switch", "turn_on", {"entity_id": LIGHT}, blocking=True
+        )
     await settle(hass)
 
     assert hass.states.get(LIGHT).state == STATE_UNKNOWN
@@ -56,9 +58,10 @@ async def test_the_connection_is_released_even_when_the_write_raises(
     gatt.declare(1)
     gatt.fail_on_write = RuntimeError("device disconnected")
 
-    await hass.services.async_call(
-        "switch", "turn_on", {"entity_id": LIGHT}, blocking=True
-    )
+    with pytest.raises(HomeAssistantError, match="could not be reached"):
+        await hass.services.async_call(
+            "switch", "turn_on", {"entity_id": LIGHT}, blocking=True
+        )
     await settle(hass)
 
     assert gatt.connections == gatt.disconnects == 1
@@ -71,9 +74,10 @@ async def test_a_failed_write_is_recorded_in_the_logbook(
     gatt.declare(1)
     gatt.fail_on_write = RuntimeError("device disconnected")
 
-    await hass.services.async_call(
-        "switch", "turn_on", {"entity_id": LIGHT}, blocking=True
-    )
+    with pytest.raises(HomeAssistantError, match="could not be reached"):
+        await hass.services.async_call(
+            "switch", "turn_on", {"entity_id": LIGHT}, blocking=True
+        )
     await settle(hass)
 
     assert logbook_entries
@@ -101,7 +105,10 @@ async def test_an_unreachable_device_fails_before_it_connects(
 ) -> None:
     await setup_device(hass, radio, "single-light")
     module = "custom_components.bthome_writable.coordinator"
-    with patch(f"{module}.bluetooth.async_ble_device_from_address", return_value=None):
+    with (
+        patch(f"{module}.bluetooth.async_ble_device_from_address", return_value=None),
+        pytest.raises(HomeAssistantError, match="could not be reached"),
+    ):
         await hass.services.async_call(
             "switch", "turn_on", {"entity_id": LIGHT}, blocking=True
         )
@@ -139,9 +146,10 @@ async def test_a_write_failure_does_not_wedge_the_queue(
     await setup_device(hass, radio, "single-light")
     gatt.declare(1)
     gatt.fail_on_write = RuntimeError("device disconnected")
-    await hass.services.async_call(
-        "switch", "turn_on", {"entity_id": LIGHT}, blocking=True
-    )
+    with pytest.raises(HomeAssistantError, match="could not be reached"):
+        await hass.services.async_call(
+            "switch", "turn_on", {"entity_id": LIGHT}, blocking=True
+        )
     await settle(hass)
 
     gatt.fail_on_write = None
@@ -197,9 +205,10 @@ async def test_a_failed_write_reports_no_timing(
     await setup_device(hass, radio, "single-light")
     gatt.declare(1)
     gatt.fail_on_write = RuntimeError("device disconnected")
-    await hass.services.async_call(
-        "switch", "turn_on", {"entity_id": LIGHT}, blocking=True
-    )
+    with pytest.raises(HomeAssistantError, match="could not be reached"):
+        await hass.services.async_call(
+            "switch", "turn_on", {"entity_id": LIGHT}, blocking=True
+        )
     await settle(hass)
 
     assert events == []

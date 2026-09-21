@@ -31,5 +31,10 @@
       "invalid_bindkey": "A bindkey is 32 hexadecimal characters.",
       "wrong_bindkey": "That key does not decrypt this device's advertising."
     }
+  },
+  "exceptions": {
+    "write_failed": {
+      "message": "{name} could not be reached: the command was not delivered. {error}"
+    }
   }
 }

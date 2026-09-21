@@ -11,11 +11,12 @@ from __future__ import annotations
 import logging
 
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.device_registry import CONNECTION_BLUETOOTH, DeviceInfo
 from homeassistant.helpers.entity import Entity
 
 from .const import DOMAIN
-from .coordinator import BTHomeWritableCoordinator, WriteFailed
+from .coordinator import BTHomeWritableCoordinator
 from .protocol import WritableEntry
 
 _LOGGER = logging.getLogger(__name__)
@@ -103,17 +104,36 @@ class BTHomeWritableEntity(Entity):
         )
 
     async def async_apply(self, value: bytes) -> None:
-        """Show the value at once and queue the write (§4.2)."""
+        """Show the value at once, then wait for the write to land (§4.2).
+
+        The action returns when the device has acknowledged the write and raises
+        when it has not, which is Home Assistant's rule for an action rather
+        than this project's invention: `action-exceptions` (Silver) asks an
+        integration to raise `HomeAssistantError` so the failure reaches the
+        interface, and every well-kept integration on a radio does -- ZHA,
+        Z-Wave JS, SwitchBot (D-064).
+
+        It costs the caller the connection time, seconds rather than
+        milliseconds. That is the price of an honest answer, and it is the
+        ecosystem's price too: a Z-Wave action routinely blocks longer.
+        """
         self._in_flight = value if self._coalesce else None
         self.async_write_ha_state()
         try:
             await self.coordinator.async_write(
                 self._entry, value, coalesce=self._coalesce
             )
-        except WriteFailed:
+        except Exception as caught:
             self._in_flight = None
             self.async_write_ha_state()
-            raise
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="write_failed",
+                translation_placeholders={
+                    "name": self.name or self.entity_id or "",
+                    "error": str(caught),
+                },
+            ) from caught
 
     @callback
     def _write_finished(self, entries: set[int], error: Exception | None) -> None:
@@ -122,6 +142,9 @@ class BTHomeWritableEntity(Entity):
             return
         self._in_flight = None
         if error is not None:
+            # Also raised to whoever called the action. Kept here as well
+            # because an automation's failure is read later, in the logbook,
+            # by someone who never saw the error the action raised.
             _LOGGER.warning(
                 "%s: the command did not reach the device (%s)", self.entity_id, error
             )
