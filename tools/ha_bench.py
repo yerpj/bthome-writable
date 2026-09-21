@@ -112,6 +112,13 @@ async def bench_prepared(
 
     Yields the list of what it actually changed, so a run can record the bench
     it was taken on rather than the bench it assumed.
+
+    **Restoring what it changed is not the same as restoring a known state**, and
+    the difference bit once: a run killed part-way left the proxy disabled, the
+    next run found it already disabled, changed nothing, and faithfully put it
+    back as it found it. Correct by this contract, and still a bench left dirty.
+    A caller that finds nothing to change is therefore told so in as many words,
+    because the usual reason is a previous run that died.
     """
     changed: list[str] = []
     proxy_was = await entry_enabled(session, proxy_entry)
@@ -123,6 +130,12 @@ async def bench_prepared(
         if automation_was:
             await set_automation(session, automation, False)
             changed.append("turned off the OLED automation")
+        if not changed:
+            changed.append(
+                "nothing to change -- the bench was already prepared, which "
+                "usually means an earlier run did not finish; it will be left "
+                "exactly as found"
+            )
         yield changed
     finally:
         # Restoring only what was changed: a bench someone else had already put

@@ -1,0 +1,33 @@
+{
+  "recorded": "2026-09-21",
+  "receiver": "Windows bench host, WinRT via bleak",
+  "compared_with": "docs\\data\\regression-baseline.json",
+  "interval_ms": 1000,
+  "first_reps": 8,
+  "repeat_reps": 16,
+  "fast_timeout_ms": 8000,
+  "devices": {
+    "puck": {
+      "commands": 24,
+      "delivered_fraction": 1.0,
+      "direct_fraction": 1.0,
+      "first_median_s": 5.417,
+      "first_p90_s": 19.849,
+      "repeat_median_s": 0.406,
+      "repeat_p90_s": 1.897,
+      "write_median_ms": 14.2,
+      "samples_on_the_wrong_side_of_the_fast_window": 0
+    },
+    "nano": {
+      "commands": 24,
+      "delivered_fraction": 1.0,
+      "direct_fraction": 1.0,
+      "first_median_s": 3.875,
+      "first_p90_s": 15.825,
+      "repeat_median_s": 0.461,
+      "repeat_p90_s": 1.065,
+      "write_median_ms": 14.5,
+      "samples_on_the_wrong_side_of_the_fast_window": 0
+    }
+  }
+}

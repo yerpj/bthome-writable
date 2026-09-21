@@ -162,7 +162,10 @@ now a connection to a device that is already advertising at 100 ms — which is
 exactly what the two-speed advertising exists to provide.
 
 **The write itself is never the cost**: 36 ms on the Puck, 43 ms on the
-nice!nano, one byte or a whole string.
+nice!nano, one byte or a whole string. Measured from a second receiver the same
+exchange takes **14 ms** (D-066), so two thirds of those figures are this
+receiver's path rather than the GATT write — which changes nothing about the
+conclusion, since both are negligible beside the seconds spent opening the link.
 
 ‡ **The nice!nano's repeated commands at 5 s were measured on their own**, on
 2026-09-21, because sixteen samples there were being decided by two of them: one

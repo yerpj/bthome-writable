@@ -2949,3 +2949,77 @@ history.
 guards against *this project* getting slower or less reliable, not against a
 different radio environment. The encrypted path is not in it either — it needs a
 device reflashed with a key, which is a hardware step rather than a command.
+
+
+## D-066 — A second receiver, and what it says the numbers belong to  [VERIFY]
+
+**Status:** measured 2026-09-21. `tools/second_receiver.py`, raw samples in
+`docs/data/second-receiver.json`.
+
+Every latency figure in this project came from one central: Home Assistant on a
+Raspberry Pi 3, one `bcm43438`, one BlueZ. *"A first command costs two to three
+advertising events"* could have been the protocol's or that stack's, and nothing
+measured so far could tell them apart. The bench host is a second central --
+Windows, WinRT, `bleak`, a different adapter -- and it was sitting there unused
+for this question.
+
+Same boundary, same interval (1 s), same sample plan as the regression guard,
+same fast-window guarantee. 48 commands, none lost, none retried.
+
+| | Home Assistant | bench host | ratio |
+|---|---|---|---|
+| **Puck.js**, first command, median | 1.74 s | 5.42 s | 3.1× |
+| first command, p90 | 5.58 s | 19.85 s | 3.6× |
+| repeated command, median | 0.31 s | 0.41 s | 1.3× |
+| repeated command, p90 | 0.51 s | 1.90 s | 3.7× |
+| the write itself | 36 ms | **14.2 ms** | 0.39× |
+| **nice!nano**, first command, median | 2.54 s | 3.88 s | 1.5× |
+| first command, p90 | 5.12 s | 15.83 s | 3.1× |
+| repeated command, median | 0.28 s | 0.46 s | 1.6× |
+| the write itself | 43 ms | **14.5 ms** | 0.34× |
+
+**What it settles.** The *shape* is the protocol's and the *size* is the stack's.
+Both receivers agree on everything that matters structurally: a first command is
+dominated by getting a link open, a repeated command is cheap and flat because
+the device is advertising fast, and the write itself is milliseconds. What moves
+is the multiplier — the same command, to the same device, at the same interval,
+costs **1.5 to 3.6 times more** through a different central.
+
+So the published figures are not flattered by a favourable stack; they are the
+**optimistic end**. An implementer should expect a first command to vary by
+about a factor of three with the receiver, and should not read "2 to 3
+advertising events" as a property of the mechanism.
+
+**What it newly shows.** The write itself takes **14 ms**, not 36 or 43. Those
+larger numbers are what Home Assistant's path costs on top of the GATT exchange,
+not what the exchange costs — a third of the figure quoted since D-049 belongs
+to the receiver. The likeliest cause is the connection interval each stack
+negotiates, since a write with response costs one or two of them; that is a
+hypothesis, not a measurement, and it is not worth chasing because 14 ms and
+43 ms are both negligible beside the seconds spent opening the link.
+
+**A caveat that nearly became the result.** The first attempt produced two
+successes and then four straight connection failures. The host could still
+*hear* the Puck perfectly — 28 advertisements in 10 s — so it was not the
+device, the interval, or the air: the host's own stack had wedged, which it does
+(D-047). Cycling its radio fixed it and the re-run lost nothing at all. Had the
+run been reported as it stood, this decision would have said the Windows host
+loses two commands in three, which is false. The lesson is the same one as D-052:
+**a receiver that cannot connect is not evidence about the protocol until the
+receiver has been eliminated.**
+
+`tools/host_radio.py` now does that cycling, the host's equivalent of
+`tools/ooty.py` for the board. No administrator rights: Windows exposes the
+switch through `Windows.Devices.Radios`.
+
+**A flaw in the bench harness, found the same way.** `bench_prepared` restores
+what it changed, which is right when another agent deliberately configured the
+bench — and wrong after a run that died: the killed first attempt left the proxy
+disabled, the second found it already disabled, changed nothing, and faithfully
+put it back as found. It now says so in as many words rather than printing
+"already as wanted", because the usual reason for nothing to change is an
+earlier run that did not finish.
+
+**Still not answered.** Two centrals is better than one and still not a
+population. Neither is on someone else's site, and both talk to the same two
+devices in the same room, so the radio conditions (D-057) are common to both.
