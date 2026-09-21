@@ -3023,3 +3023,45 @@ earlier run that did not finish.
 **Still not answered.** Two centrals is better than one and still not a
 population. Neither is on someone else's site, and both talk to the same two
 devices in the same room, so the radio conditions (D-057) are common to both.
+
+
+## D-067 — Encryption costs nothing on the path a user feels  [VERIFY]
+
+**Status:** measured 2026-09-21 at the owner's request. Raw samples in
+`docs/data/encrypted-vs-plain.json`, report in `docs/measurements.md` §1b.
+
+The regression campaign, unchanged, run on the same Puck.js at the same 1 s
+advertising interval: once on `light-loop.js` in clear, once on
+`encrypted-light.js` sealed under the published test-vector bindkey.
+
+| | In clear | Encrypted |
+|---|---|---|
+| First command, median | 1.74 s | 2.32 s |
+| Repeated command, median | 0.31 s | 0.36 s |
+| The write itself | 36.0 ms | **36.1 ms** |
+| Delivered | 24/24 | 24/24 |
+
+**No measurable difference.** Everything sits inside the spread the unencrypted
+build shows against itself — that one moved the first-command median from 1.74 s
+to 2.25 s on an unchanged device (D-065).
+
+**The narrow claim this supports.** Sealing costs nothing on the path a user
+experiences as command latency: catching an advertisement, opening the link,
+getting the write acknowledged. On this device that is seconds, and AES-CCM does
+not touch it.
+
+**The claim it does not support, and I nearly made it.** §3 has the device
+acknowledge a write *before* unsealing it. The device's crypto therefore falls
+after the acknowledgement this campaign times — in the window between Home
+Assistant believing it is done and the lamp moving. This measurement cannot see
+it, by construction of the protocol.
+
+An earlier guess of 71 ms came from a single sample taken during D-063 and was
+not representative; it should not be quoted. The bounds that remain are D-028's
+31.8 ms and 75 ms per AES-CCM frame, and the 8 service-data bytes a sealed packet
+spends on the counter and MIC — the reason the encrypted example carries no
+battery reading.
+
+**What would settle it:** time the applied effect rather than the
+acknowledgement, with the light loop as the witness. `tools/closed_loop.py`
+already does that shape of measurement in clear.

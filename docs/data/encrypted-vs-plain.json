@@ -1,0 +1,47 @@
+{
+  "recorded": "2026-09-21",
+  "device": "Puck.js C8:80:32:AD:F7:B9, encrypted-light.js",
+  "receiver": "Home Assistant on the Raspberry Pi, no proxy",
+  "measures": "Home Assistant command to the device's GATT write acknowledgement, as the integration times it",
+  "interval_ms": 1000,
+  "fast_timeout_ms": 8000,
+  "bindkey": "the published one from test-vectors.json",
+  "compared_with": "docs/data/regression-baseline.json, the same campaign on the same device running light-loop.js in clear",
+  "first_command_s": [
+    1.6,
+    2.81,
+    1.82,
+    1.82,
+    3.81,
+    1.81,
+    2.82,
+    2.82
+  ],
+  "repeated_command_s": [
+    0.38,
+    0.21,
+    0.35,
+    0.35,
+    0.56,
+    0.8,
+    0.22,
+    0.45,
+    0.36,
+    0.65,
+    0.43,
+    0.32,
+    0.23,
+    0.36,
+    0.24,
+    0.24
+  ],
+  "summary": {
+    "first_median_s": 2.315,
+    "first_p90_s": 3.807,
+    "repeat_median_s": 0.355,
+    "repeat_p90_s": 0.652,
+    "write_median_ms": 36.1,
+    "delivered_fraction": 1.0,
+    "direct_fraction": 1.0
+  }
+}

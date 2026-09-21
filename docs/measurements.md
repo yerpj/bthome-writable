@@ -253,6 +253,58 @@ the correction affects one boolean on one sample, and that sample is back in the
 
 ---
 
+## 1b. What encryption costs
+
+**2026-09-21, Puck.js, through Home Assistant.** The same campaign as the
+regression guard, on the same device, at the same advertising interval, run once
+with `light-loop.js` in clear and once with `encrypted-light.js` sealed under the
+published test-vector bindkey. Raw samples in
+[`data/encrypted-vs-plain.json`](data/encrypted-vs-plain.json).
+
+```
+python -m tools.espruino_deploy --address <mac> --app espruino/examples/encrypted-light.js
+python -m tools.regression --device puck
+```
+
+| | In clear | Encrypted |
+|---|---|---|
+| First command, median | 1.74 s | 2.32 s |
+| First command, 90th percentile | 5.58 s | 3.81 s |
+| Repeated command, median | 0.31 s | 0.36 s |
+| Repeated command, 90th percentile | 0.51 s | 0.65 s |
+| **The write itself** | **36.0 ms** | **36.1 ms** |
+| Delivered | 8/8 and 16/16 | 8/8 and 16/16 |
+| Connected without a retry | 100 % | 100 % |
+
+**No measurable difference.** Every figure sits inside the run-to-run spread of
+the unencrypted build against itself, which moved the first-command median from
+1.74 s to 2.25 s on an unchanged device (D-065). The write itself is identical to
+a tenth of a millisecond, and nothing was lost on either side.
+
+### What this measurement cannot see, and it matters
+
+**The device acknowledges a write before it decrypts it.** That is §3, and it is
+deliberate: the GATT layer answers, and only then does the module unseal the
+payload, check the counter and apply the value. So the AES-CCM cost on the
+device falls *after* the acknowledgement this campaign times, in the window
+between Home Assistant believing it is done and the lamp actually moving.
+
+The figure to distrust, therefore, is not the one above but any claim that
+encryption is free. What the table establishes is narrower and still useful:
+**sealing costs nothing on the path a user experiences as command latency** —
+catching an advertisement, opening the link, and getting the write acknowledged.
+On this device the whole of that is seconds, and AES-CCM does not touch it.
+
+What it costs on the device is unmeasured here. Two figures bound the
+expectation: one AES-CCM frame took 31.8 ms in the first implementation and
+75 ms in the one that survives memory pressure (D-028), and a sealed packet
+spends 8 of its service-data bytes on the counter and MIC — which is why the
+encrypted example carries no battery reading. Measuring the applied-effect
+latency rather than the acknowledgement, with the light loop as the witness,
+would settle it.
+
+---
+
 ## 2. Version 2 round trip, on hardware
 
 **2026-09-17, Puck.js, `tools/bthome_write.py` and Home Assistant** (D-049).
