@@ -258,3 +258,67 @@ async def test_a_superseded_command_is_not_an_error(
 
     assert gatt.writes[-1] == (UUID_TEMPLATE.format(1), bytes.fromhex("1e00"))
     assert hass.states.get(LIGHT).state == STATE_OFF
+
+
+async def test_the_controls_exist_before_the_device_is_heard_from(
+    hass: HomeAssistant, radio, gatt
+) -> None:
+    """A restart while the device is asleep used to leave it with no entities at
+    all, because they were built only once an advertisement had been parsed. An
+    automation naming one then breaks; an unavailable one merely waits.
+
+    The declaration is a cache, never authority — the first advertisement
+    replaces it — so this only has to be right about existence.
+    """
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    from custom_components.bthome_writable.const import CONF_DECLARATION, DOMAIN
+
+    radio.last = None  # nothing on the air, as after a restart at night
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id=DEFAULT_ADDRESS,
+        data={CONF_DECLARATION: {"layout": [0x1E], "settings_revision": None}},
+        title="Espruino Light",
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    state = hass.states.get(LIGHT)
+    assert state is not None, "the control must exist even before an advertisement"
+    assert state.state == STATE_UNAVAILABLE
+
+
+async def test_what_the_device_declares_is_written_down(
+    hass: HomeAssistant, radio, gatt
+) -> None:
+    """So the next startup has it. Stored when it changes, not on every packet."""
+    from custom_components.bthome_writable.const import CONF_DECLARATION
+
+    entry = await setup_device(hass, radio, "single-light")
+    await settle(hass)
+
+    stored = entry.data.get(CONF_DECLARATION)
+    assert stored is not None
+    assert stored["layout"] == [0x1E]
+
+
+async def test_an_entry_that_changes_type_does_not_collide(
+    hass: HomeAssistant, radio, gatt
+) -> None:
+    """Entry 1 as a light and entry 1 as something else are different controls.
+
+    The unique id used to be the address and the entry number alone, so new
+    firmware that changed an entry's object ID built a second entity claiming
+    the first one's identity — "Platform does not generate unique IDs", and
+    neither control works (found in review).
+    """
+    from custom_components.bthome_writable.entity import BTHomeWritableEntity
+    from custom_components.bthome_writable.protocol import WritableEntry
+
+    coordinator = (await setup_device(hass, radio, "single-light")).runtime_data
+    light = BTHomeWritableEntity(coordinator, WritableEntry(entry=1, object_id=0x1E))
+    other = BTHomeWritableEntity(coordinator, WritableEntry(entry=1, object_id=0x10))
+
+    assert light.unique_id != other.unique_id

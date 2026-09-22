@@ -74,6 +74,15 @@ the device advertising, which is what its advertising interval buys or costs."""
 CONF_BINDKEY: Final = "bindkey"
 CONF_WRITE_COUNTER: Final = "write_counter"
 
+CONF_DECLARATION: Final = "declaration"
+"""The last declaration heard, kept so the controls exist before the device is.
+
+Without it an entity is built only once an advertisement has been parsed, so a
+restart while the device is asleep or out of range leaves the device with no
+entities at all -- and an automation that names one breaks, where an unavailable
+entity would merely wait. It is a cache, never authority: the first
+advertisement replaces it."""
+
 COUNTER_STRIDE: Final = 64
 """How far ahead of the write counter the persisted mark sits (§5.3).
 

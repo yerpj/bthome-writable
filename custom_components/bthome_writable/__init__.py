@@ -17,6 +17,7 @@ from homeassistant.core import HomeAssistant, callback
 
 from .const import (
     CONF_BINDKEY,
+    CONF_DECLARATION,
     CONF_MAX_CONNECTIONS,
     CONF_WRITE_COUNTER,
     COUNTER_EPOCH_SEED,
@@ -24,6 +25,7 @@ from .const import (
     DOMAIN,
 )
 from .coordinator import BTHomeWritableCoordinator
+from .protocol import Declaration
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -70,6 +72,16 @@ async def async_setup_entry(
             entry, data={**entry.data, CONF_WRITE_COUNTER: mark}
         )
 
+    @callback
+    def _remember_declaration(declaration: Declaration) -> None:
+        # So the controls exist at the next startup even if the device is asleep
+        # or out of range. Core `bthome` restores its sensors from the entry for
+        # the same reason: an entity that is missing breaks every automation that
+        # names it, where an unavailable one merely waits.
+        hass.config_entries.async_update_entry(
+            entry, data={**entry.data, CONF_DECLARATION: declaration.stored()}
+        )
+
     coordinator = BTHomeWritableCoordinator(
         hass,
         address,
@@ -80,6 +92,8 @@ async def async_setup_entry(
         bindkey=bindkey,
         write_counter=_starting_counter(entry.data.get(CONF_WRITE_COUNTER, 0)),
         on_counter=_remember_counter,
+        declaration=Declaration.restore(entry.data.get(CONF_DECLARATION)),
+        on_declaration=_remember_declaration,
     )
     entry.runtime_data = coordinator
 

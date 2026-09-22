@@ -61,7 +61,13 @@ class BTHomeWritableEntity(Entity):
         self.coordinator = coordinator
         self._entry = entry.entry
         self._object_id = entry.object_id
-        self._attr_unique_id = f"{coordinator.address}-{entry.entry}"
+        # The object ID is part of the identity, not just the entry number:
+        # entry 1 as a light and entry 1 as a switch are different controls, and
+        # a firmware change can turn one into the other. Without it the new
+        # entity collides with the old one and neither works (found in review).
+        self._attr_unique_id = (
+            f"{coordinator.address}-{entry.entry}-{entry.object_id:02x}"
+        )
         self._attr_device_info = DeviceInfo(
             # Sharing the connection identity is what merges this device with
             # the sensors the core BTHome integration already created: one card

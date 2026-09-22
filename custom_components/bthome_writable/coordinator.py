@@ -95,6 +95,8 @@ class BTHomeWritableCoordinator:
         bindkey: bytes | None = None,
         write_counter: int = 0,
         on_counter: Callable[[int], None] | None = None,
+        declaration: Declaration | None = None,
+        on_declaration: Callable[[Declaration], None] | None = None,
     ) -> None:
         self.hass = hass
         self.address = address
@@ -113,7 +115,8 @@ class BTHomeWritableCoordinator:
         self._counter_mark = write_counter
         self._on_counter = on_counter
 
-        self.declaration: Declaration | None = None
+        self.declaration: Declaration | None = declaration
+        self._on_declaration = on_declaration
         self.available = False
         self.advertisements = 0
 
@@ -185,7 +188,14 @@ class BTHomeWritableCoordinator:
             self._values.clear()
             self.hass.async_create_task(self.async_clear_service_cache())
 
+        remembered = self.declaration
         self.declaration = declaration
+        if self._on_declaration is not None and (
+            remembered is None
+            or remembered.layout != declaration.layout
+            or remembered.settings_revision != declaration.settings_revision
+        ):
+            self._on_declaration(declaration)
         self._notice_revision(declaration.settings_revision)
         self._notify()
 

@@ -221,6 +221,45 @@ class Declaration:
         """The entry object IDs, which is what identifies a firmware's layout."""
         return tuple(entry.object_id for entry in self.entries)
 
+    def stored(self) -> dict:
+        """The declaration as something a config entry can hold.
+
+        Object IDs and the settings revision, which is the whole of it: an entry
+        *is* its position and its object ID, and everything else a `Declaration`
+        offers is derived from those through `bthome-ble`.
+        """
+        return {
+            "layout": list(self.layout),
+            "settings_revision": self.settings_revision,
+        }
+
+    @classmethod
+    def restore(cls, stored: object) -> Declaration | None:
+        """A declaration read back from a config entry, or None if unusable.
+
+        None rather than an exception for anything malformed: a stored
+        declaration is a convenience, and a device that is on the air will
+        replace it within one advertising interval. Failing setup over it would
+        turn a cosmetic problem into an unavailable device.
+        """
+        if not isinstance(stored, dict):
+            return None
+        layout = stored.get("layout")
+        if not isinstance(layout, list) or not all(
+            isinstance(item, int) and 0 <= item <= 0xFF for item in layout
+        ):
+            return None
+        revision = stored.get("settings_revision")
+        if revision is not None and not isinstance(revision, int):
+            return None
+        return cls(
+            entries=tuple(
+                WritableEntry(entry=k, object_id=object_id)
+                for k, object_id in enumerate(layout, start=1)
+            ),
+            settings_revision=revision,
+        )
+
 
 def _value_length(payload: bytes, offset: int, data_format: str, fixed: int) -> int:
     """How many value bytes follow the object ID at `offset`."""

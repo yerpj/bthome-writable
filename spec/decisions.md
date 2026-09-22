@@ -3121,3 +3121,64 @@ against, and nothing may compare a real advertisement with it.
 
 **The lesson, which is the review's and not mine:** a fixture set that only ever
 contains what our own firmware emits tests the firmware, not the protocol.
+
+
+## D-069 — The advertising counter is persisted, and the entity set survives a restart  [VERIFY]
+
+**Status:** two of the three fixes the independent review of 2026-09-22 asked
+for, done the same day. The third, link reuse, the owner deferred (D-059).
+
+### Nonce reuse across reboots
+
+`st.advCounter` started at 0 on every boot, and `seal()` uses it for both
+advertising and sealed reads. Same key, same nonce, different plaintext: the
+keystream is recoverable, across the whole of the two directions the device
+*sends*. The write direction was safe only because the device verifies those
+itself and its mark lives in `.bwctr`.
+
+The comment justified it by "bthome-ble allows for it" — which is about that
+library's replay filter exempting counters below 100, a different concern from
+nonce hygiene, and not a licence to repeat one.
+
+**Fixed** with the same high-water-mark discipline as the write counter, one
+file holding `{w, a}`, migrating a bare number written by earlier firmware.
+
+Two details that decide whether it works:
+
+- **The stride is 1 000 000, not 64.** An advertisement is sealed on every
+  packet rebuild — once a second idle, ten times a second in the fast window.
+  At the write stride that is a flash write every six seconds, which destroys
+  the flash in a day. At this one it is one every eleven days, and one per
+  twenty-eight hours in the worst case. What it spends is counter values, of
+  which there are 4.29 billion.
+- **The mark is claimed at `setup`, not on the way past it.** A mark written
+  only when the counter reaches it would never be written on a device that
+  reboots more often than it sends a million packets — which is every device —
+  and the counter would restart at 0 exactly as before. This is the version of
+  the fix that actually fixes it; the first one did not, and the test caught it.
+
+### Entities that outlive the device being quiet
+
+`add_entities_as_declared` builds entities from `coordinator.declaration`, and
+that was only ever populated by parsing an advertisement. A restart while the
+device was asleep or out of range therefore left it with **no entities at all**
+— and an automation naming one breaks, where an unavailable one merely waits.
+Core `bthome` restores its sensor set from the config entry for this reason.
+
+**Fixed:** the declaration is stored in the config entry when its layout or
+revision changes, and restored at setup. It is a cache and never authority: the
+first advertisement replaces it, and anything malformed is ignored rather than
+failing setup.
+
+### The unique id now carries the object ID
+
+`f"{address}-{entry}"` omitted it while the "already built" set was keyed by
+`(entry, object_id)`. Firmware that changed entry 1 from a light to something
+else therefore built a second entity claiming the first one's identity —
+"Platform does not generate unique IDs", and neither control works.
+
+### Tests
+
+Six new, and every one of them fails against the code it replaces — checked by
+reverting. The Espruino harness gained a `Storage` fake, which is what let a
+reboot be expressed at all.

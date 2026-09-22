@@ -265,8 +265,19 @@ function renderServiceData(p, pid, enc, entries, now, revision) {
 
 let st = null;
 
-const CTR_FILE = ".bwctr"; // the persisted write-counter high-water mark
+const CTR_FILE = ".bwctr"; // the persisted counter high-water marks
 const CTR_STRIDE = 64; // persist every this many accepted writes, not each one
+const ADV_STRIDE = 1000000; /* and every this many sealed advertisements.
+
+   Far larger than the write stride because the rates are nothing alike: a
+   write is a user action, an advertisement is sealed on every packet
+   rebuild -- once a second at a typical idle interval, ten times a second
+   in the fast window. At the write stride that would be a flash write
+   every six seconds, which ruins the flash in a day. At this stride it is
+   one every eleven days at a second's interval, and one per twenty-eight
+   hours in the worst case. What it spends is counter values, of which
+   there are 4.29 billion: 4294 reboots even if each burned a whole
+   stride. */
 
 /* "aa:bb:.." -> the six bytes, in the order BTHome puts them in the nonce.
    Natural order, as written: verified against bthome-ble, which is the
@@ -291,10 +302,18 @@ function nonceFor(info, counter) {
 
 /* plaintext -> ciphertext || counter u32 LE || MIC, under direction `info`.
    Advertising and reads share the device's counter: their nonces differ by
-   direction, which is all S5.3 asks. */
+   direction, which is all S5.3 asks.
+
+   The counter is persisted, coarsely, for the same reason the write counter is
+   and a stronger one. AES-CCM under a repeated nonce and the same key leaks the
+   keystream, and a device that restarted its counter at 0 on every boot sealed
+   a new packet under a nonce it had already used -- every boot, for the whole
+   of the advertising and read directions. The write direction was safe because
+   the device verifies those; nothing verifies the ones it sends. */
 function seal(pt, info) {
   const counter = st.advCounter;
   st.advCounter = (st.advCounter + 1) >>> 0;
+  noteAdvCounter(st.advCounter);
   const r = require("AESCCM").encrypt(new Uint8Array(pt), st.key, nonceFor(info, counter), MIC_LEN);
   const out = [];
   for (let i = 0; i < r.data.length; i++) out.push(r.data[i]);
@@ -308,20 +327,39 @@ function sealAdvertising(sd) {
   return [DEV_INFO_ENC].concat(seal(sd.slice(1), DEV_INFO_ENC));
 }
 
-/* The write counter, kept coarsely in flash. S5.3 asks for periodic persistence
+/* Both counters, kept coarsely in flash. S5.3 asks for periodic persistence
    rather than one write per write, and for resuming strictly above anything
-   that might have been accepted since the last save -- so what is stored is a
-   high-water mark ahead of the counter, and that mark is where we resume. */
-function loadWriteCounter() {
+   that might have been used since the last save -- so what is stored is a
+   high-water mark ahead of each counter, and those marks are where we resume.
+
+   One file holding `{w, a}`. Earlier firmware stored a bare number, the write
+   mark alone; that is read as `{w: n, a: 0}`, which is right: a device being
+   upgraded has no advertising mark to resume from, and starting its advertising
+   counter above whatever it used before its first save is the best that can be
+   done without having recorded it. */
+function loadMarks() {
   const v = require("Storage").readJSON(CTR_FILE, true);
-  return typeof v === "number" ? v : 0;
+  if (typeof v === "number") return { w: v, a: 0 };
+  if (v && typeof v.w === "number") return { w: v.w, a: v.a || 0 };
+  return { w: 0, a: 0 };
+}
+
+function saveMarks() {
+  require("Storage").writeJSON(CTR_FILE, { w: st.writeMark, a: st.advMark });
 }
 
 function noteWriteCounter(counter) {
   st.writeCounter = counter;
   if (counter >= st.writeMark) {
     st.writeMark = counter + CTR_STRIDE;
-    require("Storage").writeJSON(CTR_FILE, st.writeMark);
+    saveMarks();
+  }
+}
+
+function noteAdvCounter(counter) {
+  if (counter >= st.advMark) {
+    st.advMark = counter + ADV_STRIDE;
+    saveMarks();
   }
 }
 
@@ -474,18 +512,21 @@ function setup(opts) {
   const entries = opts.advertise;
   const iv = checkInterval("interval", opts.interval || 2000);
   const key = toKey(opts.bindkey);
+  const marks = key ? loadMarks() : { w: 0, a: 0 };
   st = {
     entries : entries,
     key : key,
     mac : key ? macBytes() : null,
-    // Starts at 0 every boot, which bthome-ble allows for: it exempts counters
-    // below 100 from its decreasing-counter check so that a device that has
-    // restarted is not ignored. Verified against the library.
-    advCounter : 0,
-    // The write counter does not get that luxury -- the device is the verifier,
-    // and resuming low would accept a replay (S5.3).
-    writeCounter : key ? loadWriteCounter() : 0,
-    writeMark : key ? loadWriteCounter() : 0,
+    // Resumed from the persisted mark, like the write counter: a counter that
+    // restarted at 0 every boot reused nonces, which is a keystream leak rather
+    // than a replay-filtering nicety (D-069). A forward jump is fine for
+    // bthome-ble, whose only counter rule is that it must not decrease.
+    advCounter : key ? marks.a : 0,
+    advMark : key ? marks.a + ADV_STRIDE : 0,
+    // The write counter is verified by the device itself, so resuming low would
+    // accept a replay (S5.3).
+    writeCounter : key ? marks.w : 0,
+    writeMark : key ? marks.w : 0,
     plan : planPacket(entries, encodeOne, iv, key !== null, opts.maxServiceData),
     // A random start, so that a restart -- which may have reset values to their
     // defaults -- most likely changes the revision and prompts a re-read (S3.2).
@@ -502,6 +543,11 @@ function setup(opts) {
     fastTimer : undefined,
     advInterval : iv
   };
+  /* Claim the stride now rather than when the counter reaches it. A mark that
+     is only written on the way past would never be written at all on a device
+     that reboots more often than it sends a million packets -- which is every
+     device -- and the counter would restart at 0 exactly as before. */
+  if (key) saveMarks();
   if (st.plan.writable.length) {
     const chars = {}, svcs = {};
     st.plan.writable.forEach(w => {

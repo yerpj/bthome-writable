@@ -47,7 +47,39 @@ function exampleOf(bundleName) {
 
 /* Just enough of Espruino to let a bundle set itself up, plus recorders for
  * what it would have put on the air and on its pins. */
-function run(source) {
+function fakeStorage(initial) {
+  /* Espruino's Storage, as much of it as the module uses. `files` is handed
+   * back so a test can read what was persisted and, by re-running with it,
+   * stand in for a reboot. */
+  const files = Object.assign({}, initial);
+  return {
+    files,
+    readJSON(name) {
+      return Object.prototype.hasOwnProperty.call(files, name)
+        ? files[name]
+        : undefined;
+    },
+    writeJSON(name, value) {
+      files[name] = value;
+    },
+    list() {
+      return Object.keys(files);
+    },
+  };
+}
+
+/* Not AES. The module's counter handling is what is under test here, and the
+ * real cipher is covered against the shared vectors in ccm.test.js. */
+const cipher = {
+  encrypt(data) {
+    return { data, mic: [0, 0, 0, 0] };
+  },
+  decrypt() {
+    return null;
+  },
+};
+
+function run(source, storedFiles) {
   const advertised = [];
   const options = [];
   const timers = [];
@@ -57,6 +89,7 @@ function run(source) {
   let characteristics = null;
   let serviceUuid = null;
 
+  const storage = fakeStorage(storedFiles);
   const context = {
     console: { log() {} },
     setInterval(fn, ms) {
@@ -97,6 +130,8 @@ function run(source) {
       pins[pin] = value;
     },
     require(name) {
+      if (name === "Storage") return storage;
+      if (name === "AESCCM") return cipher;
       if (name !== "BTHome") throw new Error(`unexpected require(${name})`);
       return {
         packetId: 0,
@@ -116,6 +151,7 @@ function run(source) {
   vm.runInContext(source, context);
 
   return {
+    storage,
     advertised,
     options,
     timers,
@@ -362,4 +398,50 @@ test("the fast window can be changed without re-running setup", () => {
   result.handlers.disconnect();
   const scheduled = result.timeouts[result.timeouts.length - 1];
   assert.equal(scheduled.ms, 3000, "the new window is what gets scheduled");
+});
+
+/* --- the advertising counter, across a reboot (D-069) --------------------- */
+
+function advCounterOf(result) {
+  /* The counter as transmitted: the last four bytes before the MIC of the
+   * sealed service data, little-endian. */
+  const sd = result.advertised[result.advertised.length - 1];
+  const bytes = sd.slice(sd.length - 8, sd.length - 4);
+  return bytes.reduce((n, b, i) => n + b * Math.pow(256, i), 0);
+}
+
+test("a sealed device persists its advertising counter", () => {
+  /* It used to start at 0 on every boot. Same key, same nonce, different
+   * plaintext: the keystream is recoverable, for the whole of the advertising
+   * and read directions. The write direction was safe only because the device
+   * verifies those itself. */
+  const result = run(load("encrypted-light-standalone.js"));
+
+  const mark = result.storage.files[".bwctr"];
+  assert.ok(mark, "setup must persist a mark for a keyed device");
+  assert.ok(mark.a > 0, `advertising mark should be ahead of the counter, got ${mark.a}`);
+  assert.ok(advCounterOf(result) < mark.a, "the counter starts below its mark");
+});
+
+test("a reboot resumes the advertising counter above everything it used", () => {
+  const first = run(load("encrypted-light-standalone.js"));
+  const used = advCounterOf(first);
+
+  // The same flash, a fresh boot.
+  const second = run(load("encrypted-light-standalone.js"), first.storage.files);
+
+  assert.ok(
+    advCounterOf(second) > used,
+    `resumed at ${advCounterOf(second)}, which is not above the ${used} already sent`
+  );
+});
+
+test("a mark written by earlier firmware still loads", () => {
+  /* Before this, the file held the write mark as a bare number. A device being
+   * upgraded must not fail to start, and must not resume its write counter
+   * below what it had already accepted. */
+  const result = run(load("encrypted-light-standalone.js"), { ".bwctr": 5000 });
+
+  assert.equal(result.storage.files[".bwctr"].w, 5000, "the write mark survives");
+  assert.ok(advCounterOf(result) >= 0);
 });
