@@ -33,8 +33,11 @@ from custom_components.bthome_writable.protocol import (
     decrypt_advertising,
     is_encrypted,
     nonce,
+    nonce_address,
+    objects_at,
     open_read,
     parse_declaration,
+    seal,
     seal_write,
     split_sealed,
 )
@@ -292,3 +295,76 @@ async def test_a_plain_device_is_offered_no_such_button(
     than none: the user presses it when something else is wrong."""
     await setup_device(hass, radio, "single-light")
     assert hass.states.get("button.espruino_light_resynchronise_write_counter") is None
+
+
+# --- the device-information byte is a bitfield, not a value ------------------
+#
+# Every fixture in this repo is 0x40 or 0x41, because the reference firmware
+# sets no other flag. Reading the byte as a value therefore passed every test
+# while working with exactly one firmware (found in review, D-068).
+
+SLEEPY_ENCRYPTED = 0x45  # v2 | encrypted | trigger-based
+MAC_INCLUDED_PLAIN = 0x42  # v2 | MAC in the payload
+MAC_INCLUDED_ENCRYPTED = 0x43  # v2 | encrypted | MAC in the payload
+
+
+def test_a_sleepy_device_is_still_an_encrypted_one() -> None:
+    """0x45, which a trigger-based BTHome device transmits. Comparing the byte
+    with 0x41 called it plain, and the receiver then read ciphertext as
+    objects."""
+    assert is_encrypted(bytes([SLEEPY_ENCRYPTED, 0x00]))
+    assert is_encrypted(bytes([0x41, 0x00]))
+    assert not is_encrypted(bytes([0x40, 0x00]))
+    assert not is_encrypted(bytes([0x44, 0x00]))  # sleepy, in clear
+
+
+def test_the_objects_start_after_the_header_the_flags_describe() -> None:
+    """Bit 1 puts six bytes of MAC between the device-information byte and the
+    first object. `bthome-ble` skips seven bytes for it; so must this."""
+    assert objects_at(bytes([0x40])) == 1
+    assert objects_at(bytes([MAC_INCLUDED_PLAIN])) == 7
+    assert objects_at(bytes([MAC_INCLUDED_ENCRYPTED])) == 7
+
+
+def test_the_nonce_uses_the_mac_the_device_put_in_the_packet() -> None:
+    """They differ for a device advertising under a random address, and the
+    device sealed with the one it transmitted."""
+    packet = bytes([MAC_INCLUDED_ENCRYPTED]) + bytes.fromhex("aabbccddeeff") + b"rest"
+    assert nonce_address(packet, "A4:C1:38:8E:1F:2B") == "AA:BB:CC:DD:EE:FF"
+    assert nonce_address(bytes([0x41]) + b"rest", "A4:C1:38:8E:1F:2B") == (
+        "A4:C1:38:8E:1F:2B"
+    )
+
+
+def test_a_sealed_advertisement_opens_under_whatever_byte_it_carried() -> None:
+    """§5.1 says the nonce carries the device-information byte *as transmitted*.
+    Sealing under 0x45 and opening under 0x41 authenticates nothing."""
+    key = bytes(range(16))
+    address = "A4:C1:38:8E:1F:2B"
+    objects = bytes.fromhex("000109ff1e")
+
+    sealed = bytes([SLEEPY_ENCRYPTED]) + seal(
+        objects, key, address, SLEEPY_ENCRYPTED, 7
+    )
+    assert decrypt_advertising(sealed, key, address) == objects
+
+    # The same bytes labelled as the reference firmware's are a different
+    # nonce, and must not authenticate.
+    mislabelled = bytes([DEVICE_INFO_BYTE_ADVERTISING]) + sealed[1:]
+    assert decrypt_advertising(mislabelled, key, address) is None
+
+
+def test_an_encrypted_packet_carrying_its_mac_opens() -> None:
+    """The header is seven bytes and the nonce is built from the MAC inside
+    it -- both wrong before the review, and wrong in the same packet."""
+    key = bytes(range(16))
+    advertised = "A4:C1:38:8E:1F:2B"
+    inside = "AA:BB:CC:DD:EE:FF"
+    objects = bytes.fromhex("000109ff1e")
+
+    sealed = (
+        bytes([MAC_INCLUDED_ENCRYPTED])
+        + bytes.fromhex("aabbccddeeff")
+        + seal(objects, key, inside, MAC_INCLUDED_ENCRYPTED, 9)
+    )
+    assert decrypt_advertising(sealed, key, advertised) == objects

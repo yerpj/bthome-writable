@@ -27,8 +27,26 @@ can change by themselves, and readable characteristics to fetch them (§3.2)."""
 UUID_TEMPLATE: Final = "2faa{:04x}-3b0b-4b1a-9e2a-b4c2952e62f2"
 SERVICE_UUID: Final = UUID_TEMPLATE.format(0)
 
-# The direction, carried in the AES-CCM nonce's device-information byte (§5.1).
+# BTHome's device-information byte is a bitfield, not a value (§2.1). Reading
+# it as a value is how this integration came to work with exactly one firmware:
+# a sleepy encrypted device transmits 0x45 rather than 0x41, and comparing for
+# equality called it unencrypted.
+DEVICE_INFO_ENCRYPTED: Final = 1 << 0
+DEVICE_INFO_MAC_INCLUDED: Final = 1 << 1
+"""When set, the six bytes after the device-information byte are the device's
+MAC, and the objects start seven bytes in rather than one. The MAC in the packet
+is also the one the nonce uses, which matters for a device advertising under a
+random address."""
+
 DEVICE_INFO_BYTE_ADVERTISING: Final = 0x41
+"""What the reference firmware transmits: BTHome v2, encrypted, nothing else.
+
+Kept because the shared test vectors are written against it, and because §5.1
+reserves the write and read values relative to it. Nothing in the receiver may
+compare a real advertisement against it -- the byte that goes into the nonce is
+the one the device transmitted, whatever flags it carries."""
+
+# The direction, carried in the AES-CCM nonce's device-information byte (§5.1).
 DEVICE_INFO_BYTE_WRITE: Final = 0xFF
 DEVICE_INFO_BYTE_READ: Final = 0xFE
 

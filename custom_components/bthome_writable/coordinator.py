@@ -39,6 +39,7 @@ from .protocol import (
     decrypt_advertising,
     encode_object,
     is_encrypted,
+    objects_at,
     open_read,
     parse_declaration,
     seal_write,
@@ -244,7 +245,9 @@ class BTHomeWritableCoordinator:
         """
         self.advertises_encrypted = is_encrypted(payload)
         if not self.advertises_encrypted:
-            return payload[1:]
+            # Past the device-information byte, and past the MAC when the device
+            # put one there: the flags say how long the header is.
+            return payload[objects_at(payload) :]
 
         if self.bindkey is None:
             _LOGGER.debug(

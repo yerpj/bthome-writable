@@ -3065,3 +3065,42 @@ battery reading.
 **What would settle it:** time the applied effect rather than the
 acknowledgement, with the light loop as the witness. `tools/closed_loop.py`
 already does that shape of measurement in clear.
+
+
+## D-068 — The device-information byte is a bitfield, and the receiver read it as a value  [VERIFY]
+
+**Status:** found by an independent review 2026-09-22, fixed the same day.
+
+`is_encrypted()` compared BTHome's device-information byte with `0x41`. It is a
+bitfield (§2.1): bit 0 encryption, bit 1 MAC included, bit 2 trigger-based, bits
+5-7 the version. Every consequence followed from that one line:
+
+- **A sleepy encrypted device transmits `0x45`** and was called unencrypted, so
+  the receiver parsed ciphertext as an object stream and the config flow never
+  asked for a bindkey.
+- **The nonce used our own constant** rather than the byte the device
+  transmitted, which §5.1 requires and `bthome-ble` does
+  (`BTHomeData.get_nounce_uuid`). Nothing a device sealed under any other flag
+  combination could authenticate.
+- **The MAC-included flag was ignored.** With bit 1 set the objects start seven
+  bytes in, not one, and the nonce is built from the MAC inside the packet --
+  which differs from the advertised address for a device using a random one.
+  `bthome-ble` skips seven; this skipped one, in three places.
+
+**Why no test caught it.** Every fixture and every test vector in the repo is
+`0x40` or `0x41`, because the reference firmware sets no other flag. The suites
+were green and the integration worked with exactly one device family -- ours --
+which undercuts the entire adoption case.
+
+**The fix.** `is_encrypted` tests bit 0; `mac_included`, `objects_at` and
+`nonce_address` are new and used by the coordinator, the config flow and
+`decrypt_advertising`; the transmitted byte goes into the nonce. Five tests
+cover `0x42`, `0x43` and `0x45`, and all four of the new ones fail against the
+old code -- checked by reverting it.
+
+`DEVICE_INFO_BYTE_ADVERTISING` stays, with its role narrowed in the comment: it
+is what the reference firmware transmits and what the shared vectors are written
+against, and nothing may compare a real advertisement with it.
+
+**The lesson, which is the review's and not mine:** a fixture set that only ever
+contains what our own firmware emits tests the firmware, not the protocol.

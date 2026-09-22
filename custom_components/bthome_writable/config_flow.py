@@ -22,6 +22,7 @@ from .protocol import (
     ProtocolError,
     decrypt_advertising,
     is_encrypted,
+    objects_at,
     parse_declaration,
 )
 
@@ -67,8 +68,9 @@ def declaration_from(
         if objects is None:
             return None
     else:
-        # Skip the device-information byte; the rest is the object stream.
-        objects = payload[1:]
+        # Past the device-information byte, and past the MAC when the flags say
+        # the device put one there (§2.1).
+        objects = payload[objects_at(payload) :]
 
     try:
         return parse_declaration(objects)

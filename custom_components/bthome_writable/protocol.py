@@ -19,9 +19,10 @@ from typing import Final
 
 from .const import (
     DECLARATION_OBJECT_ID,
-    DEVICE_INFO_BYTE_ADVERTISING,
     DEVICE_INFO_BYTE_READ,
     DEVICE_INFO_BYTE_WRITE,
+    DEVICE_INFO_ENCRYPTED,
+    DEVICE_INFO_MAC_INCLUDED,
     PACKET_ID_OBJECT_ID,
     SETTINGS_REVISION_OBJECT_ID,
     UUID_TEMPLATE,
@@ -364,8 +365,36 @@ def nonce(address: str, device_info: int, counter: int) -> bytes:
 
 
 def is_encrypted(payload: bytes) -> bool:
-    """Whether BTHome service data announces itself as encrypted."""
-    return bool(payload) and payload[0] == DEVICE_INFO_BYTE_ADVERTISING
+    """Whether BTHome service data announces itself as encrypted (§2.1, bit 0).
+
+    A bit, not a value. The device-information byte also carries the MAC-included
+    flag, the trigger-based flag and the BTHome version, so a device that differs
+    from the reference firmware in any of those transmits something other than
+    0x41 while still being encrypted -- 0x45 for a sleepy one, say.
+    """
+    return bool(payload) and bool(payload[0] & DEVICE_INFO_ENCRYPTED)
+
+
+def mac_included(payload: bytes) -> bool:
+    """Whether the six bytes after the device-information byte are the MAC."""
+    return bool(payload) and bool(payload[0] & DEVICE_INFO_MAC_INCLUDED)
+
+
+def objects_at(payload: bytes) -> int:
+    """Where the object stream starts: past the header the flags describe."""
+    return 7 if mac_included(payload) else 1
+
+
+def nonce_address(payload: bytes, address: str) -> str:
+    """The MAC the nonce is built from.
+
+    The one in the packet when the device put it there, the advertised address
+    otherwise -- which is what `bthome-ble` does, and the two differ for a device
+    advertising under a random address.
+    """
+    if not mac_included(payload) or len(payload) < 7:
+        return address
+    return ":".join(f"{byte:02X}" for byte in payload[1:7])
 
 
 def split_sealed(payload: bytes) -> tuple[bytes, int, bytes]:
@@ -408,7 +437,14 @@ def decrypt_advertising(payload: bytes, bindkey: bytes, address: str) -> bytes |
     """
     if not is_encrypted(payload):
         raise ProtocolError("this payload does not announce itself as encrypted")
-    return _open(payload[1:], bindkey, address, DEVICE_INFO_BYTE_ADVERTISING)
+    # The byte as transmitted (§5.1), not the one the reference firmware happens
+    # to send: the nonce has to match what the device sealed with.
+    return _open(
+        payload[objects_at(payload) :],
+        bindkey,
+        nonce_address(payload, address),
+        payload[0],
+    )
 
 
 def seal(
