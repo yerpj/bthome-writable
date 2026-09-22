@@ -2501,6 +2501,23 @@ wins, still *behind* the write in flight rather than in front of it (D-020), so
 the first change goes out immediately. Events (`coalesce=False`) are exempt: two
 presses stay two presses.
 
+**Revisited 2026-09-22, and deferred.** An independent review pointed out that
+this decision's argument covers *batching* -- several objects behind one
+acknowledgement, ambiguous when the link drops mid-batch -- and not *link reuse*,
+where the queue drains over one connection with a separate response per write.
+That has no ambiguity, and `async_read_all` already does it on the read path.
+
+Worth about 2.5 s to 0.6 s for a scene of eight entries on one device, since a
+repeated command is 0.31 s of which 14 ms is the write. It would also make a
+ramp possible: coalescing currently collapses the steps, and at 36 ms rather
+than 310 ms per write far fewer would be.
+
+**The owner deferred it to a future release.** Not rejected on its merits: the
+gain serves multi-entry scenes, which are not yet the common case, and holding
+the link makes the device unreachable to other centrals for as long as the queue
+takes (D-043), which would need a cap. Nothing here blocks it later -- the write
+path takes one command at a time and would gain an outer loop, not a rewrite.
+
 **Measurement note.** D-054's *following command* figures were taken with the
 batching and its 250 ms pause in place, and its "of which queued" column is
 mostly that pause. The *first command* figures — the subject of that campaign —
