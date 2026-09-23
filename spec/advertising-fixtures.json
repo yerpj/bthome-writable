@@ -1,5 +1,5 @@
 {
-  "spec_version": "2.0-draft.1",
+  "spec_version": "2.0-draft.2",
   "generated_by": "tools/gen_advertising_fixtures.py",
   "description": "Advertising fixtures for bthome-writable, consumed by both test suites. Service data is the full BTHome v2 payload including the device-information byte; writes and reads follow PROTOCOL.md \u00a74.",
   "budget": {

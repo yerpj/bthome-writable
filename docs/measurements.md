@@ -139,7 +139,7 @@ third run of repeated commands only, for the reason given under the tables.
 **Opening the link is the whole cost of a first command.** Subtract the connect
 time from the median and 30 to 50 ms remain. The interval is therefore the only
 dial that moves this number, and it moves it proportionally: 0.31 s at 100 ms,
-9.26 s at 5 s on the Puck.
+12.34 s at 5 s on the Puck.
 
 **It costs more than one advertising event, consistently.** As a multiple of the
 interval the median connect time sits at **1.8–3.2× on the Puck and 1.8–4.2× on

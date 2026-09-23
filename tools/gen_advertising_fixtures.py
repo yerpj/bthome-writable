@@ -21,7 +21,7 @@ from typing import Any
 
 OUTPUT = Path(__file__).resolve().parent.parent / "spec" / "advertising-fixtures.json"
 
-SPEC_VERSION = "2.0-draft.1"
+SPEC_VERSION = "2.0-draft.2"
 
 DECLARATION_OBJECT_ID = 0xFF
 DEVICE_INFO_PLAIN = 0x40  # BTHome v2, unencrypted

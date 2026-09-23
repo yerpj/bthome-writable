@@ -14,7 +14,9 @@ time BTHome assigns a new id.
 ## The classification
 
 `bthome-ble` already sorts every object into four kinds, and that sorting is the
-one this table uses:
+one this table uses. The counts are of the library, so they move when BTHome
+assigns an id; these are **92 objects, counted against `bthome-ble` 3.9.2** with
+`protocol.describe`:
 
 | kind | count | writable ⇒ platform |
 |---|---|---|
@@ -23,7 +25,14 @@ one this table uses:
 | string (`0x53`) | 1 | `text` |
 | event (`0x3A` button, `0x3C` dimmer, `0x3B` command) | 3 | `button`, one per value |
 | raw (`0x54`) | 1 | — not exposed |
-| metadata (`0xF0`–`0xF2`) | 3 | — not exposed |
+
+**Corrected 2026-09-23.** This table also carried a row for metadata objects
+`0xF0`–`0xF2`, counted in a total of 95. They are not in the library: the
+integration classifies them as `meta` and refuses them as forbidden entries
+(§2.1), but the classification has nothing to classify. Recount before quoting
+these anywhere that matters — and note that the test virtualenv holds 3.9.2
+while the manifest asks for 3.22.1 or newer, so the suites prove less about
+object coverage than the pin suggests.
 
 ### Why the device decides, not the table
 

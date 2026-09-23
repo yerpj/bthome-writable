@@ -133,7 +133,7 @@ review. Still deliberately out of scope: pairing a level with its light
 | Objection | Answer | Source |
 |---|---|---|
 | A connection is too slow for a good experience (#146) | 1.7 s click to action at best, of which 16 ms is the write itself; measured again on version 2 through an ESP32 proxy | `decisions.md` D-013, D-024, D-049; `docs/figures/latency.png` |
-| It costs battery: the device must advertise fast | The idle advertising interval does not set command latency: 1.7 s measured at a 5 s interval, because the device advertises fast only during and after a connection | D-014, D-024 |
+| It costs battery: the device must advertise fast | **Not answered.** This project has measured no power at all (D-055). What is measured is latency, which is a different question: the idle interval does not set command latency, because the device advertises fast only during and after a connection. But §7 asks for connectable advertising at all times and the module advertises at 100 ms for 30 s after every disconnect, and nothing here says what that costs a coin cell. **The experiment to run before submitting** | D-014, D-024, D-055 |
 | Unknown objects break existing receivers | bthome-ble skips an unknown ID and stops parsing; placing new objects last loses nothing for existing installs. Tested in CI | D-005 |
 | Writes are a security hole | BTHome's own AES-CCM, all three directions (advertising, write, read), the direction bound into the nonce so no recording replays as another; vectors pass on-device on two boards; HA warns once per unencrypted device, and refuses to downgrade a keyed device to plaintext | D-033, D-041, D-042, D-045 |
 | It only works on one bench | Two boards (Puck.js, nice!nano), one HA install, one adapter and one ESP32 proxy. **Weak point** — needs testers outside this bench before submission | `docs/try-it.md` |
@@ -156,6 +156,9 @@ Claims to avoid, because they were wrong once in public:
   `esp32-bluetooth-proxy-1f1020`.
 - At least one tester outside this bench (`docs/walkthrough.md`,
   `docs/try-it.md`). **The remaining gap.**
-- An encrypted device on version 2, on hardware: the vectors cover both sides,
-  the boards have not been run with a bindkey since the rewrite.
+- ~~An encrypted device on version 2, on hardware~~ — done 2026-09-21. A
+  Puck.js running `encrypted-light.js`: Home Assistant raised the bindkey step
+  by itself, read the declaration out of the decrypted advertising, and a sealed
+  write drove the LED — 114 → 601 → 111 lux, read back out of a sealed packet
+  (D-063, D-064). It also found a release blocker there, and fixed it.
 - Re-run the prior-art search; update §1 with anything new.

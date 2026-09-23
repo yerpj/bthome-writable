@@ -115,8 +115,13 @@ light at position 1, and declares `0x02` = bit 1 = the light.
 
 ## D-003 — Simultaneous BLE connection cap  [DECISION, T0.2]
 
-**Status:** decided by the owner, 2026-09-08. **Default 2, user-configurable**
-through the integration's options flow.
+**Status:** decided by the owner, 2026-09-08. **Default 2.**
+
+**Corrected 2026-09-23.** This said "user-configurable through the integration's
+options flow". There is no options flow: `async_setup_entry` reads
+`CONF_MAX_CONNECTIONS` from `entry.options`, and nothing can put it there. The
+cap is effectively fixed at 2. Adding the flow is on the Home Assistant
+quality-scale list rather than here.
 
 A typical ESPHome Bluetooth proxy offers three connection slots; capping at two
 leaves room for an Espruino UART/Web-IDE session (the coexistence rule of §5).
@@ -2453,8 +2458,13 @@ connection — about two seconds on this bench (D-054), so a 300-character messa
 would take six.
 
 Consequences recorded elsewhere: `PLATFORMS.md` states the ceiling for the text
-platform, and the integration already refuses an over-long write rather than
-truncating it (`_check_mtu`).
+platform, and an over-long write fails rather than being truncated.
+
+**Corrected 2026-09-23.** This said the integration refuses such a write in
+`_check_mtu`. It does not: `_check_mtu` reads the negotiated MTU, logs at debug
+and returns. The refusal comes from `bleak`, which raises rather than splitting
+the write. The outcome satisfies §4.4 and nothing in the integration decides it
+— which is worth knowing before anyone relies on the message a user sees.
 
 The specification moves to **2.0-draft.2**. Worth mentioning to Gordon as a
 tightening rather than a change of mechanism: it says what every implementation
@@ -3182,3 +3192,44 @@ else therefore built a second entity claiming the first one's identity —
 Six new, and every one of them fails against the code it replaces — checked by
 reverting. The Espruino harness gained a `Storage` fake, which is what let a
 reboot be expressed at all.
+
+
+## D-070 — The prose said things the code did not  [DECISION, owner for §4.4]
+
+**Status:** seven corrections made 2026-09-23, one spec question handed over.
+Found by the independent review of 2026-09-22, which was asked to check a few
+load-bearing claims against the code and found that several did not hold.
+
+| Claim | What is true |
+|---|---|
+| D-058: "the integration already refuses an over-long write (`_check_mtu`)" | `_check_mtu` reads the MTU, logs at debug and returns. `bleak` raises. The outcome is right; nothing here decides it |
+| D-003: `max_connections` is "user-configurable through the integration's options flow" | There is no options flow. The cap is fixed at 2 |
+| `measurements.md`: "9.26 s at 5 s on the Puck" | 12.34 s. 9.26 was the pre-D-061 figure, left behind when the table above it was re-measured |
+| Dossier: "the boards have not been run with a bindkey since the rewrite" | They have, on 2026-09-21 (D-063, D-064) |
+| `README.md`: "protocol version 2.0-draft.1" | 2.0-draft.2 since D-058 |
+| `PLATFORMS.md`: 95 objects, including three metadata ones | 92, and `0xF0`–`0xF2` are not in the library at all |
+| Dossier: the battery objection, answered with a latency measurement | Not answered. This project has measured no power (D-055) |
+
+**The last one is the one that matters.** BTHome's constituency is coin-cell
+sensors, §7 asks for connectable advertising at all times, and the module
+advertises at 100 ms for thirty seconds after every disconnect. Answering "it
+costs battery" with "the interval does not set latency" answers a different
+question, and a maintainer will notice. The dossier now says so, and names the
+measurement as the one to run before submitting.
+
+**Handed to the owner rather than changed (rule 2).** §4.4 says *"Receivers
+SHOULD negotiate an ATT MTU of at least 64 bytes"*. The reference receiver never
+asks: `bleak` exposes no MTU-request API on BlueZ, so on the platform Home
+Assistant runs on this SHOULD is not implementable at all — it is whatever the
+stack negotiated. Options, none of which I may take unilaterally:
+
+1. Keep it and note that it is advisory where the stack allows it.
+2. Drop it, and state the ceiling as the MTU in force rather than one to seek.
+3. Keep it as a device-side SHOULD instead, since a peripheral *can* request an
+   MTU and Espruino does.
+
+**What made this possible.** Every one of these passed review because prose is
+not tested. The measurement figures now have `summarise_latency` to regenerate
+them and the regression guard to catch drift; the claims about code have
+nothing. Worth a cheap check before release: grep the docs for function names
+and confirm each does what the sentence says.

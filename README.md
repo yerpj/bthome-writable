@@ -18,7 +18,7 @@ makes those characteristics readable and bumps BTHome's settings revision
 | `test-vectors/` | Crypto test vectors — the shared contract between both codebases |
 | `tools/`        | Generators and verification scripts                              |
 
-Status: **draft / pre-release**, protocol version 2.0-draft.1. The protocol is
+Status: **draft / pre-release**, protocol version 2.0-draft.2. The protocol is
 converged publicly with Gordon Williams (Espruino) in
 [espruino#8013](https://github.com/orgs/espruino/discussions/8013). Nothing here is
 frozen yet; UUIDs and wire formats freeze at the first public release.

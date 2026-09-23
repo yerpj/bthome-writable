@@ -24,7 +24,7 @@ from tools import ccm_reference as ref
 
 OUTPUT = Path(__file__).resolve().parent.parent / "test-vectors" / "test-vectors.json"
 
-SPEC_VERSION = "2.0-draft.1"
+SPEC_VERSION = "2.0-draft.2"
 
 UUID16 = bytes.fromhex("d2fc")
 DEVICE_INFO_ADVERTISING = 0x41  # BTHome v2, encrypted
