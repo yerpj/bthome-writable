@@ -3233,3 +3233,47 @@ not tested. The measurement figures now have `summarise_latency` to regenerate
 them and the regression guard to catch drift; the claims about code have
 nothing. Worth a cheap check before release: grep the docs for function names
 and confirm each does what the sentence says.
+
+
+## D-071 — Clamping is the device's business, not the protocol's  [DECISION, owner]
+
+**Status:** ruled by the owner 2026-09-25, closing the question the independent
+review of 2026-09-22 raised as its runner-up finding.
+
+> *"Oublions la gestion de l'écrêtage, on considère hors scope. On est
+> responsable de faire transiter une commande, pas de ce que le device en
+> fait."*
+
+**The question.** A `number` entity derives its bounds from the object's
+encoding, so a device may be sent a value outside its real range; `PLATFORMS.md`
+says it is entitled to clamp or reject. §3.2 forbids it from bumping the
+settings revision in response to a write, so the receiver is never told to look
+again and goes on showing what it sent.
+
+**The ruling.** Out of scope. This extension carries a command to a device and
+reports whether it was delivered. What the device does with the value is the
+device's design, and a receiver that tried to verify it would be claiming an
+authority the protocol does not give it.
+
+**What that settles, and what it costs.**
+
+- No read-back after a write. It would have cost 15–40 ms on every write — a
+  round trip on an already-open link, so cheap — but it races the device: §3
+  acknowledges before the value is applied, so a prompt read can return the old
+  value and be believed. Paying on every write for a rare case, and being wrong
+  sometimes, is worse than not looking.
+- It only ever covered devices implementing §3.2's readable characteristics
+  anyway. A write-only device has nothing to read.
+- The state model stays as designed: what an entity shows is what was last
+  written or last read, never an inference.
+- A device that cares can still make itself honest -- readable characteristics
+  and a revision it bumps for its own reasons. The receiver re-reads on a
+  revision change and on first sight, so the divergence corrects itself at the
+  next one, and at every restart.
+
+**One wording point for Gordon, not a request.** §3.2's *"A device MUST NOT
+change `0x65` in response to a write"* forbids the one thing a device could do
+to fix this locally. Under this ruling that is consistent -- we do not ask
+devices to report it -- but a permissive *MAY* would let a device that wants to
+be honest be so, at no cost to one that does not. Worth a sentence if §3.2 is
+reopened for another reason; not worth reopening it for.
