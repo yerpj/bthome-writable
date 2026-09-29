@@ -1,6 +1,6 @@
 # BTHome Writable — protocol specification
 
-**Version:** 2.0-draft.2 · **Status:** DRAFT, nothing frozen · **License:** MIT
+**Version:** 2.0-draft.3 · **Status:** DRAFT, nothing frozen · **License:** MIT
 
 BTHome standardizes a BLE **uplink**: a device broadcasts its state in
 advertising, a receiver parses it. It has no **downlink**. This document
@@ -63,10 +63,13 @@ The declaration is one element of the BTHome service data:
 - A declaration with no entries is legal and means "nothing writable"; a device
   SHOULD then omit it.
 
-Entries MUST NOT be `0x00` (packet id), `0xFF`, or the device-information objects
-(`0xF0`–`0xF2`). A receiver MUST NOT offer an entry whose object ID it does not
-know, but MUST still count it, so that later entries keep their characteristic
-numbers.
+Entries MUST NOT be `0x00` (packet id), `0xFF`, the device-information objects
+(`0xF0`–`0xF2`), or the settings revision (`0x65`). These belong to the protocol
+rather than to a user: `0x65` is how a device announces that its own state
+changed (§3.2), and a receiver that could write it would be driving the signal
+meant to inform it. A receiver MUST NOT offer an entry whose object ID it does
+not know, but MUST still count it, so that later entries keep their
+characteristic numbers.
 
 ### 2.2 Placement
 
@@ -421,4 +424,5 @@ Open items:
    no type for `0x65` yet; devices use its `raw` escape hatch until it does.
 
 Settled since draft.1: the size of a write is `ATT_MTU - 3` and fragmentation is
-out of scope (§4.4, `decisions.md` D-058).
+out of scope (§4.4, `decisions.md` D-058), and the settings revision `0x65` is
+not declarable as writable (§2.1, D-072).

@@ -33,10 +33,21 @@ LENGTH_PREFIXED_FORMATS: Final = frozenset({"raw", "string"})
 COMMAND_FORMAT: Final = "command"  # <arg length, low 5 bits> <opcode> <args>
 
 #: Entries a declaration may not list (§2.1): BTHome's packet id, the
-#: declaration itself, and device information. A receiver counts them, so the
-#: entries after keep their characteristic numbers, but never offers them.
+#: declaration itself, device information, and the settings revision. All of
+#: them belong to the protocol rather than to a user, and `0x65` most of all: it
+#: is how a device says its own state moved (§3.2), so a receiver able to write
+#: it would be driving the signal that exists to inform it. A receiver counts
+#: them, so the entries after keep their characteristic numbers, but never
+#: offers them.
 FORBIDDEN_ENTRIES: Final = frozenset(
-    {PACKET_ID_OBJECT_ID, DECLARATION_OBJECT_ID, 0xF0, 0xF1, 0xF2}
+    {
+        PACKET_ID_OBJECT_ID,
+        DECLARATION_OBJECT_ID,
+        SETTINGS_REVISION_OBJECT_ID,
+        0xF0,
+        0xF1,
+        0xF2,
+    }
 )
 
 

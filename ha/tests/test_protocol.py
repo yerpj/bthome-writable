@@ -90,6 +90,17 @@ def test_unknown_and_forbidden_entries_are_counted_but_not_offered() -> None:
     assert [e.entry for e in forbidden.offered] == [2]
 
 
+def test_the_settings_revision_is_not_declarable_as_writable() -> None:
+    """D-072. `0x65` is how a device says its own state moved (§3.2), so a
+    receiver able to write it would be driving the signal that exists to inform
+    it. Forbidden like the packet id and the declaration itself -- and counted
+    like them, so the entries after keep their characteristic numbers."""
+    declaration = parse_declaration(bytes.fromhex("0009" + "ff651e"))
+    assert declaration is not None
+    assert [e.object_id for e in declaration.entries] == [0x65, 0x1E]
+    assert [e.entry for e in declaration.offered] == [2]
+
+
 def test_a_value_byte_of_0xff_is_not_mistaken_for_the_declaration() -> None:
     """The payload is walked, not scanned: a battery at 255 is not a declaration."""
     payload = bytes.fromhex("0009" + "01ff" + "ff1e")

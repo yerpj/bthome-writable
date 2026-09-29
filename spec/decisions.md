@@ -3277,3 +3277,32 @@ to fix this locally. Under this ruling that is consistent -- we do not ask
 devices to report it -- but a permissive *MAY* would let a device that wants to
 be honest be so, at no cost to one that does not. Worth a sentence if §3.2 is
 reopened for another reason; not worth reopening it for.
+
+
+## D-072 — The settings revision cannot be declared writable  [DECISION, owner]
+
+**Status:** ruled by the owner 2026-09-29. `PROTOCOL.md` §2.1, spec at
+**2.0-draft.3**. Raised by the independent review's object inventory.
+
+`0x65` was declarable. §2.1 forbade `0x00`, `0xFF` and `0xF0`–`0xF2`; `0x65`
+classifies as an ordinary numeric object, so a device listing it in its
+declaration would have been given a 0–255 slider labelled "settings revision",
+and a user could have written it.
+
+**Why it belongs with the others.** `0x65` is how a device announces that its own
+state moved (§3.2). A receiver able to write it would be driving the signal that
+exists to inform it: write the revision, and the receiver re-reads because it
+thinks the device changed something. It is protocol machinery, exactly like the
+packet id and the declaration itself.
+
+**Why it was fixed rather than asked about.** Rule 2 sends protocol changes
+through Gordon, and it binds the *agent's* initiative, not the owner's. The
+owner ruled; the precedent is D-058, where the MTU ceiling was decided here,
+written into the spec, and carried to the discussion as a tightening rather than
+a question. Gordon is told, not consulted — there is no trade to arbitrate,
+only an omission of the same class as five entries already in the list.
+
+**Blast radius: none.** No device declares it, the change only removes an
+offering, and a forbidden entry is still *counted*, so no characteristic
+renumbers. A receiver that has not adopted the rule keeps offering it, which is
+as harmless as it was before.
