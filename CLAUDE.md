@@ -8,8 +8,14 @@ A minimal, BTHome-compatible **downlink** for BLE devices in Home Assistant: dev
 
 **`SPEC-WORKING-DOCUMENT.md` in this repo. Read it entirely before writing any code.** It contains the protocol draft (§3), both implementation designs (§4–5), the risk list (§6 — read before coding, several risks gate design choices), the task breakdown with acceptance criteria (§7), and open decisions (§8).
 
-The design was converged publicly with **Gordon Williams (@gfwilliams)**, creator and maintainer of Espruino, in this discussion (you may fetch it for context, but the working document supersedes the thread — earlier iterations there, e.g. a 4-characteristic "EHAC" GATT profile or an objectID-list declaration, are **abandoned**; do not resurrect them):
-https://github.com/orgs/espruino/discussions/8013
+The design was converged publicly with **Gordon Williams (@gfwilliams)**, creator and maintainer of Espruino. There are now **two** discussions to follow, and they are not interchangeable:
+
+- **espruino#8024** — <https://github.com/orgs/espruino/discussions/8024> — this project's own topic, opened 2026-09-29. Everything about bthome-writable belongs here.
+- **espruino#8013** — <https://github.com/orgs/espruino/discussions/8013> — where the design was converged, and the home of Gordon's Home Assistant integration (`espruino/homeassistant-espruino`). Read it for history; do not post bthome-writable business there.
+
+The split exists because the two were being mixed up: a request about the *other* integration's web panel arrived addressed to this project. When reading either thread, check which extension a comment is about before acting on it.
+
+You may fetch both for context, but the working document supersedes them — earlier iterations there, e.g. a 4-characteristic "EHAC" GATT profile or an objectID-list declaration, are **abandoned**; do not resurrect them.
 
 The project owner (JP, @yerpj on GitHub) drives the discussion with Gordon; you drive the code.
 

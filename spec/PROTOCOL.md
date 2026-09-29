@@ -15,7 +15,8 @@ encrypted exactly as BTHome encrypts advertising. It asks BTHome for a single
 object ID.
 
 Designed publicly with Gordon Williams (Espruino) in
-[espruino#8013](https://github.com/orgs/espruino/discussions/8013). Version 2
+[espruino#8013](https://github.com/orgs/espruino/discussions/8013), and continued
+in this project's own topic [espruino#8024](https://github.com/orgs/espruino/discussions/8024). Version 2
 replaces version 1's positional bitmask, write-all payload and advertising-based
 confirmation; the reasons are in [`decisions.md` D-048](decisions.md).
 
