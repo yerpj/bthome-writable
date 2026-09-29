@@ -28,10 +28,17 @@ Measured on the bench: **~103 lux → ~595 lux and back**, the write itself
 acknowledged 16 ms after the link is up, the link taking 1.7 s to establish from
 a Windows host.
 
+**Put the Puck in the dark.** Cover it, or shut it in an opaque box — a mug
+upside down on a desk will do. The sensor has no idea which light it is looking
+at, so in a lit room the ambient level swamps the LED and the reading barely
+moves: the loop still works and you cannot see that it does. The figures above
+were taken under cover, which is why 103 lux is the *off* state rather than
+office daylight.
+
 ## Replicating it
 
-Needs a Puck.js, Home Assistant with Bluetooth, and a host with Python +
-`bleak`. ~10 minutes.
+Needs a Puck.js, something opaque to put it under, Home Assistant with
+Bluetooth, and a host with Python + `bleak`. ~10 minutes.
 
 ```bash
 git clone https://github.com/yerpj/bthome-writable && cd bthome-writable
