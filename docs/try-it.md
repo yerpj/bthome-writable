@@ -37,31 +37,65 @@ office daylight.
 
 ## Replicating it
 
-Needs a Puck.js, something opaque to put it under, Home Assistant with
-Bluetooth, and a host with Python + `bleak`. ~10 minutes.
+Needs a Puck.js, something opaque to put it under, and Home Assistant with
+Bluetooth. ~10 minutes.
+
+### 1. The integration
 
 ```bash
 git clone https://github.com/yerpj/bthome-writable && cd bthome-writable
-pip install bleak
-
-# 1. Install the integration, then restart HA. (Or add the repo to HACS.)
 cp -r custom_components/bthome_writable <config>/custom_components/
-
-# 2. Install the sketch on the Puck. Modules go to Storage under their bare
-#    names; the application runs from RAM and .bootcde is erased, so a power
-#    cut undoes it. That is deliberate while you are experimenting -- an
-#    advertising payload the radio refuses throws inside setup(), and a device
-#    that is not advertising cannot be connected to, so it cannot be fixed over
-#    the air (decisions.md D-029). Add --to-flash once you are happy with it.
-python -m tools.espruino_deploy --address <mac> --app espruino/examples/light-loop.js
 ```
 
-3. HA discovers **BTHome Writable** within seconds. Add it, toggle the switch,
-   watch the illuminance sensor.
+Restart Home Assistant. (Or add the repo to HACS instead.)
+
+### 2. The sketch, either way
+
+**The module goes to the Puck's flash, the application runs from RAM.** That
+split is deliberate: an advertising payload the radio refuses throws inside
+`setup()`, and a device that is not advertising cannot be connected to, so it
+cannot be fixed over the air. Running from RAM means a power cut undoes whatever
+you just broke (`decisions.md` D-029). Save it to flash once you are happy with
+it, not before.
+
+**A — with the tool in this repo.** Needs Python and `bleak`; does the whole
+thing in one command, verifies each module's CRC after writing it, and erases
+`.bootcde` so the application really is RAM-only.
+
+```bash
+pip install bleak
+python -m tools.espruino_deploy --address <mac> --app espruino/examples/light-loop.js
+# add --to-flash when you want it to survive a power cut
+```
+
+**B — with the Espruino Web IDE**, at <https://www.espruino.com/ide/>. Nothing
+to install, and it is the tool Espruino users already have.
+
+1. **Put the module in Storage.** Open the Web IDE's storage view, upload
+   `espruino/BTHomeWritable.js` from this repo, and name the file
+   **`BTHomeWritable`** — no extension. `require()` looks in Storage, so that
+   bare name is what makes `require("BTHomeWritable")` resolve on the device.
+   `require("BTHome")` needs nothing: the IDE fetches that one from
+   espruino.com by itself.
+2. **Send `espruino/examples/light-loop.js`** the ordinary way — paste it in the
+   right-hand editor and click upload.
+
+If the IDE says it cannot find `BTHomeWritable` rather than leaving the
+`require` alone, it is trying to resolve the module online instead of trusting
+Storage — Espruino's own documentation warns that it may. Two ways past it: drop
+`BTHomeWritable.js` into your project's `modules/` folder, where the IDE will
+inline it at upload; or paste `espruino/dist/light-loop-standalone.js` instead,
+which is the same example with the module already inlined and needs no step 1
+at all.
+
+### 3. In Home Assistant
+
+It discovers **BTHome Writable** within seconds. Add it, toggle the switch,
+watch the illuminance sensor — with the Puck under cover.
 
 Without HA, the same loop from a terminal — exit status 0 only if the measured
 illuminance actually moved with the commanded state:
-`python -m tools.closed_loop --address <mac>`.
+`python -m tools.closed_loop --address <mac>` (Python and `bleak` again).
 
 ## What version 2 settled
 
