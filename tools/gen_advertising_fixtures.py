@@ -21,7 +21,7 @@ from typing import Any
 
 OUTPUT = Path(__file__).resolve().parent.parent / "spec" / "advertising-fixtures.json"
 
-SPEC_VERSION = "2.0-draft.2"
+SPEC_VERSION = "2.0-draft.4"
 
 DECLARATION_OBJECT_ID = 0xFF
 DEVICE_INFO_PLAIN = 0x40  # BTHome v2, unencrypted
@@ -78,7 +78,13 @@ def fixture(
     body = [dict(o) for o in objects]
     declaration = None
     if entries is not None:
-        declaration = obj(DECLARATION_OBJECT_ID, bytes(entries), "declaration")
+        # Length-prefixed like every other variable-length BTHome object
+        # (§2.1), so a parser that does not know 0xFF can step over it.
+        declaration = obj(
+            DECLARATION_OBJECT_ID,
+            bytes([len(entries)]) + bytes(entries),
+            "declaration",
+        )
         if declaration_index is None:
             body.append(declaration)
         else:

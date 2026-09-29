@@ -1,6 +1,6 @@
 # BTHome Writable — protocol specification
 
-**Version:** 2.0-draft.3 · **Status:** DRAFT, nothing frozen · **License:** MIT
+**Version:** 2.0-draft.4 · **Status:** DRAFT, nothing frozen · **License:** MIT
 
 BTHome standardizes a BLE **uplink**: a device broadcasts its state in
 advertising, a receiver parses it. It has no **downlink**. This document
@@ -48,11 +48,16 @@ This specification targets **BTHome v2** and its 16-bit service data UUID
 The declaration is one element of the BTHome service data:
 
 ```
-0xFF <objectID_1> <objectID_2> ... <objectID_n>
+0xFF <n> <objectID_1> <objectID_2> ... <objectID_n>
 ```
 
 - `0xFF` is the declaration's object ID. It is **not yet assigned** by BTHome
   (§9); `bthome-ble`'s highest assigned ID is `0xF2`.
+- `<n>` is the number of entries that follow, one byte, so the declaration is
+  **self-delimiting** like every other variable-length BTHome object. A parser
+  that does not know `0xFF` can step over it and carry on, rather than having to
+  stop. 255 entries is therefore the format's ceiling, which no advertising
+  payload comes close to.
 - Each following byte is a **BTHome object ID**. Entry *k* says: "this device
   accepts writes of this object type on writable characteristic *k*" (§4.1).
 - The entry's object ID alone determines the value's format, length, unit and
@@ -73,15 +78,20 @@ characteristic numbers.
 
 ### 2.2 Placement
 
-**The declaration MUST be the last element of the BTHome service data**, and its
-entries run to the end of that data. This is normative, not stylistic: the
-reference BTHome parser stops at the first object ID it does not recognise, so
-anything placed after the declaration would be silently dropped for every
-existing BTHome installation (`decisions.md` D-005). For encrypted advertising,
-"end of the service data" means end of the plaintext, before counter and MIC.
+**The declaration MUST be the last element of the BTHome service data.** Not
+because the format requires it — the length byte makes it skippable — but
+because the reference BTHome parser stops at the first object ID it does not
+recognise, so anything placed after it would be silently dropped for every
+existing BTHome installation (`decisions.md` D-005). Once `0xFF` is assigned and
+parsers know it, this rule can be relaxed; until then it is normative. For
+encrypted advertising, "last" means last in the plaintext, before counter and
+MIC.
 
-A device that rotates several advertising payloads MUST include the declaration
-in each of them, or in a payload it broadcasts at least as often as any other.
+**A device has one declaration.** Whatever payloads it advertises, and however
+it rotates them, the `0xFF` object it broadcasts is always the same one. A
+device whose writable entries would not fit in a single advertising payload is
+out of scope: entry numbers are positions in one list, and a list that arrives
+in pieces has no defined order.
 
 ### 2.3 Writable values are not advertised
 
@@ -244,10 +254,18 @@ attempt a queued (long) write, and MUST NOT silently truncate a value that does
 not fit: it refuses the command and says so, as it would for any other write that
 cannot be delivered (§6).
 
-Receivers SHOULD negotiate an ATT MTU of at least 64 bytes, which raises the
-ceiling; at BLE's guaranteed 23 a write carries 20 bytes, enough for every
-fixed-length object and for 18 characters of text. Implementations MUST document
-the limit they end up with rather than leave a user to discover it.
+At BLE's guaranteed ATT MTU of 23 a write carries 20 bytes — enough for every
+fixed-length object in BTHome's table, sealed or not, since the largest is five
+bytes and encryption adds eight. **Nothing but text and raw is ever constrained
+by the MTU**, and for those the ceiling is whatever MTU was negotiated, which
+neither side chooses alone: it is the smaller of the two sides' declared receive
+MTUs. Implementations MUST document the limit they end up with rather than leave
+a user to discover it.
+
+An earlier draft asked receivers to negotiate at least 64 bytes. That is dropped:
+it does not help the objects that fit anyway, and the reference receiver cannot
+honour it — `bleak` exposes no way to request an MTU on BlueZ, which is the
+platform Home Assistant runs on.
 
 ---
 
@@ -424,5 +442,7 @@ Open items:
    no type for `0x65` yet; devices use its `raw` escape hatch until it does.
 
 Settled since draft.1: the size of a write is `ATT_MTU - 3` and fragmentation is
-out of scope (§4.4, `decisions.md` D-058), and the settings revision `0x65` is
-not declarable as writable (§2.1, D-072).
+out of scope (§4.4, `decisions.md` D-058); the settings revision `0x65` is not
+declarable as writable (§2.1, D-072); the declaration carries a length byte, a
+device has exactly one, and the MTU floor is gone (§2.1, §2.2, §4.4, D-073,
+agreed with Gordon in espruino#8013).

@@ -81,7 +81,7 @@ async def test_a_declaration_of_types_this_receiver_cannot_offer_is_not_offered(
     """§2.1: unknown and forbidden entries are counted but never offered, so a
     device declaring only those has nothing for the user."""
     result = await start_discovery(
-        hass, "single-light", service_data=bytes.fromhex("400001ff9900")
+        hass, "single-light", service_data=bytes.fromhex("400001ff029900")
     )
 
     assert result["type"] is FlowResultType.ABORT

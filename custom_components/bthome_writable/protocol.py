@@ -331,9 +331,17 @@ def parse_declaration(payload: bytes) -> Declaration | None:
     if offset is None:
         return None
 
+    if offset + 1 >= len(payload):
+        raise ProtocolError("the declaration has no length byte")
+    count = payload[offset + 1]
+    ids = payload[offset + 2 : offset + 2 + count]
+    if len(ids) != count:
+        raise ProtocolError(
+            f"the declaration claims {count} entries and carries {len(ids)}"
+        )
     entries = tuple(
         WritableEntry(entry=k, object_id=object_id)
-        for k, object_id in enumerate(payload[offset + 1 :], start=1)
+        for k, object_id in enumerate(ids, start=1)
     )
     revision = next(
         (

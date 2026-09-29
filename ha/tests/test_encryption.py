@@ -221,7 +221,7 @@ async def test_a_keyed_device_still_seals_before_the_first_advertisement(
         hass, "A4:C1:38:8E:1F:2B", bindkey=bytes(range(16))
     )
     assert coordinator.advertises_encrypted is None
-    coordinator.declaration = parse_declaration(bytes.fromhex("0009ff1e"))
+    coordinator.declaration = parse_declaration(bytes.fromhex("0009ff011e"))
 
     # Past the downgrade guard, so it fails later -- on there being no device.
     with (
@@ -341,7 +341,7 @@ def test_a_sealed_advertisement_opens_under_whatever_byte_it_carried() -> None:
     Sealing under 0x45 and opening under 0x41 authenticates nothing."""
     key = bytes(range(16))
     address = "A4:C1:38:8E:1F:2B"
-    objects = bytes.fromhex("000109ff1e")
+    objects = bytes.fromhex("000109ff011e")
 
     sealed = bytes([SLEEPY_ENCRYPTED]) + seal(
         objects, key, address, SLEEPY_ENCRYPTED, 7
@@ -360,7 +360,7 @@ def test_an_encrypted_packet_carrying_its_mac_opens() -> None:
     key = bytes(range(16))
     advertised = "A4:C1:38:8E:1F:2B"
     inside = "AA:BB:CC:DD:EE:FF"
-    objects = bytes.fromhex("000109ff1e")
+    objects = bytes.fromhex("000109ff011e")
 
     sealed = (
         bytes([MAC_INCLUDED_ENCRYPTED])

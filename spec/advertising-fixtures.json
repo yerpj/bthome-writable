@@ -1,5 +1,5 @@
 {
-  "spec_version": "2.0-draft.2",
+  "spec_version": "2.0-draft.4",
   "generated_by": "tools/gen_advertising_fixtures.py",
   "description": "Advertising fixtures for bthome-writable, consumed by both test suites. Service data is the full BTHome v2 payload including the device-information byte; writes and reads follow PROTOCOL.md \u00a74.",
   "budget": {
@@ -15,8 +15,8 @@
       "description": "PROTOCOL.md \u00a78.1: packet id, battery, one writable light. The light's state is not advertised (\u00a72.3).",
       "valid": true,
       "device_info_byte": "40",
-      "service_data": "4000090161ff1e",
-      "service_data_length": 7,
+      "service_data": "4000090161ff011e",
+      "service_data_length": 8,
       "objects": [
         {
           "object_id": "00",
@@ -30,7 +30,7 @@
         },
         {
           "object_id": "ff",
-          "value": "1e",
+          "value": "011e",
           "name": "declaration"
         }
       ],
@@ -86,8 +86,8 @@
       "description": "PROTOCOL.md \u00a78.2: a measured temperature (a sensor), settings revision, and two entries -- power and a target temperature. The measured 0x02 and the writable 0x57 never collide, because the target is not in the packet.",
       "valid": true,
       "device_info_byte": "40",
-      "service_data": "40000902c4096503ff1057",
-      "service_data_length": 11,
+      "service_data": "40000902c4096503ff021057",
+      "service_data_length": 12,
       "objects": [
         {
           "object_id": "00",
@@ -106,7 +106,7 @@
         },
         {
           "object_id": "ff",
-          "value": "1057",
+          "value": "021057",
           "name": "declaration"
         }
       ],
@@ -196,8 +196,8 @@
       "description": "PROTOCOL.md \u00a78.3: two entries of one type and a text entry. Instances are told apart by entry number, which is also their characteristic number.",
       "valid": true,
       "device_info_byte": "40",
-      "service_data": "400009ff1e1e53",
-      "service_data_length": 7,
+      "service_data": "400009ff031e1e53",
+      "service_data_length": 8,
       "objects": [
         {
           "object_id": "00",
@@ -206,7 +206,7 @@
         },
         {
           "object_id": "ff",
-          "value": "1e1e53",
+          "value": "031e1e53",
           "name": "declaration"
         }
       ],
@@ -275,8 +275,8 @@
       "description": "PROTOCOL.md \u00a78.4: a writable button. A write triggers only its own entry, so events are safe to write in version 2.",
       "valid": true,
       "device_info_byte": "40",
-      "service_data": "400009ff3a",
-      "service_data_length": 5,
+      "service_data": "400009ff013a",
+      "service_data_length": 6,
       "objects": [
         {
           "object_id": "00",
@@ -285,7 +285,7 @@
         },
         {
           "object_id": "ff",
-          "value": "3a",
+          "value": "013a",
           "name": "declaration"
         }
       ],
@@ -340,8 +340,8 @@
       "description": "A writable numeric entry: the shape of a dimmer level or a setpoint. Range and step come from the object's width and factor.",
       "valid": true,
       "device_info_byte": "40",
-      "service_data": "4000030158ff14",
-      "service_data_length": 7,
+      "service_data": "4000030158ff0114",
+      "service_data_length": 8,
       "objects": [
         {
           "object_id": "00",
@@ -355,7 +355,7 @@
         },
         {
           "object_id": "ff",
-          "value": "14",
+          "value": "0114",
           "name": "declaration"
         }
       ],
@@ -399,8 +399,8 @@
       "description": "More entries than version 1's bitmask allowed, and characteristic numbers past 9: entry 10 is 2faa000a, written in hexadecimal.",
       "valid": true,
       "device_info_byte": "40",
-      "service_data": "400001ff1e1e1e1e1e1e1e1e1e1e1e1e",
-      "service_data_length": 16,
+      "service_data": "400001ff0c1e1e1e1e1e1e1e1e1e1e1e1e",
+      "service_data_length": 17,
       "objects": [
         {
           "object_id": "00",
@@ -409,7 +409,7 @@
         },
         {
           "object_id": "ff",
-          "value": "1e1e1e1e1e1e1e1e1e1e1e1e",
+          "value": "0c1e1e1e1e1e1e1e1e1e1e1e1e",
           "name": "declaration"
         }
       ],
@@ -541,8 +541,8 @@
       "description": "Entry 2 is an object ID the receiver does not know. It is not offered, but it is counted: the light after it stays on characteristic 3 (\u00a72.1).",
       "valid": true,
       "device_info_byte": "40",
-      "service_data": "400005ff1e991e",
-      "service_data_length": 7,
+      "service_data": "400005ff031e991e",
+      "service_data_length": 8,
       "objects": [
         {
           "object_id": "00",
@@ -551,7 +551,7 @@
         },
         {
           "object_id": "ff",
-          "value": "1e991e",
+          "value": "031e991e",
           "name": "declaration"
         }
       ],
@@ -607,8 +607,8 @@
       "description": "A rotating device, packet 1 of 2, carrying the declaration.",
       "valid": true,
       "device_info_byte": "40",
-      "service_data": "400001014aff1e",
-      "service_data_length": 7,
+      "service_data": "400001014aff011e",
+      "service_data_length": 8,
       "objects": [
         {
           "object_id": "00",
@@ -622,7 +622,7 @@
         },
         {
           "object_id": "ff",
-          "value": "1e",
+          "value": "011e",
           "name": "declaration"
         }
       ],
@@ -720,8 +720,8 @@
       "description": "A declaration with no entries: legal, means nothing writable, and a device SHOULD omit it instead (\u00a72.1).",
       "valid": true,
       "device_info_byte": "40",
-      "service_data": "400001013cff",
-      "service_data_length": 6,
+      "service_data": "400001013cff00",
+      "service_data_length": 7,
       "objects": [
         {
           "object_id": "00",
@@ -735,7 +735,7 @@
         },
         {
           "object_id": "ff",
-          "value": "",
+          "value": "00",
           "name": "declaration"
         }
       ],
@@ -756,8 +756,8 @@
       "description": "The declaration placed before a sensor. A receiver cannot detect it: the entries run to the end of the data, so the battery bytes would read as two more entries, and existing BTHome receivers drop the battery. A device MUST make this impossible (\u00a72.2).",
       "valid": false,
       "device_info_byte": "40",
-      "service_data": "400001ff1e0161",
-      "service_data_length": 7,
+      "service_data": "400001ff011e0161",
+      "service_data_length": 8,
       "objects": [
         {
           "object_id": "00",
@@ -766,7 +766,7 @@
         },
         {
           "object_id": "ff",
-          "value": "1e",
+          "value": "011e",
           "name": "declaration"
         },
         {
@@ -798,8 +798,8 @@
       "description": "Entry 1 lists the packet id, which \u00a72.1 forbids. A receiver MUST NOT offer it, and MUST still count it.",
       "valid": false,
       "device_info_byte": "40",
-      "service_data": "400001ff001e",
-      "service_data_length": 6,
+      "service_data": "400001ff02001e",
+      "service_data_length": 7,
       "objects": [
         {
           "object_id": "00",
@@ -808,7 +808,7 @@
         },
         {
           "object_id": "ff",
-          "value": "001e",
+          "value": "02001e",
           "name": "declaration"
         }
       ],
@@ -844,8 +844,8 @@
       "description": "Over the theoretical advertising budget of \u00a72.4. A device MUST refuse this configuration at setup rather than truncate.",
       "valid": false,
       "device_info_byte": "40",
-      "service_data": "4000010161ff1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e",
-      "service_data_length": 31,
+      "service_data": "4000010161ff191e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e",
+      "service_data_length": 32,
       "objects": [
         {
           "object_id": "00",
@@ -859,7 +859,7 @@
         },
         {
           "object_id": "ff",
-          "value": "1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e",
+          "value": "191e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e",
           "name": "declaration"
         }
       ],

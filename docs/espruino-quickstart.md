@@ -50,7 +50,7 @@ the device's own write response, and what proves it had an effect is the LED.
 The advertisement looks like this:
 
 ```
-40 00 01 01 5a ff 1e
+40 00 01 01 5a ff 01 1e
 │  │     │     │  └── entry 1: writes of light (0x1E) accepted, on 2FAA0001
 │  │     │     └───── declaration (0xFF), last in the service data
 │  │     └─────────── battery (0x01), 90 %
@@ -58,8 +58,9 @@ The advertisement looks like this:
 └──────────────────── BTHome device information, unencrypted
 ```
 
-Everything before `ff 1e` is ordinary BTHome that any receiver already
-understands. `ff 1e` is the whole of this protocol on the air: object `0xFF`,
+Everything before `ff 01 1e` is ordinary BTHome that any receiver already
+understands. `ff 01 1e` is the whole of this protocol on the air: object `0xFF`,
+a count of one entry,
 then one BTHome object ID per writable entry, last in the service data. A
 receiver that does not know it skips it like any unknown object — which is why
 it has to be last (D-005).

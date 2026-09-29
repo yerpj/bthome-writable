@@ -172,8 +172,8 @@ test("sensor objects sort ascending, equal IDs keep their order, declaration las
     { type: "power", set: noop },
   ];
   const plan = bw.planPacket(entries, fakeEncodeOne);
-  // 40 | 00 01 | 01 32 | 1e 01 | 1e 00 | ff 10
-  assert.equal(bytesToHex(bw.renderServiceData(plan, 1, null)), "4000010132" + "1e011e00" + "ff10");
+  // 40 | 00 01 | 01 32 | 1e 01 | 1e 00 | ff 01 10
+  assert.equal(bytesToHex(bw.renderServiceData(plan, 1, null)), "4000010132" + "1e011e00" + "ff0110");
 });
 
 test("the settings revision sorts into place before the declaration", () => {
@@ -182,8 +182,8 @@ test("the settings revision sorts into place before the declaration", () => {
     { type: "light", get: () => false, set: noop },
   ];
   const plan = bw.planPacket(entries, fakeEncodeOne);
-  // 40 | 00 01 | 14 9a 10 | 65 07 | ff 1e
-  assert.equal(bytesToHex(bw.renderServiceData(plan, 1, null, null, 0, 7)), "400001149a106507ff1e");
+  // 40 | 00 01 | 14 9a 10 | 65 07 | ff 01 1e
+  assert.equal(bytesToHex(bw.renderServiceData(plan, 1, null, null, 0, 7)), "400001149a106507ff011e");
 });
 
 test("a device with nothing writable advertises no declaration", () => {

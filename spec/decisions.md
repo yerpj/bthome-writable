@@ -3306,3 +3306,84 @@ only an omission of the same class as five entries already in the list.
 offering, and a forbidden entry is still *counted*, so no characteristic
 renumbers. A receiver that has not adopted the rule keeps offering it, which is
 as harmless as it was before.
+
+
+## D-073 — Gordon's review: a length byte, one declaration, no MTU floor  [SPEC, agreed with Gordon]
+
+**Status:** agreed in espruino#8013 on 2026-09-29, implemented the same day.
+`PROTOCOL.md` **2.0-draft.4**.
+
+### The length byte, which was his condition
+
+> *"Yes, absolutely! Sorry, I didn't think that through when I posted my example.
+> Yes, it should absolutely have a length on it."* — and then: *"please could you
+> put the length after 0xFF, and then I'll roll this out in my actual home"*.
+
+The declaration is now `FF <n> <ids…>`. It was the only BTHome object that did
+not delimit itself, so the only one a parser had to *stop* at rather than step
+over. One byte buys that back, and 255 entries is a ceiling no advertising
+payload approaches.
+
+`0xFF` MUST still be last, but the reason has changed and is now written down as
+such: not because the format demands it, but because the reference parser stops
+at an ID it does not know (D-005). Once `0xFF` is assigned, the rule can go.
+
+### One declaration per device
+
+Gordon found §2.2's rotation rule over-specified: *"Do we need to request this?
+It feels like it doesn't really matter as long as it is broadcast."* His
+suggestion was to forbid divergent `0xFF` payloads instead. The owner went
+further and simpler: **a device has one declaration**, whatever it rotates.
+
+That drops both the frequency floor and the consistency rule, because neither
+has anything left to govern. The cost is that every writable entry must fit in
+one advertising payload — accepted: entry numbers are positions in one list, and
+a list arriving in pieces has no defined order.
+
+### No MTU floor
+
+> *"I don't feel like we need this… Since we're only changing one value per write
+> now, everything apart from text+raw will be 4 bytes or less, so should fit in
+> the standard MTU even with encryption?"*
+
+Right, and §4.4 now says so: at the guaranteed MTU of 23 a write carries 20
+bytes, the largest fixed-length object is five, encryption adds eight. Only text
+and raw are ever constrained. The SHOULD is gone — it helped nothing that fits
+anyway, and D-070 had already found the reference receiver cannot honour it.
+
+He also suggested letting the BLE stack split long writes. Not taken yet, and
+said so in the reply: D-017 measured the stack refusing an over-long payload
+outright rather than preparing a write. Replacing an unimplementable SHOULD with
+an untested promise would not be progress. Worth an afternoon of measurement
+later.
+
+### What he raised that was already done
+
+- *"I don't think we should rely on the device saving the write counter."* Ours
+  does (`.bwctr`), and D-069 extended it to the advertising and read directions
+  — where it is not a hardening but a correctness fix, because the device seals
+  those itself and a counter restarting at zero reuses a nonce. Replied with
+  that distinction rather than agreeing flatly.
+- *"What happens when Home Assistant reboots? Do we save the counter value?"*
+  Yes (D-064), and a freshly created entry seeds from the wall clock, which was
+  the silent blocker D-063 found.
+
+### What is still open with him
+
+His overflow window — *"accept anything from LAST+1 to (LAST+1000)&0xFFFFFFFF"*
+— is right about wrap-around and wrong about forward jumps, which it also
+bounds. Two of ours land far outside it: the clock seed of D-064 (about 1.7
+billion) and the resynchronisation of D-072 (100 000), the second of which §5.3
+itself asks receivers to offer. Raised in the reply; needs either a wider window
+or resynchronisation defined as something other than a jump. **Not implemented
+until he answers** — the device would otherwise refuse its own receiver.
+
+### Also agreed
+
+`PLATFORMS.md`'s open question about how a brightness finds its light is out of
+scope: *"dealing with the meaning of the stuff that appears in home assistant is
+probably out of scope of the spec anyway."* Consistent with D-071.
+
+And he offered his own bench — a NAS container with ESPHome proxies rather than
+the Pi's own adapter — which is the second site every measurement in this repo
+has been asking for.

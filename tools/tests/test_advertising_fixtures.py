@@ -79,11 +79,17 @@ def test_service_data_matches_its_objects(fixture: dict[str, Any]) -> None:
 
 
 @pytest.mark.parametrize("fixture", WITH_DECLARATION, ids=ids(WITH_DECLARATION))
-def test_declaration_value_is_its_entries(fixture: dict[str, Any]) -> None:
-    """§2.1: 0xFF followed by the entries' object IDs, one byte each."""
+def test_declaration_value_is_a_count_then_its_entries(fixture: dict[str, Any]) -> None:
+    """§2.1: 0xFF, the number of entries, then their object IDs one byte each.
+
+    The count is what makes the declaration self-delimiting, like every other
+    variable-length BTHome object: a parser that does not know 0xFF can still
+    step over it rather than having to stop (D-073).
+    """
     declarations = [o for o in fixture["objects"] if o["object_id"] == DECLARATION_HEX]
     assert len(declarations) == 1
-    assert declarations[0]["value"] == "".join(fixture["declaration"]["entries"])
+    entries = fixture["declaration"]["entries"]
+    assert declarations[0]["value"] == f"{len(entries):02x}" + "".join(entries)
 
 
 @pytest.mark.parametrize("fixture", WITH_DECLARATION, ids=ids(WITH_DECLARATION))

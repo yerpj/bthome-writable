@@ -30,13 +30,13 @@ const LIGHT_LEVEL = 0.25; // -> 0.25 * 1000 * 100 = 25000 = a8 61 00 little-endi
  * Keyed by the example's name, since dist/ holds two forms of each. */
 const EXPECTED = {
   "single-light": {
-    // 40 | 00 01 | 01 5a | ff 1e -- the light is declared, its state is not advertised
-    packet: "400001015aff1e",
+    // 40 | 00 01 | 01 5a | ff 01 1e -- the light is declared, its state is not advertised
+    packet: "400001015aff011e",
     pin: "LED1",
   },
   "light-loop": {
-    // 40 | 00 01 | 01 5a | 05 a8 61 00 | ff 1e
-    packet: "400001015a05a86100ff1e",
+    // 40 | 00 01 | 01 5a | 05 a8 61 00 | ff 01 1e
+    packet: "400001015a05a86100ff011e",
     pin: "LED2",
   },
 };

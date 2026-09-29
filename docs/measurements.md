@@ -359,7 +359,8 @@ measured with `tools/adv_budget.py` or by bisection on the device.
 | nice!nano 2v29.396, with name | 5 bytes | the 16-bit UUID is emitted again, costing 2 | D-049 |
 | nice!nano 2v29.396, `showName:false` | 20 bytes | | D-049 |
 
-For scale: a declaration costs one byte per writable entry plus the `0xFF`, and
+For scale: a declaration costs one byte per writable entry plus two — the
+`0xFF` and the count — and
 version 2 advertises no writable values at all. Three writable lights are 4
 bytes.
 

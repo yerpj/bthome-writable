@@ -75,7 +75,7 @@ Everything above the DIVIDER is pure JS - no NRF, no I/O - and runs under Node,
 which is how the protocol logic is tested without a device.
 */
 
-const DECL_ID = 0xFF; // declaration object, MUST be last in the packet (S2.2)
+const DECL_ID = 0xFF; // declaration object, last in the packet (S2.2)
 const PKT_ID = 0x00; // BTHome packet id, always our first object
 const REV_ID = 0x65; // BTHome settings revision (S3.2)
 const DEV_INFO = 0x40; // BTHome v2, unencrypted, not trigger-based
@@ -94,7 +94,7 @@ const EVENT_IDS = { 0x3A:true, 0x3C:true }; // button, dimmer: the value is an e
 // type would look signed. An entry's own `signed` overrides this.
 const SIGNED_IDS = { 0x02:true, 0x08:true, 0x3F:true, 0x45:true, 0x57:true, 0x58:true, 0x5C:true, 0x5D:true, 0x62:true, 0x63:true };
 // S2.1: packet id, the declaration itself, and device information are not data.
-const FORBIDDEN = { 0x00:true, 0xFF:true, 0xF0:true, 0xF1:true, 0xF2:true };
+const FORBIDDEN = { 0x00:true, 0x65:true, 0xFF:true, 0xF0:true, 0xF1:true, 0xF2:true };
 
 function err(code, msg) { const e = new Error(msg); e.code = code; return e; }
 
@@ -103,11 +103,16 @@ function characteristicUuid(k) {
   return "2FAA" + ("000" + k.toString(16).toUpperCase()).slice(-4) + UUID_TAIL;
 }
 
-/* Entry object IDs -> [0xFF, id, id, ...]. */
+/* Entry object IDs -> [0xFF, n, id, id, ...] (S2.1).
+
+   The length byte makes the declaration self-delimiting like every other
+   variable-length BTHome object, so a parser can skip it without understanding
+   it. Asked for by Gordon in espruino#8013 and worth the byte. */
 function encodeDeclaration(ids) {
   for (let i = 0; i < ids.length; i++)
     if (FORBIDDEN[ids[i]]) throw err("forbidden_entry", `entry ${i + 1} is 0x${ids[i].toString(16)}, which S2.1 forbids`);
-  return [DECL_ID].concat(ids);
+  if (ids.length > 255) throw err("too_many_entries", `${ids.length} entries; the length byte holds 255`);
+  return [DECL_ID, ids.length].concat(ids);
 }
 
 /* Assemble the service data. `entryIds` null means no declaration. Throws

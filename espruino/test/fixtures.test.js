@@ -79,7 +79,7 @@ for (const fixture of FIXTURES) {
 
 test("declaration-not-last cannot be produced: the codec always appends it", () => {
   const built = bw.buildServiceData(0x40, [{ id: 0x01, value: [97] }], [0x1e]);
-  assert.deepEqual(built.slice(-2), [bw.DECLARATION_OBJECT_ID, 0x1e]);
+  assert.deepEqual(built.slice(-3), [bw.DECLARATION_OBJECT_ID, 1, 0x1e]);
 });
 
 test("forbidden-entry is refused when built through the codec", () => {

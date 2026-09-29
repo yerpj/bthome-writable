@@ -34,5 +34,9 @@ def service_data(*objects: Obj, device_info: int = DEVICE_INFO_ADV_PLAIN) -> byt
 
 
 def declaration(*entries: int, object_id: int = 0xFF) -> Obj:
-    """The declaration object of PROTOCOL.md §2.1: <object_id> <entry IDs...>."""
-    return Obj(object_id, bytes(entries))
+    """The declaration object of PROTOCOL.md §2.1: `FF <n> <entry IDs...>`.
+
+    Length-prefixed like every other variable-length BTHome object, so a parser
+    that does not know `0xFF` can still step over it.
+    """
+    return Obj(object_id, bytes([len(entries)]) + bytes(entries))

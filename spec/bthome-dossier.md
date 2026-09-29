@@ -89,7 +89,7 @@ else in this extension reuses BTHome's own object table, encodings and
 encryption. No new data format, no new parsing concept, no second ID.
 
 ```
-0xFF <objectID_1> <objectID_2> ... <objectID_n>
+0xFF <n> <objectID_1> <objectID_2> ... <objectID_n>
 ```
 
 Last in the service data, it lists the BTHome object types the device accepts
@@ -137,7 +137,7 @@ review. Still deliberately out of scope: pairing a level with its light
 | Unknown objects break existing receivers | bthome-ble skips an unknown ID and stops parsing; placing new objects last loses nothing for existing installs. Tested in CI | D-005 |
 | Writes are a security hole | BTHome's own AES-CCM, all three directions (advertising, write, read), the direction bound into the nonce so no recording replays as another; vectors pass on-device on two boards; HA warns once per unencrypted device, and refuses to downgrade a keyed device to plaintext | D-033, D-041, D-042, D-045 |
 | It only works on one bench | Two boards (Puck.js, nice!nano), one HA install, one adapter and one ESP32 proxy. **Weak point** — needs testers outside this bench before submission | `docs/try-it.md` |
-| Advertising space is too tight | The declaration costs one byte per writable entry and nothing else — writable values are not advertised. Measured budgets are below §2.4's arithmetic (Espruino manufacturer data and the local name), and a three-light declaration is 4 bytes | D-030, D-046, D-049 |
+| Advertising space is too tight | The declaration costs one byte per writable entry plus two, and nothing else — writable values are not advertised. Measured budgets are below §2.4's arithmetic (Espruino manufacturer data and the local name), and a three-light declaration is 5 bytes | D-030, D-046, D-049 |
 
 Claims to avoid, because they were wrong once in public:
 

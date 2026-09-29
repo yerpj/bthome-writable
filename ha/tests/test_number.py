@@ -68,7 +68,7 @@ async def test_a_changed_settings_revision_triggers_a_re_read(
     reads_before = len(gatt.reads)
 
     gatt.readable[UUID_TEMPLATE.format(2)] = bytes.fromhex("5712")  # 18 °C
-    payload = bytearray(bytes.fromhex("40000902c4096503ff1057"))
+    payload = bytearray(bytes.fromhex("40000902c4096503ff021057"))
     payload[7] = 0x04  # settings revision 3 -> 4
     radio.push(service_info("thermostat", service_data=bytes(payload)))
     await settle(hass)
@@ -88,7 +88,7 @@ async def test_a_re_read_that_fails_is_tried_again_on_a_later_advertisement(
     await settle(hass)
 
     gatt.readable[UUID_TEMPLATE.format(2)] = bytes.fromhex("5712")
-    payload = bytearray(bytes.fromhex("40000902c4096503ff1057"))
+    payload = bytearray(bytes.fromhex("40000902c4096503ff021057"))
     payload[7] = 0x04
     gatt.fail_on_read = RuntimeError("device busy")
     radio.push(service_info("thermostat", service_data=bytes(payload)))

@@ -54,7 +54,7 @@ async def test_a_command_entry_is_offered_now_that_writes_are_per_entry(
     """Version 1 could not offer 0x3B: write-all would have sent it an `off`.
     Version 2 writes only the entry pressed (D-048)."""
     await setup_device(
-        hass, radio, "momentary-action", service_data=bytes.fromhex("400009ff3b")
+        hass, radio, "momentary-action", service_data=bytes.fromhex("400009ff013b")
     )
     gatt.declare(1)
     assert hass.states.get("button.espruino_light_toggle") is not None
