@@ -27,6 +27,26 @@ can change by themselves, and readable characteristics to fetch them (§3.2)."""
 UUID_TEMPLATE: Final = "2faa{:04x}-3b0b-4b1a-9e2a-b4c2952e62f2"
 SERVICE_UUID: Final = UUID_TEMPLATE.format(0)
 
+COUNTER_UUID: Final = UUID_TEMPLATE.format(0xFFFF)
+"""Where a device reports the write counter it is at (D-075), if it offers it.
+
+Not an entry: entries are numbered from 1 and this sits at FFFF, out of their
+reach. Write 8 random bytes, read back `seal(challenge || counter)` — the shape
+Zigbee R23 §4.6.3.8 and Matter's MCSP both use, where freshness comes from the
+challenge rather than from the counter being asked about."""
+
+CHALLENGE_LENGTH: Final = 8
+
+ALLOW_COUNTER_SYNC: Final = False
+"""Whether to ask a device for its write counter before writing to it.
+
+[DECISION] Off until Gordon rules on it in espruino#8024: it is a protocol
+addition, and rule 2 is not the agent's to overturn. On, it removes the guess
+that D-064 makes — a receiver whose configuration is younger than the device has
+no counter to resume from and seeds from its own clock, which is a good default
+and still a guess. A device that does not offer the characteristic is unaffected
+either way: the read fails and the clock seed stands."""
+
 # BTHome's device-information byte is a bitfield, not a value (§2.1). Reading
 # it as a value is how this integration came to work with exactly one firmware:
 # a sleepy encrypted device transmits 0x45 rather than 0x41, and comparing for

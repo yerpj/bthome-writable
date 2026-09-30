@@ -58,6 +58,20 @@ which is how the protocol logic is tested without a device.
 */
 
 const DECL_ID = 0xFF; // declaration object, last in the packet (S2.2)
+const COUNTER_UUID = "2FAAFFFF" + "-3B0B-4B1A-9E2A-B4C2952E62F2"; /* the counter
+   report (D-075), off unless `counterReport:true`.
+
+   Not an entry: entries are numbered 1..n and this sits at FFFF, out of their
+   reach for ever. It answers the one question a receiver cannot answer for
+   itself -- what counter is this device at? -- which is what a receiver that
+   lost its state has to guess today.
+
+   Zigbee R23 S4.6.3.8 and Matter's MCSP both do this, and both bind the answer
+   to a challenge the asker just produced. So does this: write 8 random bytes,
+   read back `seal(challenge || counter)` under the read direction byte. Sealing
+   alone would stop forgery but not replay, and a receiver with no state cannot
+   tell a stale answer from a fresh one. */
+const CHALLENGE_LEN = 8;
 const PKT_ID = 0x00; // BTHome packet id, always our first object
 const REV_ID = 0x65; // BTHome settings revision (S3.2)
 const DEV_INFO = 0x40; // BTHome v2, unencrypted, not trigger-based
@@ -366,6 +380,32 @@ function saveMarks() {
   require("Storage").writeJSON(CTR_FILE, { w: st.writeMark, a: st.advMark });
 }
 
+/* The counter report (D-075). A write of CHALLENGE_LEN bytes arms it; reading
+   it back gives `seal(challenge || counter u32 LE)` under the read direction.
+   Nothing is stored between the two: the answer is built on the write, so a
+   read without a fresh challenge returns whatever the last one produced. */
+function counterCharacteristic() {
+  return {
+    readable : true,
+    writable : true,
+    maxLen : CHALLENGE_LEN,
+    value : [],
+    onWrite : evt => {
+      if (evt.data.length !== CHALLENGE_LEN) {
+        if (st.onError) st.onError(err("challenge_length", `challenge is ${evt.data.length} bytes, expected ${CHALLENGE_LEN}`));
+        return;
+      }
+      const pt = [];
+      for (let i = 0; i < CHALLENGE_LEN; i++) pt.push(evt.data[i]);
+      for (let i = 0; i < 4; i++) pt.push((st.writeCounter >>> (8 * i)) & 255);
+      const svc = {}, chr = {};
+      chr[COUNTER_UUID] = { value : seal(pt, READ_INFO) };
+      svc[SERVICE_UUID] = chr;
+      NRF.updateServices(svc);
+    }
+  };
+}
+
 /* Is `counter` ahead of `last`, in the circular sense of S5.3? */
 function counterIsAhead(counter, last) {
   const ahead = (counter - last) >>> 0;
@@ -565,6 +605,10 @@ function setup(opts) {
     fastInterval : Math.max(100, checkInterval("fastInterval", opts.fastInterval || 100)),
     fastTimeout : opts.fastTimeout === undefined ? 30000 : opts.fastTimeout,
     maxWriteLength : opts.maxWriteLength || 128,
+    // Off by default: it is a protocol addition, still under discussion in
+    // espruino#8024, and a device that does not offer it loses nothing that
+    // worked before.
+    counterReport : opts.counterReport === true && key !== null,
     whenConnected : opts.whenConnected !== false,
     onError : opts.onError || null,
     timer : undefined,
@@ -578,6 +622,7 @@ function setup(opts) {
   if (key) saveMarks();
   if (st.plan.writable.length) {
     const chars = {}, svcs = {};
+    if (st.counterReport) chars[COUNTER_UUID] = counterCharacteristic();
     st.plan.writable.forEach(w => {
       const c = {
         writable : true,

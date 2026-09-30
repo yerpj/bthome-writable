@@ -22,6 +22,7 @@ from custom_components.bthome_writable.const import (
     CONF_WRITE_COUNTER,
     COUNTER_STRIDE,
     DEVICE_INFO_BYTE_ADVERTISING,
+    DEVICE_INFO_BYTE_READ,
     DEVICE_INFO_BYTE_WRITE,
     RESYNC_JUMP,
 )
@@ -30,11 +31,13 @@ from custom_components.bthome_writable.coordinator import (
     WriteFailed,
 )
 from custom_components.bthome_writable.protocol import (
+    characteristic_uuid,
     decrypt_advertising,
     is_encrypted,
     nonce,
     nonce_address,
     objects_at,
+    open_counter_report,
     open_read,
     parse_declaration,
     seal,
@@ -368,3 +371,58 @@ def test_an_encrypted_packet_carrying_its_mac_opens() -> None:
         + seal(objects, key, inside, MAC_INCLUDED_ENCRYPTED, 9)
     )
     assert decrypt_advertising(sealed, key, advertised) == objects
+
+
+# --- the counter report (D-075) ---------------------------------------------
+
+
+def counter_report(counter: int, challenge: bytes, key: bytes, address: str) -> bytes:
+    """What a device offering the characteristic answers: seal(challenge || n)."""
+    return seal(
+        challenge + counter.to_bytes(4, "little"),
+        key,
+        address,
+        DEVICE_INFO_BYTE_READ,
+        11,
+    )
+
+
+def test_a_counter_report_answers_the_challenge_it_was_given() -> None:
+    key, address, challenge = bytes(range(16)), "A4:C1:38:8E:1F:2B", b"12345678"
+    report = counter_report(4242, challenge, key, address)
+
+    assert open_counter_report(report, key, address, challenge) == 4242
+
+
+def test_a_report_for_another_challenge_is_refused() -> None:
+    """This is the whole point of the challenge. Sealing stops a forgery, but a
+    report captured earlier is genuine and stale, and a receiver that has just
+    lost its state has nothing else to judge it by — it cannot know what counter
+    to expect, which is why it is asking (D-075)."""
+    key, address = bytes(range(16)), "A4:C1:38:8E:1F:2B"
+    captured = counter_report(7, b"OLDNONCE", key, address)
+
+    assert open_counter_report(captured, key, address, b"NEWNONCE") is None
+
+
+def test_a_report_under_another_key_is_refused() -> None:
+    key, address, challenge = bytes(range(16)), "A4:C1:38:8E:1F:2B", b"12345678"
+    report = counter_report(7, challenge, bytes(16), address)
+
+    assert open_counter_report(report, key, address, challenge) is None
+
+
+def test_a_report_of_the_wrong_length_is_refused() -> None:
+    """Truncated or padded, it is not the thing we asked for."""
+    key, address, challenge = bytes(range(16)), "A4:C1:38:8E:1F:2B", b"12345678"
+    short = seal(challenge + b"\x01", key, address, DEVICE_INFO_BYTE_READ, 11)
+
+    assert open_counter_report(short, key, address, challenge) is None
+
+
+def test_the_counter_characteristic_is_not_an_entry() -> None:
+    """Entries are numbered from 1; this sits past every one of them."""
+    from custom_components.bthome_writable.const import COUNTER_UUID
+
+    assert characteristic_uuid(1) != COUNTER_UUID
+    assert COUNTER_UUID.startswith("2faaffff")

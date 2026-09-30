@@ -3508,8 +3508,24 @@ Note also that the clock seed is immune to that particular attack, having no
 interaction at all — an argument for keeping both, the clock as the default and
 the read to correct it.
 
-**Not implemented.** It is a protocol addition, so rule 2 sends it through
-Gordon.
+**Implemented behind an option, 2026-09-30, at the owner's request.** Off by
+default on both sides, so nothing normative changes and rule 2 is not overturned
+— but it can be demonstrated rather than argued about.
+
+- **Device:** `counterReport: true` in `setup()` adds a characteristic at
+  `2FAAFFFF-…`, past every entry number for ever. Write 8 random bytes, read
+  back `seal(challenge || counter u32 LE)` under the read direction byte. The
+  counter reported is the last one the device accepted.
+- **Receiver:** `ALLOW_COUNTER_SYNC` in `const.py`. When on and a bindkey is
+  set, `async_sync_write_counter()` runs once at setup, before the first write
+  rather than after one fails — a refused write is silent (§4.2), so there is
+  nothing to react to. It resumes at `reported + 1`.
+- **A device that does not offer it loses nothing:** the read finds no
+  characteristic, the clock seed of D-064 stands, and the run is unaffected.
+
+Six tests, and the one that matters is `test_a_report_for_another_challenge_is_refused`:
+a captured report is *genuine* and stale, and a receiver that has just lost its
+state has nothing else to judge it by. Sealing alone would have accepted it.
 
 
 ## D-076 — The write counter is ahead, not merely greater  [SPEC, agreed with Gordon]

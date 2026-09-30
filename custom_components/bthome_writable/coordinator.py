@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable
 import logging
+import secrets
 import time
 from typing import Any
 
@@ -22,7 +23,9 @@ from homeassistant.core import HomeAssistant, callback
 from .const import (
     ALLOW_PLAINTEXT_DOWNGRADE,
     BTHOME_SERVICE_UUID,
+    CHALLENGE_LENGTH,
     COUNTER_STRIDE,
+    COUNTER_UUID,
     DEFAULT_MAX_CONNECTIONS,
     DEFAULT_MTU_PAYLOAD,
     EVENT_WRITE,
@@ -40,6 +43,7 @@ from .protocol import (
     encode_object,
     is_encrypted,
     objects_at,
+    open_counter_report,
     open_read,
     parse_declaration,
     seal_write,
@@ -577,6 +581,75 @@ class BTHomeWritableCoordinator:
         await client.write_gatt_char(characteristic, payload, response=True)
 
     # --- Read side (§3.2, §4.3) --------------------------------------------
+
+    async def async_sync_write_counter(self) -> int | None:
+        """Ask the device what counter it is at, and resume from there (D-075).
+
+        The counter is the one thing a receiver cannot work out for itself. When
+        its configuration is younger than the device — re-created, restored from
+        an old backup, moved — it has nothing to resume from, and D-064 seeds
+        from the system clock instead. That is a good default and still a guess,
+        and a guess that fails is refused in silence, because §4.2 acknowledges
+        a write before validating it.
+
+        So: write a fresh random challenge, read back the sealed report, check
+        the challenge came back, and take the counter. Sealing stops a forgery;
+        the challenge stops a replay, which sealing alone does not — a receiver
+        with no state cannot tell a captured report from a current one.
+
+        Returns the counter adopted, or None when the device does not offer the
+        characteristic, cannot be reached, or answers something that does not
+        authenticate. None is not a failure: the clock seed stands.
+        """
+        if self.bindkey is None:
+            return None
+        device = bluetooth.async_ble_device_from_address(
+            self.hass, self.address, connectable=True
+        )
+        if device is None:
+            return None
+
+        challenge = secrets.token_bytes(CHALLENGE_LENGTH)
+        async with self._semaphore:
+            client = await establish_connection(
+                client_class=BleakClientWithServiceCache,
+                device=device,
+                name=self.address,
+                max_attempts=2,
+            )
+            try:
+                if client.services.get_characteristic(COUNTER_UUID) is None:
+                    _LOGGER.debug(
+                        "%s: no counter report; keeping the seeded counter",
+                        self.address,
+                    )
+                    return None
+                await client.write_gatt_char(COUNTER_UUID, challenge, response=True)
+                report = bytes(await client.read_gatt_char(COUNTER_UUID))
+            finally:
+                await client.disconnect()
+
+        reported = open_counter_report(report, self.bindkey, self.address, challenge)
+        if reported is None:
+            _LOGGER.warning(
+                "%s: the counter report did not authenticate, or answered a "
+                "different challenge; keeping the seeded counter",
+                self.address,
+            )
+            return None
+
+        # Ahead of what the device last accepted, which is what it just told us.
+        self._counter = (reported + 1) % 2**32
+        self._counter_mark = self._counter + COUNTER_STRIDE
+        if self._on_counter is not None:
+            self._on_counter(self._counter_mark)
+        _LOGGER.info(
+            "%s: the device is at write counter %d; resuming from %d",
+            self.address,
+            reported,
+            self._counter,
+        )
+        return self._counter
 
     async def async_read_all(self) -> bool:
         """Read every offered, readable entry over one connection.

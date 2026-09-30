@@ -445,3 +445,42 @@ test("a mark written by earlier firmware still loads", () => {
   assert.equal(result.storage.files[".bwctr"].w, 5000, "the write mark survives");
   assert.ok(advCounterOf(result) >= 0);
 });
+
+
+/* --- the counter report (D-075), off unless asked for ---------------------- */
+
+test("a device does not offer the counter report unless it is turned on", () => {
+  /* It is a protocol addition still under discussion, and a device that does
+   * not offer it loses nothing that worked before. */
+  const result = run(load("encrypted-light-standalone.js"));
+  const uuids = Object.keys(result.characteristics).map((u) => u.toUpperCase());
+
+  assert.ok(
+    !uuids.some((u) => u.startsWith("2FAAFFFF")),
+    `no counter characteristic by default, got ${uuids.join(", ")}`
+  );
+});
+
+test("turning the counter report on adds a characteristic past every entry", () => {
+  /* The device answers the one question a receiver cannot answer for itself:
+   * what counter am I at? Read back, the answer is sealed and bound to the
+   * challenge the receiver just wrote (D-075). */
+  const result = run(load("encrypted-light-standalone.js"));
+  result.context.bw.setup({
+    advertise: [{ type: "light", set: () => {} }],
+    interval: 1000,
+    bindkey: "231d39c1d7cc1ab1aee224cd096db932",
+    counterReport: true,
+  });
+  const uuids = Object.keys(result.characteristics).map((u) => u.toUpperCase());
+
+  assert.ok(
+    uuids.some((u) => u.startsWith("2FAAFFFF")),
+    `expected a counter characteristic, got ${uuids.join(", ")}`
+  );
+  assert.ok(
+    uuids.some((u) => u.startsWith("2FAA0001")),
+    "the entries are still there"
+  );
+});
+

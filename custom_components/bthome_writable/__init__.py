@@ -16,6 +16,7 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant, callback
 
 from .const import (
+    ALLOW_COUNTER_SYNC,
     CONF_BINDKEY,
     CONF_DECLARATION,
     CONF_MAX_CONNECTIONS,
@@ -96,6 +97,15 @@ async def async_setup_entry(
         on_declaration=_remember_declaration,
     )
     entry.runtime_data = coordinator
+
+    if ALLOW_COUNTER_SYNC and bindkey is not None:
+        # Before the first write rather than after it fails: a refused write is
+        # silent (§4.2), so there is nothing to react to (D-075).
+        entry.async_create_background_task(
+            hass,
+            coordinator.async_sync_write_counter(),
+            name=f"{address} counter sync",
+        )
 
     # Seed from whatever the Bluetooth stack has already seen, so entities exist
     # at the end of setup rather than one advertising interval later.

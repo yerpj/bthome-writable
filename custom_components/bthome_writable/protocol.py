@@ -15,6 +15,7 @@ and reads of §4. See spec/PROTOCOL.md.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hmac
 from typing import Final
 
 from .const import (
@@ -526,3 +527,24 @@ def seal_write(plaintext: bytes, bindkey: bytes, address: str, counter: int) -> 
 def open_read(payload: bytes, bindkey: bytes, address: str) -> bytes | None:
     """A sealed read's plaintext object, or None if it will not authenticate."""
     return _open(payload, bindkey, address, DEVICE_INFO_BYTE_READ)
+
+
+def open_counter_report(
+    payload: bytes, bindkey: bytes, address: str, challenge: bytes
+) -> int | None:
+    """The counter a device reports, or None if the report is not this one's.
+
+    Sealed like any read, so nothing without the bindkey can forge it. The
+    challenge is what stops a *replay*: a report captured earlier carries an
+    earlier challenge, and a receiver that has just lost its state has no other
+    way to tell a stale answer from a fresh one. Zigbee R23 §4.6.3.8 and Matter
+    §4.18 both bind their answers this way (D-075).
+    """
+    plaintext = open_read(payload, bindkey, address)
+    if plaintext is None:
+        return None
+    if len(plaintext) != len(challenge) + COUNTER_LENGTH:
+        return None
+    if not hmac.compare_digest(plaintext[: len(challenge)], challenge):
+        return None
+    return int.from_bytes(plaintext[len(challenge) :], "little")
