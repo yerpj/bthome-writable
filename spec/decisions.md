@@ -3510,3 +3510,46 @@ the read to correct it.
 
 **Not implemented.** It is a protocol addition, so rule 2 sends it through
 Gordon.
+
+
+## D-076 — The write counter is ahead, not merely greater  [SPEC, agreed with Gordon]
+
+**Status:** proposed by Gordon in espruino#8024, accepted 2026-09-30, implemented
+the same day. `PROTOCOL.md` §5.3, **2.0-draft.5**.
+
+**The rule.** With `LAST` the last counter the device accepted, a counter `C` is
+accepted when `(C - LAST) mod 2³²` lies in `1 … 0x80000000`. Half the space.
+Everything else is refused.
+
+**What it replaces.** `counter <= st.writeCounter` — strictly greater, plainly.
+That was wrong in both directions:
+
+- **It never wrapped.** At `0xFFFFFFFF` the device would have refused every write
+  for ever, because `0` is not greater than `0xFFFFFFFF`. Nobody would have
+  reached it, but it was a dead end with no way out.
+- **It had no room for a receiver that lost its place**, which §5.3 asks for and
+  which this project does twice: resynchronisation jumps 100 000 (D-072), and a
+  config entry created afresh seeds from the clock, about 1.8 billion (D-064).
+  Gordon's first proposal, a window of 1000, would have refused both — silently,
+  which is the shape of the bug D-063 found on hardware. Raising it is what made
+  the exception I was asking for unnecessary.
+
+**What it gives up, as a number.** A captured write becomes acceptable again once
+the device has passed `C + 2³¹` — 68 years at one write a second. Pinned by a
+test rather than left as an assertion.
+
+**A detail worth its comment.** The persisted mark is now kept inside 32 bits, so
+what is stored is what goes on the wire. A counter that has just wrapped sits
+below its old mark and will not persist until it climbs past it again; harmless,
+since the window accepts a wrapped counter on its own, and it takes 2³² writes
+to arrive.
+
+**§5.3 also now names the recipe for a receiver with nothing to jump from**:
+seed from its own system clock. That is what D-064 does, and Gordon's *"add
+0x80000000 and try again"* does not cover it — adding to `LAST` requires knowing
+`LAST`, which is exactly what has been lost. The clock needs nothing from the
+device, and lands inside the window.
+
+Four tests, all four failing against the old comparison — checked by reverting
+it. **Still open with him:** the readable counter of D-075, which would remove
+the guess rather than widen the tolerance for it.

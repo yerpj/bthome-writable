@@ -36,3 +36,43 @@ test("the packet id, the declaration and device information are not entries", ()
     );
   }
 });
+
+
+/* --- the write-counter window (S5.3, agreed with Gordon in espruino#8024) --- */
+
+const AHEAD = bw.COUNTER_WINDOW; // 0x80000000
+
+test("a counter must be strictly ahead, never equal or behind", () => {
+  assert.ok(bw.counterIsAhead(6, 5));
+  assert.ok(!bw.counterIsAhead(5, 5), "the same counter is a replay");
+  assert.ok(!bw.counterIsAhead(4, 5), "a lower counter is a replay");
+  assert.ok(!bw.counterIsAhead(0, 5));
+});
+
+test("a forward jump is accepted, which is what makes resynchronisation work", () => {
+  /* A receiver that lost its place cannot guess the device's counter. This
+   * project's resynchronisation moves by 100000, and a config entry created
+   * afresh seeds from the clock -- about 1.8 billion. A narrow window would
+   * have refused both, silently, which is the bug D-063 found. */
+  assert.ok(bw.counterIsAhead(100000, 0));
+  assert.ok(bw.counterIsAhead(1790000000, 100135));
+  assert.ok(bw.counterIsAhead(AHEAD, 0), "the far edge of the window is inside it");
+  assert.ok(!bw.counterIsAhead(AHEAD + 1, 0), "one past it is not");
+});
+
+test("wrap-around is an ordinary step forward, not a step back", () => {
+  /* 0xFFFFFFFF -> 0 is +1. Without the circular comparison a device would
+   * refuse every write for ever once its counter rolled over. */
+  assert.ok(bw.counterIsAhead(0, 0xffffffff));
+  assert.ok(bw.counterIsAhead(9, 0xfffffffb));
+  assert.ok(!bw.counterIsAhead(0xfffffffb, 9), "and the reverse is still a replay");
+});
+
+test("a captured write stays refused for half the counter space", () => {
+  /* The security the window gives up, stated as a number: a replay of counter 5
+   * is accepted again only once the device has passed 5 + 2^31, which is 68
+   * years at one write a second. */
+  assert.ok(!bw.counterIsAhead(5, 5 + 1000));
+  assert.ok(!bw.counterIsAhead(5, 5 + AHEAD - 1));
+  assert.ok(bw.counterIsAhead(5, (5 + AHEAD) >>> 0), "and only then");
+});

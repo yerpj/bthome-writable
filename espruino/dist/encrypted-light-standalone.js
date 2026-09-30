@@ -290,6 +290,19 @@ let st = null;
 
 const CTR_FILE = ".bwctr"; // the persisted counter high-water marks
 const CTR_STRIDE = 64; // persist every this many accepted writes, not each one
+const CTR_WINDOW = 0x80000000; /* how far ahead a write counter may jump (S5.3).
+
+   Half the 32-bit space, which is the classic circular comparison: a counter is
+   "ahead" when (counter - last) mod 2^32 lands in 1..CTR_WINDOW. Two things
+   fall out of it at once. Wrap-around works -- 0xFFFFFFFF -> 0 is a step of 1,
+   not a step backwards. And a receiver that lost its place can jump forward
+   without being refused, which S5.3 asks for and which a narrow window would
+   have forbidden: this project's own resynchronisation moves by 100000, and a
+   freshly created config entry seeds from the clock, about 1.8 billion.
+
+   It costs nothing in security. To have a captured write accepted again, an
+   attacker would have to wait for 2^31 further writes -- 68 years at one a
+   second. Proposed by Gordon in espruino#8024. */
 const ADV_STRIDE = 1000000; /* and every this many sealed advertisements.
 
    Far larger than the write stride because the rates are nothing alike: a
@@ -371,10 +384,20 @@ function saveMarks() {
   require("Storage").writeJSON(CTR_FILE, { w: st.writeMark, a: st.advMark });
 }
 
+/* Is `counter` ahead of `last`, in the circular sense of S5.3? */
+function counterIsAhead(counter, last) {
+  const ahead = (counter - last) >>> 0;
+  return ahead !== 0 && ahead <= CTR_WINDOW;
+}
+
 function noteWriteCounter(counter) {
   st.writeCounter = counter;
   if (counter >= st.writeMark) {
-    st.writeMark = counter + CTR_STRIDE;
+    // Kept inside 32 bits so that what is stored is what goes on the wire. A
+    // counter that has just wrapped sits below its old mark and will not
+    // persist until it climbs past it again; harmless, because the window
+    // accepts a wrapped counter on its own, and it takes 2^32 writes to reach.
+    st.writeMark = (counter + CTR_STRIDE) >>> 0;
     saveMarks();
   }
 }
@@ -398,8 +421,8 @@ function openWrite(pl) {
   for (let i = 0; i < 4; i++) counter += pl[n + i] * Math.pow(256, i);
   // Before the cipher: a replay costs nothing to reject, and doing it first
   // means a flood of them cannot make the device spend 75ms each (D-028).
-  if (counter <= st.writeCounter) {
-    if (st.onError) st.onError(err("counter_not_increasing", `write counter ${counter} is not above ${st.writeCounter}`));
+  if (!counterIsAhead(counter, st.writeCounter)) {
+    if (st.onError) st.onError(err("counter_not_increasing", `write counter ${counter} is not ahead of ${st.writeCounter}`));
     return null;
   }
   const ct = new Uint8Array(n), mic = new Uint8Array(MIC_LEN);
@@ -665,6 +688,8 @@ exports.stableSortByObjectId = stableSortByObjectId;
 exports.planPacket = planPacket;
 exports.renderServiceData = renderServiceData;
 exports.handleWrite = handleWrite;
+exports.counterIsAhead = counterIsAhead;
+exports.COUNTER_WINDOW = CTR_WINDOW;
 
 var BTHomeWritable = exports;
 

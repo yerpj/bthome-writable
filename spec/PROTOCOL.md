@@ -1,6 +1,6 @@
 # BTHome Writable — protocol specification
 
-**Version:** 2.0-draft.4 · **Status:** DRAFT, nothing frozen · **License:** MIT
+**Version:** 2.0-draft.5 · **Status:** DRAFT, nothing frozen · **License:** MIT
 
 BTHome standardizes a BLE **uplink**: a device broadcasts its state in
 advertising, a receiver parses it. It has no **downlink**. This document
@@ -311,17 +311,35 @@ direction (D-008).
 ### 5.3 Counters
 
 - **Writes.** The receiver keeps one write counter per device, across all its
-  characteristics, and MUST persist it across restarts. The device MUST track the
-  highest write counter it has accepted and MUST reject any write whose counter is
-  less than or equal to it; it MUST accept forward jumps, so a receiver that lost
-  its state can resume. The device SHOULD persist its counter periodically and on
-  resume MUST continue strictly above anything it may have accepted.
+  characteristics, and MUST persist it across restarts.
+
+  The device MUST track the last write counter it accepted, and MUST accept a
+  write only when its counter is **ahead** of that one: with `LAST` the last
+  accepted value, a counter `C` is ahead when `(C - LAST) mod 2³²` lies in
+  `1 … 0x80000000`. Anything else MUST be rejected.
+
+  That rule does two jobs. It makes wrap-around ordinary — `0xFFFFFFFF` to `0`
+  is a step of one, not a step backwards — and it lets a receiver that lost its
+  place jump forward rather than be refused, which is what makes the
+  resynchronisation below possible. It gives up nothing: a captured write is
+  accepted again only after 2³¹ further writes, which is 68 years at one a
+  second.
+
+  The device SHOULD persist its counter periodically, and on resume MUST
+  continue ahead of anything it may have accepted. A device that does not
+  persist it is exposed to a replay of the writes it accepted before the reboot,
+  until its counter passes them again; that is the device's own risk to take.
 - **Reads.** The device seals each read with a counter it never reuses under the
   read device-information byte. It MAY use its advertising counter; the nonces
   differ by direction.
 
 The receiver SHOULD offer a resynchronisation step when writes start failing
-authentication.
+authentication. A receiver that still knows its old counter may simply jump
+forward. One that does not know it at all — a configuration created afresh, or
+restored from a backup older than the device — has nothing to jump from, and
+SHOULD seed from its own system clock: seconds since 1970 is monotonic, so it is
+ahead of anything an earlier receiver can have sent, and it lands inside the
+window above without having to ask the device anything.
 
 **One receiver per device.** The counter is a single number the device compares
 against, so two receivers writing to the same device keep two counters it cannot
