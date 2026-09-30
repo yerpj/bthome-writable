@@ -3421,3 +3421,92 @@ advertising freely, and that writing needs the first one to stop.
 **Not affected:** a Bluetooth proxy. An ESP32 proxy relays GATT and holds no
 key, no counter and no state — the receiver is Home Assistant behind it. Any
 number of proxies is fine.
+
+
+## D-075 — How other protocols resynchronise a counter, and what it says about ours  [VERIFY]
+
+**Status:** researched 2026-09-30, while weighing Gordon's counter window. Not a
+decision: the evidence behind one, put to him in espruino#8024 and awaiting his
+answer.
+
+**The question.** A receiver loses its write counter — reinstalled, restored from
+an old backup, moved, or simply a config entry created afresh — and has no idea
+what the device is at. It cannot guess low, and §4.2 acknowledges a write before
+validating it, so it never learns that its writes are being dropped. D-063 met
+this on hardware; D-064 answered it by seeding from the receiver's clock.
+
+### What everyone else does
+
+| Protocol | Mechanism | How lost state resolves |
+|---|---|---|
+| **Zigbee R23** §4.6.3.8 | challenge + authenticated answer | Receiver sends an 8-byte random challenge; the peer returns its current frame counter MIC'd under the link key; the receiver **adopts it even if it is lower**. Mandatory since 2023 |
+| **Matter 1.4** §4.18 | the same (MCSP) | `MsgCounterSyncReq` carries a challenge, `MsgCounterSyncRsp` returns the current counter, group-key authenticated |
+| **KNX Data Secure** | clock seed **and** a handshake | Sequence seeded from the device clock — as D-064 does — with `S-A_Sync_Req/Res` on top |
+| **Z-Wave S2** | no counter at all | Nonce Get / Nonce Report; nothing persisted, nothing to catch up |
+| **SwitchBot, Nuki, Fast Pair** | read the current value | The device hands out its current IV or nonce before each command |
+| **Bluetooth Mesh** | epoch above the counter | IV Index ‖ SEQ; past the +42 recovery window, re-provision |
+| **LoRaWAN 1.1** | persist or start a new session | `MAX_FCNT_GAP` was *removed* as unnecessary at 32 bits; recovery is a rejoin |
+
+**The decisive detail, and the answer to "what stops the resync itself being
+replayed":** freshness comes from a **random challenge**, not from the counter's
+monotonicity. That is why Zigbee can adopt a *lower* value safely — the answer is
+MIC'd under the link key and bound to a nonce the receiver generated seconds
+earlier.
+
+### Three findings that bear on this project
+
+**1. The counter is not secret anywhere, and two specs publish it deliberately.**
+NIST SP 800-38C §5.3 asks a nonce to be non-repeating, not secret or random.
+Zigbee R23's `Security_Challenge_rsp` *"SHALL NOT be APS encrypted"* and its whole
+payload is the device's current counter. Matter returns it plainly. BTHome
+already puts it in the clear in every encrypted advertisement. **Publishing it is
+the solution, not the risk** — which retires the instinct that kept D-063 from
+choosing this.
+
+**2. "Accept a low counter after a reboot" is the mechanism everyone has publicly
+regretted.** LoRaWAN 1.0.x's counter reset is the documented replay hole, removed
+in 1.1 (*"ABP device must never reset frame counters"*). Matter's spec warns about
+its own trust-first mode in as many words. And `bthome-ble` accepts any counter
+below 100 for exactly that reason — the subject of an open *"BTHome is not secure
+at all"* issue upstream. Tolerable for uplink sensors; not something a downlink
+should inherit.
+
+**3. A wide acceptance window is not how anyone solves lost state.** LoRaWAN
+deleted `MAX_FCNT_GAP`; EnOcean deprecates its implicit-RLC window for new
+designs and calls it a denial-of-service surface; Mesh and Zigbee have no forward
+window at all. The half-space rule survives only where a counter genuinely rolls
+over — Matter's *group* counters (§4.6.5.2). Gordon's `LAST+0x80000000` is
+therefore right for what it is for, wrap-around, and is not the mainstream answer
+to amnesia.
+
+### What it says about D-064
+
+Clock seeding has **one** precedent, KNX — and KNX ships a sync handshake
+alongside it. So it is defensible as a default and is not a substitute for
+asking. Its own weaknesses stand (D-064's own list): it is a guess, it fails
+silently when wrong, and a Raspberry Pi has no RTC, so a config entry created
+before NTP lands could seed from a stale clock.
+
+### What was put to Gordon
+
+A readable characteristic carrying the device's current write counter. The
+construction is nearly free here: reads are already sealed under the read
+direction byte `0xFE`, so the answer cannot be forged by anything without the
+bindkey.
+
+**With one correction, posted as a follow-up.** Sealing stops forgery, not
+**replay**: nothing checks a read's counter (`open_read` decrypts and returns),
+so something impersonating the device could serve an old sealed counter, and a
+receiver that has just lost its state cannot tell it is stale. It would seed too
+low and be refused in silence — a denial of service rather than a compromise,
+and it needs an active impersonator rather than a listener, but it is real.
+Hence the proposal follows Zigbee's shape: **the receiver writes a random value
+first and the device seals it alongside the counter**, so a replayed response
+carries the wrong one.
+
+Note also that the clock seed is immune to that particular attack, having no
+interaction at all — an argument for keeping both, the clock as the default and
+the read to correct it.
+
+**Not implemented.** It is a protocol addition, so rule 2 sends it through
+Gordon.
