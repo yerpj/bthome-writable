@@ -3387,3 +3387,37 @@ probably out of scope of the spec anyway."* Consistent with D-071.
 And he offered his own bench — a NAS container with ESPHome proxies rather than
 the Pi's own adapter — which is the second site every measurement in this repo
 has been asking for.
+
+
+## D-074 — One receiver per device  [DECISION, owner]
+
+**Status:** ruled by the owner 2026-09-30, written into §5.3. Raised while
+assessing Gordon's counter window (D-075).
+
+**The case.** Two independent receivers — two Home Assistant installations, or
+Home Assistant plus a phone app or a script — each keep their own write counter.
+The device keeps one: the highest it has accepted. So the moment one receiver
+pulls ahead, the other is permanently behind, because its counter advances by one
+per write and never catches up. Every one of its writes is refused, and refused
+**silently**, since §4.2 acknowledges before validating.
+
+It is a more plausible failure than the one the counter exists to prevent: a
+replay needs 2³¹ writes to go by, this needs two installations.
+
+**The ruling: out of scope.** A device answers to the installation that owns it.
+That is already what these devices imply — an Espruino serves one central at a
+time — and the alternatives all cost more than the case is worth:
+
+- a readable counter characteristic would fix it, and the re-created-entry case
+  with it, but it is a protocol addition and one more thing every device must
+  implement;
+- making the refusal visible would need the device to answer after validating,
+  which is the read-after-write §4.2 deliberately does not have.
+
+**What is written down** is the failure mode, not just the rule, because it is
+silent and someone will meet it: §5.3 now says a second receiver may read
+advertising freely, and that writing needs the first one to stop.
+
+**Not affected:** a Bluetooth proxy. An ESP32 proxy relays GATT and holds no
+key, no counter and no state — the receiver is Home Assistant behind it. Any
+number of proxies is fine.

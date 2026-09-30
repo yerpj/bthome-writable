@@ -323,6 +323,15 @@ direction (D-008).
 The receiver SHOULD offer a resynchronisation step when writes start failing
 authentication.
 
+**One receiver per device.** The counter is a single number the device compares
+against, so two receivers writing to the same device keep two counters it cannot
+tell apart: whichever falls behind has every write refused, and refused silently,
+because §4.2 acknowledges a write before validating it. This is out of scope
+rather than solved — a device answers to the installation that owns it, which is
+also what "one central at a time" already implies for the devices this targets.
+A second receiver is free to *read* advertising; writing needs the first one to
+stop.
+
 ### 5.4 Unencrypted devices
 
 Remain permitted, consistent with BTHome policy. A receiver SHOULD warn once per
