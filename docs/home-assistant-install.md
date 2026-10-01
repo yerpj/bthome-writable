@@ -100,11 +100,20 @@ integration handles it; this one deliberately does not offer it.
 
 **A control stopped working and nothing is logged.** Check the logbook on the
 entity: a failed write leaves a row there, saying the command did not reach the
-device. The likeliest causes in order are a stale GATT table after the device's
-code changed (it recovers by itself: the table is dropped and the next write
-rediscovers it), an encrypted device whose counter has drifted (it resynchronises
-after two failures), and a device that is simply refusing the write — which it
-must do if the object ID or the length is not exactly what that entry expects.
+device. The likeliest causes, in order:
+
+- A stale GATT table after the device's code changed. It recovers by itself: the
+  table is dropped and the next write rediscovers it.
+- **An encrypted device that has restarted since Home Assistant last set up.**
+  This one leaves *no* row in the logbook, because the device acknowledges the
+  write before checking the counter and then discards it. A device must resume
+  its counter strictly above anything it accepted, so a restart puts it ahead of
+  Home Assistant with no way to say so. Home Assistant asks the device where it
+  is when the device offers the counter report and Home Assistant is starting
+  up — but a device that restarts while Home Assistant keeps running is not
+  noticed. **Press *Resynchronise write counter* on the device, or reload it.**
+- A device simply refusing the write, which it must do if the object ID or the
+  length is not exactly what that entry expects.
 
 **Home Assistant says it refuses to send an unencrypted write**, or that the
 device is encrypted and no bindkey is configured. The two halves of the same

@@ -164,21 +164,47 @@ class FakeGattClient:
             if k in readable:
                 self.readable[uuid] = readable[k]
 
+    def offer_counter_report(self, answer) -> None:
+        """Install the counter report of D-075 at 2FAA1000.
+
+        `answer` is either the bytes to return or a callable, so a test can
+        seal a report around the challenge the receiver actually sent."""
+        from custom_components.bthome_writable.const import COUNTER_UUID
+
+        self.characteristics[COUNTER_UUID] = FakeCharacteristic(
+            COUNTER_UUID, ["write", "read"]
+        )
+        self.readable[COUNTER_UUID] = answer
+
     # `client.services.get_characteristic(uuid)`
     def get_characteristic(self, uuid: str) -> FakeCharacteristic | None:
         return self.characteristics.get(uuid)
+
+    @staticmethod
+    def _uuid(characteristic) -> str:
+        """bleak takes either a characteristic or a plain UUID string.
+
+        The fake only understood the object, so the counter-report path --
+        which passes the string -- could not be exercised at all. Supporting
+        both is what the real client does."""
+        return (
+            characteristic if isinstance(characteristic, str) else characteristic.uuid
+        )
 
     async def write_gatt_char(self, characteristic, payload, response=True) -> None:
         assert response, "PROTOCOL.md §4.2: writes are with response"
         if self.fail_on_write is not None:
             raise self.fail_on_write
-        self.writes.append((characteristic.uuid, bytes(payload)))
+        self.writes.append((self._uuid(characteristic), bytes(payload)))
 
     async def read_gatt_char(self, characteristic) -> bytes:
         if self.fail_on_read is not None:
             raise self.fail_on_read
-        self.reads.append(characteristic.uuid)
-        return self.readable[characteristic.uuid]
+        uuid = self._uuid(characteristic)
+        self.reads.append(uuid)
+        if callable(answer := self.readable[uuid]):
+            return answer()
+        return answer
 
     async def disconnect(self) -> None:
         self.disconnects += 1

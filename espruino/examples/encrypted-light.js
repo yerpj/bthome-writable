@@ -59,6 +59,11 @@ bw.setup({
   showName: false,
   // From test-vectors.json, and therefore public. Change it.
   bindkey: "231d39c1d7cc1ab1aee224cd096db932",
+  // Offer the counter report at 2FAA1000 (PROTOCOL.md §4.1, §5.3). Without it
+  // this device resumes up to 64 counters ahead of the receiver on every
+  // reboot and silently refuses writes until the receiver catches up, which
+  // is D-078 fault 1 and the reason the receiver now asks (D-080).
+  counterReport: true,
   onError: function (error) {
     console.log("write rejected:", error.code, error.message);
   },

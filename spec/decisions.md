@@ -3829,3 +3829,98 @@ the resynchronise button fixed it (101.2 -> 596.5 lx). The device walks ahead at
 every reboot and the receiver is never told. A button the user must find, after a
 failure they cannot see, is a workaround for a question the device could answer
 -- which is the argument for `ALLOW_COUNTER_SYNC`, still the owner's to make.
+
+## D-080 -- ask the device for its counter, by default  [DECISION, ruled]
+
+**Status:** 2026-10-01, ruled by the owner: *"Active ALLOW_COUNTER_SYNC par
+defaut"*. `ALLOW_COUNTER_SYNC` is now `True`.
+
+### Why the default moved
+
+It was off because it was a protocol addition nobody had ruled on (rule 1, and
+rule 2 is not the agent's to overturn). What changed is the evidence, not the
+argument: the case it answers is **not** the unusual one it was written for.
+
+§5.3 has a device resume strictly above anything it may have accepted. A device
+that obeys it -- ours stores `counter + 64` and resumes from the mark -- is
+therefore up to 64 ahead of its receiver after **every reboot**, and nothing in
+the protocol tells the receiver. Every write is refused until the receiver
+climbs past, and refused in silence, because §4.2 acknowledges before
+validating. It was reproduced twice from nothing more exotic than a reflash
+(D-078 fault 1, then again in D-079, where one press of the resynchronise button
+turned 100.8 -> 99.5 lx into 101.2 -> 596.5 lx).
+
+The two alternatives are both worse. A button the user has to find, after a
+failure they cannot see, is not a remedy. Persisting the counter on every write
+is one flash erase-write per command on a coin cell.
+
+### What it costs a device that does not offer it
+
+Nothing it can notice: the read finds no characteristic, the cached GATT table
+is dropped in case that is what was hiding it (D-012), and the clock seed of
+D-064 stands. The price is one short connection per configured encrypted device
+per Home Assistant restart. Plain devices are never asked at all.
+
+### What was missing, and is no longer
+
+The parsing of a report had five tests; **the coordinator's own path had none**,
+because the fake GATT client only understood a characteristic object and that
+path passes a UUID string. Turning a code path on by default without a test
+through it is how D-078 happened. Now covered: the counter is adopted strictly
+above what the device reports and the mark persisted; a device without the
+characteristic is left exactly as it was; a plain device spends no connection
+finding out; and a replayed report leaves the counter alone rather than walking
+it backwards, which is the one direction §5.3 forbids.
+
+`espruino/examples/encrypted-light.js` now sets `counterReport: true`, so the
+bench's sealed example offers what the receiver asks for.
+
+### Validated on hardware, and it took two goes
+
+First attempt, with the flag on and the device offering the report: **the sealed
+loop still failed** (100.0 -> 100.0 lx). The cause was ours and is the same
+disease as D-012: a device that has just gained the characteristic is exactly a
+device whose GATT table changed, so the cached copy Home Assistant held did not
+have it. The code dropped the cache and returned -- meaning the one connection
+the receiver spends was always the one that could not succeed, and on a device
+whose firmware changes, that is every time. **The feature did nothing at all the
+first time it was ever needed.** It now looks again behind a freshly dropped
+table, and that second look is the useful one.
+
+With the retry, the acceptance test is unambiguous. Device reflashed (so it
+resumes ahead) and Home Assistant restarted (so its table is stale), then the
+sealed loop with **no button pressed and no reload**:
+
+```
+illuminance before  95.29 lx
+illuminance lit    598.70 lx
+illuminance after   98.29 lx     PASS
+```
+
+### What it does not close, measured rather than assumed
+
+Asking happens at setup. **A device that restarts while Home Assistant keeps
+running is still not noticed**, and the failure is still silent:
+
+```
+(reflash the device; Home Assistant NOT restarted)
+FAIL: 99 -> 100 -> 97 lx
+```
+
+A reload fixed it (103 -> 598 -> 102 lx), as does the button. So D-080 closes the
+restart case and leaves the live-reboot case open.
+
+**It is not obvious that a receiver can close it.** Every signal available today
+is unreliable: a reflash takes seconds, so Home Assistant never marks the device
+unavailable; the packet id is one byte and wraps constantly; and the advertising
+counter's forward jump on resume is the size of whatever stride that particular
+firmware chose. A refused write cannot be seen at all, because §4.2 acknowledges
+before validating. Which means the honest answers are protocol-shaped -- a reboot
+indicator in the advertising, or a receiver that asks once per write session --
+and rule 2 puts both with the owner and Gordon rather than here. Raised in the
+draft for Gordon; **nothing invented in the code.**
+
+While it is open, the remedy is the button of D-072, and the user has to be told
+it exists -- `docs/home-assistant-install.md` now says so, and no longer claims
+an automatic resynchronisation after two failures. There never was one:
+`resynchronise()` has exactly one caller, and it is the button.

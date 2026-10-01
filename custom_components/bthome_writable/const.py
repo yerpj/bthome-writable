@@ -43,15 +43,23 @@ rather than from the counter being asked about."""
 
 CHALLENGE_LENGTH: Final = 8
 
-ALLOW_COUNTER_SYNC: Final = False
+ALLOW_COUNTER_SYNC: Final = True
 """Whether to ask a device for its write counter before writing to it.
 
-[DECISION] Off until Gordon rules on it in espruino#8024: it is a protocol
-addition, and rule 2 is not the agent's to overturn. On, it removes the guess
-that D-064 makes — a receiver whose configuration is younger than the device has
-no counter to resume from and seeds from its own clock, which is a good default
-and still a guess. A device that does not offer the characteristic is unaffected
-either way: the read fails and the clock seed stands."""
+On by the owner's ruling of 2026-10-01 (D-080), because the case it answers
+turned out not to be the unusual one. §5.3 has a device resume strictly above
+anything it accepted, so ours stores `counter + 64` and resumes from the mark:
+**every reboot puts it up to 64 ahead of the receiver, and nothing tells the
+receiver.** Every write is then refused until the receiver catches up, and
+refused in silence, because §4.2 acknowledges a write before validating it. It
+was reproduced from nothing more than a reflash (D-078 fault 1, again in D-079).
+
+The alternative remedies are both worse: a button the user has to find after a
+failure they cannot see, or one flash write per command on a coin cell.
+
+A device that does not offer the characteristic is unaffected — the read finds
+nothing, the clock seed of D-064 stands, and the cost is one short connection per
+configured device per restart. Plain devices are never asked at all."""
 
 # BTHome's device-information byte is a bitfield, not a value (§2.1). Reading
 # it as a value is how this integration came to work with exactly one firmware:

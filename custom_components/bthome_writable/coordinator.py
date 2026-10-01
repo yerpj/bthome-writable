@@ -625,31 +625,45 @@ class BTHomeWritableCoordinator:
             return None
 
         challenge = secrets.token_bytes(CHALLENGE_LENGTH)
+        report: bytes | None = None
         async with self._semaphore:
-            client = await establish_connection(
-                client_class=BleakClientWithServiceCache,
-                device=device,
-                name=self.address,
-                max_attempts=2,
-            )
-            try:
-                if client.services.get_characteristic(COUNTER_UUID) is None:
-                    # Either the device does not offer it, or our cached GATT
-                    # table predates it -- a device that gains the
-                    # characteristic is exactly a device whose table changed.
-                    # Drop the cache so the next attempt sees the truth, as the
-                    # write path does for the same reason (D-012).
-                    await client.clear_cache()
-                    _LOGGER.debug(
-                        "%s: no counter report in the GATT table; dropped the "
-                        "cached copy and kept the seeded counter",
-                        self.address,
-                    )
-                    return None
-                await client.write_gatt_char(COUNTER_UUID, challenge, response=True)
-                report = bytes(await client.read_gatt_char(COUNTER_UUID))
-            finally:
-                await client.disconnect()
+            # Twice, because the first look can be defeated by our own cache: a
+            # device that has just gained the characteristic is exactly a device
+            # whose GATT table changed, and the copy we hold does not have it
+            # (D-012). Clearing the cache and not looking again meant this did
+            # nothing at all the first time it was ever needed -- which, on a
+            # device whose firmware changes, is every time (D-080).
+            for attempt in (1, 2):
+                client = await establish_connection(
+                    client_class=BleakClientWithServiceCache,
+                    device=device,
+                    name=self.address,
+                    max_attempts=2,
+                )
+                try:
+                    if client.services.get_characteristic(COUNTER_UUID) is None:
+                        await client.clear_cache()
+                        if attempt == 1:
+                            _LOGGER.debug(
+                                "%s: no counter report in the cached GATT table; "
+                                "dropped it and looking again",
+                                self.address,
+                            )
+                            continue
+                        _LOGGER.debug(
+                            "%s: the device does not offer a counter report; "
+                            "keeping the seeded counter",
+                            self.address,
+                        )
+                        return None
+                    await client.write_gatt_char(COUNTER_UUID, challenge, response=True)
+                    report = bytes(await client.read_gatt_char(COUNTER_UUID))
+                    break
+                finally:
+                    await client.disconnect()
+
+        if report is None:
+            return None
 
         reported = open_counter_report(report, self.bindkey, self.address, challenge)
         if reported is None:

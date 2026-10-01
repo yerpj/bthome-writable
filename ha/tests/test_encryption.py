@@ -466,6 +466,113 @@ def test_a_report_of_the_wrong_length_is_refused() -> None:
     assert open_counter_report(short, key, address, challenge) is None
 
 
+def test_the_receiver_asks_for_the_counter_by_default() -> None:
+    """D-080, pinned so that turning it off again has to be deliberate.
+
+    It was off while it was a protocol addition nobody had ruled on. It is on
+    because the case it answers is not the unusual one: §5.3 has a device
+    resume strictly above anything it accepted, so every reboot puts it ahead of
+    the receiver and nothing tells the receiver. Reproduced from nothing more
+    than a reflash, twice (D-078 fault 1, D-079).
+    """
+    from custom_components.bthome_writable.const import ALLOW_COUNTER_SYNC
+
+    assert ALLOW_COUNTER_SYNC is True
+
+
+async def test_asking_the_device_resumes_above_what_it_reports(
+    hass: HomeAssistant, gatt
+) -> None:
+    """The whole point: the receiver's own counter is irrelevant, including when
+    it is wildly behind after a reboot it never saw."""
+    key, address = bytes(range(16)), "A4:C1:38:8E:1F:2B"
+    marks: list[int] = []
+    coordinator = BTHomeWritableCoordinator(
+        hass, address, bindkey=key, write_counter=10, on_counter=marks.append
+    )
+    gatt.offer_counter_report(
+        lambda: counter_report(900_000, gatt.writes[-1][1], key, address)
+    )
+
+    adopted = await coordinator.async_sync_write_counter()
+
+    assert adopted == 900_001, "strictly above what the device last accepted"
+    assert coordinator.next_write_counter() >= 900_001
+    assert marks, "the mark is persisted, or a restart loses the jump again"
+    assert gatt.disconnects == 1, "the link is not held open"
+
+
+async def test_a_device_without_the_report_is_left_exactly_as_it_was(
+    hass: HomeAssistant, gatt
+) -> None:
+    """Most devices will not offer it, and they must be no worse off: the clock
+    seed of D-064 stands, nothing raises, and the stale GATT table that could
+    be hiding the characteristic is dropped (D-012)."""
+    coordinator = BTHomeWritableCoordinator(
+        hass, "A4:C1:38:8E:1F:2B", bindkey=bytes(range(16)), write_counter=77
+    )
+
+    assert await coordinator.async_sync_write_counter() is None
+    assert coordinator.next_write_counter() == 78, "the seeded counter stands"
+    assert gatt.disconnects == 2, "looked twice, and let go of the link each time"
+
+
+async def test_the_report_is_looked_for_again_behind_a_stale_cache(
+    hass: HomeAssistant, gatt
+) -> None:
+    """The fault that made this feature do nothing on the bench the first time
+    it mattered (D-080).
+
+    A device that has just gained the characteristic is exactly a device whose
+    GATT table changed, so the copy Home Assistant holds does not have it. The
+    first look therefore finds nothing. Dropping the cache and returning -- as
+    it used to -- means the one connection the receiver spends is always the
+    one that cannot succeed, and on a device whose firmware changes that is
+    every time. Measured: the sealed loop failed, a reload fixed it.
+    """
+    key, address = bytes(range(16)), "A4:C1:38:8E:1F:2B"
+    coordinator = BTHomeWritableCoordinator(
+        hass, address, bindkey=key, write_counter=10
+    )
+
+    async def reveal() -> None:
+        """What dropping a stale table does: the next look sees the truth."""
+        gatt.cache_cleared += 1
+        gatt.offer_counter_report(
+            lambda: counter_report(900_000, gatt.writes[-1][1], key, address)
+        )
+
+    gatt.clear_cache = reveal
+
+    assert await coordinator.async_sync_write_counter() == 900_001
+    assert gatt.cache_cleared == 1, "cleared once, not on every attempt"
+    assert gatt.connections == 2, "and the second connection is the useful one"
+
+
+async def test_a_plain_device_is_never_asked(hass: HomeAssistant, gatt) -> None:
+    """There is nothing to ask and no way to authenticate an answer."""
+    coordinator = BTHomeWritableCoordinator(hass, "A4:C1:38:8E:1F:2B")
+
+    assert await coordinator.async_sync_write_counter() is None
+    assert gatt.connections == 0, "and no connection is spent finding out"
+
+
+async def test_a_replayed_report_leaves_the_counter_alone(
+    hass: HomeAssistant, gatt
+) -> None:
+    """A report captured earlier is genuine and stale. Adopting it would walk
+    the receiver *backwards*, which is the one direction §5.3 forbids -- so a
+    stale answer has to be worth less than no answer."""
+    key, address = bytes(range(16)), "A4:C1:38:8E:1F:2B"
+    coordinator = BTHomeWritableCoordinator(
+        hass, address, bindkey=key, write_counter=5_000
+    )
+    gatt.offer_counter_report(counter_report(7, b"OLDNONCE", key, address))
+
+    assert await coordinator.async_sync_write_counter() is None
+    assert coordinator.next_write_counter() == 5_001, "not rolled back to 8"
+
+
 def test_the_counter_characteristic_is_not_an_entry() -> None:
     """§4.1 splits the range: 0001-0FFF are entries, 1000 and above are the
     protocol's own. A declaration carries at most 255 entries, so nothing can
