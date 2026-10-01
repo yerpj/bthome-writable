@@ -32,7 +32,8 @@ device the list cannot show is one Home Assistant cannot hear, which no form
 would fix.
 
 If the device is encrypted you are asked for its 16-byte bindkey, and nothing
-else. Home Assistant cannot see what an encrypted device offers until it has the
+else. If you ever need to change it, use **Reconfigure** on the
+device rather than removing it. Home Assistant cannot see what an encrypted device offers until it has the
 key, which is why the question comes before the list of entities.
 
 ## What you get
@@ -105,12 +106,19 @@ rediscovers it), an encrypted device whose counter has drifted (it resynchronise
 after two failures), and a device that is simply refusing the write — which it
 must do if the object ID or the length is not exactly what that entry expects.
 
-**Home Assistant says it refuses to send an unencrypted write.** You gave this
-device a bindkey and it is now advertising in clear — typically because it was
-reflashed with a different sketch. Home Assistant will not silently downgrade to
-plaintext, because that is what an attacker would want it to do. Either reflash
-the device with encryption enabled, or delete and re-add it here without a key
-(D-042).
+**Home Assistant says it refuses to send an unencrypted write**, or that the
+device is encrypted and no bindkey is configured. The two halves of the same
+thing: the key Home Assistant holds and what the device is actually doing have
+come apart, typically because the device was reflashed with a different sketch.
+Home Assistant will not silently downgrade to plaintext, because that is what an
+attacker would want it to do, and it will not send a plaintext write to a sealed
+device, because the device would discard it without a word (D-042, D-079).
+
+Fix it with **Settings → Devices & services → the device → Reconfigure**: type
+the key, or leave the field empty if the device no longer uses encryption. The
+key is checked against the device's live advertising before it is accepted, so a
+typo is caught there. Nothing else changes — the entities keep their names, and
+so do the automations that use them.
 
 **Writes fail with `out of connection slots` or `no longer reachable`.** Read
 that message sceptically: it is assembled after a number of failed attempts and
@@ -131,3 +139,7 @@ in ways that look like anything but a power problem.
 Delete the entry from **Settings → Devices & services**. It takes the bindkey
 and the write counter with it, which is correct — and means that re-adding an
 encrypted device asks for the key again.
+
+To change only the key, use **Reconfigure** rather than removing the device:
+deleting it discards every entity id, and so breaks every automation that names
+one.

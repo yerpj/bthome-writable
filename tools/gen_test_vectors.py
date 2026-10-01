@@ -145,19 +145,25 @@ def vector(
 
 # --- Plaintexts, mirroring the worked examples of PROTOCOL.md §8 -------------
 
+# The declarations below carry the length byte of §2.1 (D-073): `FF <n> <ids>`.
+# They did not, for two commits after the spec gained it -- the fixtures were
+# updated and these were not, so the sealed examples of §8 disagreed with §2.1
+# while the file still claimed to be draft.6. Rule 7 makes that a spec bug.
 # Advertising (§8.1): packet id, battery 97 %, declaration with one light entry.
 # Version 2 advertises no writable value: the light's state is not in the packet.
-ADV_SINGLE_LIGHT = bytes.fromhex("0009") + bytes.fromhex("0161") + bytes.fromhex("ff1e")
+ADV_SINGLE_LIGHT = (
+    bytes.fromhex("0009") + bytes.fromhex("0161") + bytes.fromhex("ff011e")
+)
 
 # Advertising (§8.3): two light entries and a text entry.
-ADV_MULTI = bytes.fromhex("000a") + bytes.fromhex("0161") + bytes.fromhex("ff1e1e53")
+ADV_MULTI = bytes.fromhex("000a") + bytes.fromhex("0161") + bytes.fromhex("ff031e1e53")
 
 # Advertising (§8.2): measured temperature, settings revision, power and target.
 ADV_THERMOSTAT = (
     bytes.fromhex("0009")
     + bytes.fromhex("02c409")
     + bytes.fromhex("6503")
-    + bytes.fromhex("ff1057")
+    + bytes.fromhex("ff021057")
 )
 
 # Writes and reads (§4.2, §4.3): one BTHome object each.

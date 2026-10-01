@@ -475,7 +475,22 @@ class BTHomeWritableCoordinator:
                 f"{self.address}: a bindkey is configured but the device is "
                 "advertising in clear. Refusing to send an unencrypted "
                 "write. Either reflash the device with encryption enabled, "
-                "or remove the bindkey by deleting and re-adding this device"
+                "or reconfigure this device and clear the bindkey"
+            )
+
+        if self.bindkey is None and self.advertises_encrypted:
+            # The mirror of the case above, and it was the silent one: with no
+            # key the write goes out in clear, the device discards the whole
+            # payload, and §4.2 has already acknowledged it. Home Assistant
+            # reports success and the actuator does not move -- which is how a
+            # measurement campaign that reflashed a device unencrypted, and the
+            # re-add that followed, left a bench where every sealed write
+            # vanished (D-079).
+            raise WriteFailed(
+                f"{self.address}: the device is advertising encrypted but no "
+                "bindkey is configured here, so this write would go out in "
+                "clear and be discarded without a word. Reconfigure this "
+                "device and give it its bindkey"
             )
 
         if self.declaration is None:

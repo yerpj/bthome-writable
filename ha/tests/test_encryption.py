@@ -31,6 +31,7 @@ from custom_components.bthome_writable.coordinator import (
     WriteFailed,
 )
 from custom_components.bthome_writable.protocol import (
+    Declaration,
     characteristic_uuid,
     decrypt_advertising,
     is_encrypted,
@@ -129,6 +130,29 @@ def test_a_captured_advertisement_does_not_authenticate_as_a_write() -> None:
     assert as_write[: len(ciphertext)] != ciphertext
 
 
+def test_every_sealed_vector_carries_a_readable_declaration() -> None:
+    """The cross-suite contract, checked rather than assumed (rule 7).
+
+    The generator claimed draft.6 for two commits while still emitting the
+    declaration without its length byte: the advertising fixtures had been
+    updated and these had not, so §8's sealed examples disagreed with §2.1 and
+    nothing noticed, because every test that opened them only checked the
+    crypto. Parsing what comes out closes that.
+    """
+    for vector in ADVERTISING:
+        if not vector["mic_valid"]:
+            continue
+        objects = decrypt_advertising(
+            bytes.fromhex(vector["payload"]),
+            bytes.fromhex(vector["bindkey"]),
+            vector["mac"],
+        )
+        assert objects is not None, vector["name"]
+        declaration = parse_declaration(bytes(objects))
+        assert declaration is not None, vector["name"]
+        assert declaration.offered, vector["name"]
+
+
 def test_encrypted_service_data_is_recognised_without_the_key() -> None:
     """The device-information byte is the only thing readable unsealed, which is
     why the config flow can ask for a key before it knows anything else."""
@@ -211,6 +235,28 @@ async def test_a_keyed_device_that_advertises_in_clear_is_refused_loudly(
     coordinator.advertises_encrypted = False
 
     with pytest.raises(WriteFailed, match="advertising in clear"):
+        await coordinator._write_now(1, b"\x01")
+
+
+async def test_an_unkeyed_receiver_refuses_to_write_to_a_sealed_device(
+    hass: HomeAssistant,
+) -> None:
+    """The mirror of D-042, and the half that was silent.
+
+    With no key the write goes out in clear, the device discards the whole
+    payload, and §4.2 has already acknowledged it -- so Home Assistant
+    reports success and the actuator does not move. A latency campaign that
+    reflashes a device unencrypted, plus the re-add that follows, leaves a
+    receiver in exactly this state (D-079); it took an hour of looking at
+    counters before the missing key was the answer.
+    """
+    coordinator = BTHomeWritableCoordinator(hass, "A4:C1:38:8E:1F:2B")
+    coordinator.advertises_encrypted = True
+    coordinator.declaration = Declaration.restore(
+        {"layout": [0x1E], "settings_revision": None}
+    )
+
+    with pytest.raises(WriteFailed, match="no bindkey is configured"):
         await coordinator._write_now(1, b"\x01")
 
 

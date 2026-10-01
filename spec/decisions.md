@@ -3717,3 +3717,97 @@ Nothing here was visible in 601 unit tests. Two of the four faults are only
 expressible against real flash and a real radio — a storage migration and a
 proxy's cache — and the one that matters is a consequence of the specification
 being right about the device and silent about the receiver.
+
+## D-079 -- the key and the device can disagree, and only one direction said so  [HW]
+
+**Status:** 2026-10-01. Found by running the bench back to a working state after
+a latency campaign, which is the ordinary way into it rather than a contrived one.
+
+### What happened
+
+The latency campaign deploys an unencrypted build, because the measurement is
+about the radio and not about AES. Afterwards the Puck was reflashed with
+`encrypted-light.js` and the sealed closed loop was run again. It reported
+success on every write and the lamp never moved:
+
+```
+turn_on  (Home Assistant seals the write) ...
+illuminance before 97.18 lx
+illuminance lit    97.66 lx
+```
+
+An hour went into the counter before the config entry was read:
+
+```
+Puck.js f7b9 -> {'declaration': {'layout': [30], 'settings_revision': None}}
+```
+
+**No bindkey at all.** The entry had been created while the device advertised in
+clear, so Home Assistant was writing plaintext to a device that requires
+sealing, and §4.2 acknowledges before validating. There is no symptom by
+construction.
+
+### Two faults, both ours
+
+**The guard existed in one direction only.** D-042 made *key configured, device
+in clear* refuse loudly. The mirror -- *device sealed, no key here* -- fell
+through and wrote in clear. It is now the same loud refusal, and the message
+names the remedy.
+
+**There was no way to give a configured device a key.** The flow asks for one
+only at discovery; after that the advice in D-042's own error message was to
+delete the device and add it again, which discards every entity id and so every
+automation naming one -- the same damage D-078 fault 3 was about. A device can
+gain or lose encryption at any time: reflashed firmware, a key turned on, a
+measurement campaign. `async_step_reconfigure` now sets or clears the key in
+place, proving it against a live advertisement first and refusing to clear it
+while the device is still sealed. It is also what the HA quality scale expects
+at Silver, so the gap was two gaps.
+
+### And the contract had drifted
+
+Looking for a sealed fixture to test the new step against turned up something
+else: `tools/gen_test_vectors.py` still emitted the declaration **without its
+length byte** (`ff1e`), two commits after D-073 put it in §2.1, while the file
+it wrote claimed `spec_version: 2.0-draft.6`. The advertising fixtures had been
+updated; these had not. Every test that opened them passed, because they all
+checked the crypto and none parsed what came out -- so §8's sealed worked
+examples disagreed with §2.1 and nothing noticed. Rule 7 makes that a spec bug,
+not a tooling slip.
+
+Regenerated, and the HA suite now parses the declaration out of every sealed
+vector it opens. The reconfigure tests read their sealed payload from the
+vectors file rather than copying it, since copying it was wrong within the hour.
+
+### And the proxy did it again, on the same afternoon
+
+Putting the bench back took three firmware deployments to the Puck, and after
+the last one Home Assistant's writes stopped having an effect while the same
+write from the bench host worked every time -- D-078 fault 2 exactly. Measured
+rather than assumed this time:
+
+```
+after reload:    96.85 -> 98.48 lx   FAIL   (HA's own cache was not the problem)
+proxy disabled: 100.24 -> 598.68 lx  PASS
+```
+
+**And the stale table survives a reconnect.** Disabling and re-enabling the
+proxy's config entry did not clear it: the cache is the ESP32's, not Home
+Assistant's, so only the proxy rebooting fixes it. This one has no restart
+button, no web server and is not on the switchable rail, so it cannot be
+rebooted from here at all.
+
+The bench is therefore left with the proxy **disabled**, which is what every
+measurement campaign here already does for the duration of a run. On a bench
+where firmware changes several times an hour a proxy that acknowledges writes it
+discards is worse than no proxy. Re-enable it after rebooting the ESP32, never
+before.
+
+### What this says about the method
+
+Both faults are failures of **symmetry**, and both were invisible for the same
+reason: the test wrote the state it then checked. Nothing created a receiver
+that disagreed with its device, because no test had a reason to -- it took
+putting the bench back the way a user would. §4.2's acknowledge-before-validate
+is the multiplier on all of it: every mismatch in this family is silent, so it
+has to be caught at the receiver or not at all.

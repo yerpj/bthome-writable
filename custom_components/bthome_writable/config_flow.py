@@ -193,6 +193,80 @@ class BTHomeWritableConfigFlow(ConfigFlow, domain=DOMAIN):
             },
         )
 
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Change a configured device's encryption key without removing it.
+
+        A device can gain or lose a bindkey long after it was added -- firmware
+        reflashed, encryption turned on, a measurement campaign that deploys an
+        unencrypted build. Until this step existed the only way to tell Home
+        Assistant was to delete the device and add it again, which throws away
+        every entity id and therefore every automation naming one.
+
+        The symptom is also the worst kind: a receiver whose key does not match
+        the device seals writes the device discards, or sends them in clear to a
+        device that requires sealing, and section 4.2 acknowledges the write
+        before validating it. Home Assistant reports success and nothing
+        happens. That is D-079, found when a latency campaign left the bench in
+        exactly this state.
+
+        An empty key means the device no longer advertises encrypted -- the
+        inverse case, and the one that needs no proof.
+        """
+        entry = self._get_reconfigure_entry()
+        address = entry.unique_id
+        assert address is not None
+        errors: dict[str, str] = {}
+
+        discovery = next(
+            (
+                info
+                for info in async_discovered_service_info(self.hass, connectable=True)
+                if info.address == address
+            ),
+            None,
+        )
+        if discovery is None:
+            # Without an advertisement a key cannot be proved, and accepting one
+            # unproved is how a device comes to pair and then never work.
+            return self.async_abort(reason="not_on_the_air")
+
+        if user_input is not None:
+            text = user_input.get(CONF_BINDKEY, "").strip()
+            text = text.replace("-", "").replace(":", "")
+            if not text:
+                if needs_bindkey(discovery):
+                    errors["base"] = "bindkey_required"
+                else:
+                    return self.async_update_reload_and_abort(
+                        entry, data_updates={CONF_BINDKEY: None}
+                    )
+            else:
+                try:
+                    bindkey = bytes.fromhex(text)
+                except ValueError:
+                    bindkey = b""
+                if len(bindkey) * 2 != BINDKEY_LENGTH:
+                    errors["base"] = "invalid_bindkey"
+                elif declaration_from(discovery, bindkey) is None:
+                    errors["base"] = "wrong_bindkey"
+                else:
+                    return self.async_update_reload_and_abort(
+                        entry, data_updates={CONF_BINDKEY: bindkey.hex()}
+                    )
+
+        return self.async_show_form(
+            step_id="reconfigure",
+            data_schema=vol.Schema({vol.Optional(CONF_BINDKEY, default=""): str}),
+            errors=errors,
+            description_placeholders={
+                "name": entry.title,
+                "address": address,
+                "state": ("encrypted" if needs_bindkey(discovery) else "unencrypted"),
+            },
+        )
+
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:

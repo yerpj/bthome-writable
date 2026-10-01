@@ -136,3 +136,22 @@ Most of it, which is the real answer to "can two agents help here":
   know whether it is right
 
 Take the lock for the last mile, not for the work.
+
+## The ESP32 proxy is currently disabled, on purpose
+
+As of 2026-10-01 the `Bluetooth Proxy 1f1020` config entry is **disabled** in
+Home Assistant, and that is the state to leave it in.
+
+An Espruino rebuilds its GATT table on every upload. The proxy relays against
+the table it cached, so after a deployment it **acknowledges writes it never
+delivers**: Home Assistant reports success, the device's `onWrite` never runs,
+and nothing anywhere logs a failure (D-078 fault 2, reproduced and measured in
+D-079). The cache lives on the ESP32, so disabling and re-enabling the entry
+does not clear it -- only the proxy rebooting does.
+
+This particular proxy exposes no restart button, no web server, and is not on
+the switchable rail, so it cannot be rebooted remotely. Both bench devices are
+in range of the Home Assistant host's own adapter and work without it.
+
+**If you re-enable it:** reboot the ESP32 first, and expect every write to a
+device you have reflashed since to vanish silently until you do.

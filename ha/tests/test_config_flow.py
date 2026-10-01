@@ -8,17 +8,23 @@ sensors from being offered a second time.
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from unittest.mock import patch
 
-from homeassistant.config_entries import SOURCE_BLUETOOTH, SOURCE_USER
+from homeassistant.config_entries import (
+    SOURCE_BLUETOOTH,
+    SOURCE_RECONFIGURE,
+    SOURCE_USER,
+)
 from homeassistant.const import CONF_ADDRESS
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 import pytest
 
-from custom_components.bthome_writable.const import DOMAIN
+from custom_components.bthome_writable.const import CONF_BINDKEY, DOMAIN
 
-from .conftest import service_info
+from .conftest import DEFAULT_ADDRESS, service_info
 
 pytestmark = pytest.mark.usefixtures("custom_integration")
 
@@ -179,3 +185,161 @@ async def test_the_user_step_hides_devices_already_configured(
 
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "no_devices_found"
+
+
+# A sealed advertisement of the same device, taken from the shared vectors
+# rather than copied: battery and a declaration listing one light, under the
+# published bindkey. Copying it was wrong within the hour -- the declaration
+# gained its length byte and the ciphertext moved with it (rule 7).
+_VECTOR = next(
+    v
+    for v in json.loads(
+        (
+            Path(__file__).resolve().parents[2] / "test-vectors" / "test-vectors.json"
+        ).read_text(encoding="utf-8")
+    )["vectors"]
+    if v["name"] == "adv-single-light"
+)
+SEALED = _VECTOR["payload"]
+BINDKEY = _VECTOR["bindkey"]
+
+
+def sealed_info():
+    return service_info("single-light", service_data=bytes.fromhex(SEALED))
+
+
+async def configured_without_a_key(hass: HomeAssistant):
+    """An entry created while the device was advertising in clear.
+
+    Not contrived: a latency campaign deploys an unencrypted build, and the
+    entry made afterwards holds no key (D-079).
+    """
+    result = await start_discovery(hass, "single-light")
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    entry = result["result"]
+    assert CONF_BINDKEY not in entry.data
+    return entry
+
+
+async def reconfigure(hass: HomeAssistant, entry, discovered):
+    with patch(
+        "custom_components.bthome_writable.config_flow.async_discovered_service_info",
+        return_value=discovered,
+    ):
+        return await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": SOURCE_RECONFIGURE, "entry_id": entry.entry_id},
+        )
+
+
+async def test_a_device_that_gained_a_key_can_be_told_without_being_removed(
+    hass: HomeAssistant,
+) -> None:
+    """D-079. Before this step the only way to give a configured device a key
+    was to delete it and add it again, which discards every entity id and so
+    every automation naming one. The symptom it fixes is silent: a receiver
+    with no key writes in clear, the device discards the payload, and §4.2
+    has already acknowledged the write.
+    """
+    entry = await configured_without_a_key(hass)
+
+    result = await reconfigure(hass, entry, [sealed_info()])
+    assert result["type"] is FlowResultType.FORM
+    assert result["step_id"] == "reconfigure"
+    assert result["description_placeholders"]["state"] == "encrypted"
+
+    with patch(
+        "custom_components.bthome_writable.config_flow.async_discovered_service_info",
+        return_value=[sealed_info()],
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {CONF_BINDKEY: BINDKEY}
+        )
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "reconfigure_successful"
+    assert entry.data[CONF_BINDKEY] == BINDKEY
+    assert entry.unique_id == DEFAULT_ADDRESS, "the device is the same device"
+
+
+async def test_the_key_is_proved_against_the_air_before_it_is_accepted(
+    hass: HomeAssistant,
+) -> None:
+    """The same promise the initial flow makes: a typo is caught here rather
+    than becoming a device that configures and then never works."""
+    entry = await configured_without_a_key(hass)
+    result = await reconfigure(hass, entry, [sealed_info()])
+
+    with patch(
+        "custom_components.bthome_writable.config_flow.async_discovered_service_info",
+        return_value=[sealed_info()],
+    ):
+        wrong = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {CONF_BINDKEY: "00" * 16}
+        )
+        assert wrong["errors"] == {"base": "wrong_bindkey"}
+
+        short = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {CONF_BINDKEY: "abcd"}
+        )
+        assert short["errors"] == {"base": "invalid_bindkey"}
+
+    assert CONF_BINDKEY not in entry.data
+
+
+async def test_a_device_that_stopped_encrypting_can_have_its_key_cleared(
+    hass: HomeAssistant,
+) -> None:
+    """The inverse of the same accident, and the one D-042 could only answer by
+    telling the user to delete the device: an empty field removes the key."""
+    result = await start_discovery(hass, "single-light")
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
+    entry = result["result"]
+    hass.config_entries.async_update_entry(
+        entry, data={**entry.data, CONF_BINDKEY: BINDKEY}
+    )
+
+    result = await reconfigure(hass, entry, [service_info("single-light")])
+    assert result["description_placeholders"]["state"] == "unencrypted"
+
+    with patch(
+        "custom_components.bthome_writable.config_flow.async_discovered_service_info",
+        return_value=[service_info("single-light")],
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {CONF_BINDKEY: ""}
+        )
+
+    assert result["type"] is FlowResultType.ABORT
+    assert entry.data[CONF_BINDKEY] is None
+
+
+async def test_an_encrypted_device_cannot_have_its_key_cleared(
+    hass: HomeAssistant,
+) -> None:
+    """Clearing it would send writes in clear to a device that discards them."""
+    entry = await configured_without_a_key(hass)
+    result = await reconfigure(hass, entry, [sealed_info()])
+
+    with patch(
+        "custom_components.bthome_writable.config_flow.async_discovered_service_info",
+        return_value=[sealed_info()],
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {CONF_BINDKEY: ""}
+        )
+
+    assert result["errors"] == {"base": "bindkey_required"}
+
+
+async def test_a_key_is_not_accepted_for_a_device_that_is_not_on_the_air(
+    hass: HomeAssistant,
+) -> None:
+    """Nothing to check it against, and a key accepted unproved is the failure
+    this step exists to prevent."""
+    entry = await configured_without_a_key(hass)
+    result = await reconfigure(hass, entry, [])
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "not_on_the_air"
