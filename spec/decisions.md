@@ -3602,3 +3602,108 @@ fix these niggles"* — worth recording that the complexity is entirely opt-in. 
 by default on both sides: a device that does not want the resynchronisation adds
 no characteristic and pays nothing, and a receiver that does not ask is exactly
 what it was before. Only the pair that wants the problem solved carries it.
+
+
+## D-078 — draft.6 on hardware: three passes, three faults, one of them the protocol's  [HW]
+
+**Status:** 2026-10-01, Puck.js and Home Assistant. Ten days of work had been
+validated in simulation only; this is what a bench said about it.
+
+### What passed, and was the point of the exercise
+
+| Change | Evidence |
+|---|---|
+| **The declaration's length byte** (D-073) | On air as `ff 01 1e`; the receiver parsed it, built the entity, and the closed loop ran — 597 lux |
+| **`.bwctr` migration** (D-069) | The Puck held the legacy bare number `1790017430`; after the new module it read `{"w":1790017430,"a":1000000}` — the write mark preserved exactly, the advertising mark claimed at setup |
+| **The counter window** (D-076) | Sealed writes accepted across a gap of 834 000, and refused when behind |
+| **The counter report** (D-075, D-077) | At `2FAA1000`: challenge in, 20-byte sealed report out, counter `1790951593` matching `.bwctr` exactly. **A replay with a different challenge was refused**, which is the whole reason the challenge is there |
+| **The encrypted loop end to end** | 112 → 597 → 111 lux through Home Assistant |
+| **The resynchronisation button** (D-072) | Pressed, counter moved 1790851530 → 1790951591 |
+
+### Fault 1 — the device walks ahead of the receiver at every reboot
+
+The one that matters, and it is the protocol's, not an implementation slip.
+
+§5.3 tells a device to persist its counter periodically and, on resume, to
+*"continue strictly above anything it may have accepted"*. Ours does: it stores
+`counter + 64` and resumes from the mark. **So every reboot puts the device up to
+64 ahead of the receiver, and nothing tells the receiver.** Every write is then
+refused — silently, because §4.2 acknowledges before validating — until the
+receiver's own counter has climbed past, which takes up to 64 commands nobody
+can see failing.
+
+Caught verbatim from the device:
+
+```
+counter_not_increasing | write counter 1790951530 is not ahead of 1790951593
+```
+
+This is the thing that broke the encrypted loop three times today and sent me
+looking at the wire format, the window and the cache before the device said what
+was actually wrong.
+
+**It is also the argument D-075 was waiting for.** The counter report is not a
+convenience for the re-created-entry case; it is the answer to an asymmetry the
+specification itself creates. With it enabled the receiver asked, adopted
+`1790951593 + 1`, and the loop ran. **Recommend turning `ALLOW_COUNTER_SYNC` on
+by default** once Gordon has ruled: a device that does not offer the
+characteristic is unaffected, and one that does stops silently losing commands
+after every reboot.
+
+### Fault 2 — a Bluetooth proxy with a stale table acknowledges writes it never delivers
+
+An hour went into this one. Home Assistant reported a successful write — entry
+1, 101 ms, `bthome_writable_write` fired — and the device's `onWrite` never ran.
+Written directly from the bench host, the same bytes to the same characteristic
+worked every time.
+
+It was the ESP32 proxy. An Espruino rebuilds its GATT table on every upload, and
+the proxy was relaying against the table it had cached. Disabling it, the next
+write arrived (`SET= false` on the device) and the loop ran.
+
+**Nothing in the stack can see this.** The acknowledgement is genuine — it comes
+from the proxy — so the receiver has no failure to report and the user has a
+switch that toggles and a lamp that does not. Worth knowing before blaming the
+protocol, and worth saying to anyone replicating on a bench where firmware
+changes often. D-012 is the same disease one layer down.
+
+### Fault 3 — the unique-id change orphaned every existing entity
+
+Ours, introduced in D-069 and invisible to the tests because a fresh test
+registry has nothing to orphan. Adding the object ID to the unique id meant
+every row already in the registry was never claimed again: it showed as
+unavailable for ever while the live entity took a new `entity_id` with `_2` on
+the end — which breaks every automation that names it.
+
+Fixed with `async_migrate_entries`, and two things learned writing it:
+
+- **The old shapes are ambiguous.** `<mac>-1-1e` (entry 1 of a light) and
+  `<mac>-1-01` (value 1 of entry 1) are indistinguishable. The first attempt
+  guessed, rewrote the live entity onto a stale one's identity, and failed the
+  whole config entry. The migration now reads the *domain*: only the button
+  platform ever carried a value.
+- **The identities now say what they are** — `<mac>-e<entry>-<objid>` and
+  `<mac>-e<entry>-<objid>-v<code>` — so nothing has to guess again.
+
+A leftover row whose target identity is already taken is left alone rather than
+migrated, because a collision fails the config entry and the user loses every
+control instead of one stale row.
+
+### Fault 4 — the counter report's buffer and its timing
+
+Two device-side slips, both found by reading back the raw characteristic:
+
+- `maxLen` was sized to the **question** (8 bytes) rather than the answer (20),
+  so the sealed report did not fit.
+- Espruino stores what a central wrote into the characteristic's own value
+  **after** `onWrite` returns, so the answer written there was overwritten by
+  the question. Deferred by one turn of the event loop, and guarded with a
+  try/catch so an exception cannot leave the characteristic holding a challenge
+  that reads back as a report nobody can authenticate.
+
+### What this says about the method
+
+Nothing here was visible in 601 unit tests. Two of the four faults are only
+expressible against real flash and a real radio — a storage migration and a
+proxy's cache — and the one that matters is a consequence of the specification
+being right about the device and silent about the receiver.

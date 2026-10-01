@@ -619,8 +619,15 @@ class BTHomeWritableCoordinator:
             )
             try:
                 if client.services.get_characteristic(COUNTER_UUID) is None:
+                    # Either the device does not offer it, or our cached GATT
+                    # table predates it -- a device that gains the
+                    # characteristic is exactly a device whose table changed.
+                    # Drop the cache so the next attempt sees the truth, as the
+                    # write path does for the same reason (D-012).
+                    await client.clear_cache()
                     _LOGGER.debug(
-                        "%s: no counter report; keeping the seeded counter",
+                        "%s: no counter report in the GATT table; dropped the "
+                        "cached copy and kept the seeded counter",
                         self.address,
                     )
                     return None

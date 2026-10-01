@@ -56,6 +56,23 @@ class ProtocolError(Exception):
     """The payload does not follow spec/PROTOCOL.md."""
 
 
+def entity_unique_id(address: str, entry: int, object_id: int) -> str:
+    """The identity of the entity backing one declared entry.
+
+    `e` and `v` are not decoration. Without them `<mac>-1-1e` (entry 1 of a
+    light) and `<mac>-1-01` (value 1 of entry 1) are the same shape, and nothing
+    reading an id back can tell which it is holding — which is exactly what made
+    the first attempt at a migration rewrite the live entity onto a stale one's
+    identity (D-078).
+    """
+    return f"{address}-e{entry}-{object_id:02x}"
+
+
+def event_unique_id(address: str, entry: int, object_id: int, code: int) -> str:
+    """One value of one declared event entry: several share an entry."""
+    return f"{entity_unique_id(address, entry, object_id)}-v{code:02x}"
+
+
 def characteristic_uuid(entry: int) -> str:
     """Entry k, counted from 1, lives at 2FAAkkkk, k in hexadecimal (§4.1)."""
     return UUID_TEMPLATE.format(entry)

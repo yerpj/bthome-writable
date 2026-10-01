@@ -17,7 +17,7 @@ from homeassistant.helpers.entity import Entity
 
 from .const import DOMAIN
 from .coordinator import BTHomeWritableCoordinator
-from .protocol import WritableEntry
+from .protocol import WritableEntry, entity_unique_id
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -65,8 +65,8 @@ class BTHomeWritableEntity(Entity):
         # entry 1 as a light and entry 1 as a switch are different controls, and
         # a firmware change can turn one into the other. Without it the new
         # entity collides with the old one and neither works (found in review).
-        self._attr_unique_id = (
-            f"{coordinator.address}-{entry.entry}-{entry.object_id:02x}"
+        self._attr_unique_id = entity_unique_id(
+            coordinator.address, entry.entry, entry.object_id
         )
         self._attr_device_info = DeviceInfo(
             # Sharing the connection identity is what merges this device with

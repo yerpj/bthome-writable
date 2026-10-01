@@ -406,20 +406,37 @@ function counterCharacteristic() {
   return {
     readable : true,
     writable : true,
-    maxLen : CHALLENGE_LEN,
+    // The buffer has to hold the *answer*, not the question: the challenge is
+    // CHALLENGE_LEN bytes in, the sealed report is the challenge plus the
+    // counter plus the seal's own framing out. Sized to the question, Espruino
+    // keeps the raw challenge and a receiver reads back something that cannot
+    // authenticate -- which is how this was found.
+    maxLen : CHALLENGE_LEN + 4 + ENC_OVERHEAD,
     value : [],
     onWrite : evt => {
       if (evt.data.length !== CHALLENGE_LEN) {
         if (st.onError) st.onError(err("challenge_length", `challenge is ${evt.data.length} bytes, expected ${CHALLENGE_LEN}`));
         return;
       }
-      const pt = [];
-      for (let i = 0; i < CHALLENGE_LEN; i++) pt.push(evt.data[i]);
-      for (let i = 0; i < 4; i++) pt.push((st.writeCounter >>> (8 * i)) & 255);
-      const svc = {}, chr = {};
-      chr[COUNTER_UUID] = { value : seal(pt, READ_INFO) };
-      svc[SERVICE_UUID] = chr;
-      NRF.updateServices(svc);
+      // Deferred by one turn of the loop: Espruino stores the bytes a central
+      // wrote into the characteristic's own value *after* onWrite returns, so
+      // an answer written here is overwritten by the question.
+      setTimeout(() => {
+      try {
+        const pt = [];
+        for (let i = 0; i < CHALLENGE_LEN; i++) pt.push(evt.data[i]);
+        for (let i = 0; i < 4; i++) pt.push((st.writeCounter >>> (8 * i)) & 255);
+        const svc = {}, chr = {};
+        chr[COUNTER_UUID] = { value : seal(pt, READ_INFO) };
+        svc[SERVICE_UUID] = chr;
+        NRF.updateServices(svc);
+      } catch (e) {
+        // Anything thrown here would otherwise escape into the GATT callback
+        // and leave the characteristic holding the raw challenge, which reads
+        // back as a report that cannot authenticate.
+        if (st.onError) st.onError(err("counter_report_failed", "" + e));
+      }
+      }, 0);
     }
   };
 }

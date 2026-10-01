@@ -322,3 +322,80 @@ async def test_an_entry_that_changes_type_does_not_collide(
     other = BTHomeWritableEntity(coordinator, WritableEntry(entry=1, object_id=0x10))
 
     assert light.unique_id != other.unique_id
+
+
+async def test_an_entity_registered_before_the_object_id_joined_the_id_is_carried_over(
+    hass: HomeAssistant, radio, gatt
+) -> None:
+    """D-078. The object ID joined the unique id so an entry that changes type
+    cannot collide with what it used to be. Without a migration that orphans
+    every entity already registered — the old row is never claimed again, and
+    the live one takes a new entity_id with a `_2` on the end, which breaks
+    every automation naming it. Found on the bench; a fresh test registry has
+    nothing to orphan, so it needs saying here deliberately.
+    """
+    from homeassistant.helpers import entity_registry as er
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    from custom_components.bthome_writable.const import CONF_DECLARATION, DOMAIN
+
+    registry = er.async_get(hass)
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id=DEFAULT_ADDRESS,
+        data={CONF_DECLARATION: {"layout": [0x1E], "settings_revision": None}},
+        title="Espruino Light",
+    )
+    entry.add_to_hass(hass)
+    old = registry.async_get_or_create(
+        "switch",
+        DOMAIN,
+        f"{DEFAULT_ADDRESS}-1",  # the pre-D-069 identity
+        config_entry=entry,
+        suggested_object_id="espruino_light_light",
+    )
+
+    radio.last = service_info("single-light")
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    carried = registry.async_get(old.entity_id)
+    assert carried is not None, "the entity keeps its id rather than being orphaned"
+    assert carried.unique_id == f"{DEFAULT_ADDRESS}-e1-1e"
+    assert hass.states.get(LIGHT) is not None
+    assert hass.states.get(f"{LIGHT}_2") is None, "and no duplicate appears beside it"
+
+
+async def test_a_leftover_row_does_not_collide_its_way_into_a_failed_setup(
+    hass: HomeAssistant, radio, gatt
+) -> None:
+    """A registry that has seen several firmware layouts holds rows for all of
+    them. Migrating one onto an identity something else already answers to
+    fails the whole config entry — which is what happened on the bench, and the
+    device lost every control rather than one stale row (D-078)."""
+    from homeassistant.helpers import entity_registry as er
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    from custom_components.bthome_writable.const import CONF_DECLARATION, DOMAIN
+
+    registry = er.async_get(hass)
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id=DEFAULT_ADDRESS,
+        data={CONF_DECLARATION: {"layout": [0x1E], "settings_revision": None}},
+        title="Espruino Light",
+    )
+    entry.add_to_hass(hass)
+    # The live identity, and a leftover that would migrate onto it.
+    registry.async_get_or_create(
+        "switch", DOMAIN, f"{DEFAULT_ADDRESS}-e1-1e", config_entry=entry
+    )
+    stale = registry.async_get_or_create(
+        "switch", DOMAIN, f"{DEFAULT_ADDRESS}-1", config_entry=entry
+    )
+
+    radio.last = service_info("single-light")
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert registry.async_get(stale.entity_id).unique_id == f"{DEFAULT_ADDRESS}-1"

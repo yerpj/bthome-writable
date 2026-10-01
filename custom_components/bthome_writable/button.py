@@ -22,7 +22,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from . import BTHomeWritableConfigEntry
 from .coordinator import BTHomeWritableCoordinator
 from .entity import BTHomeWritableEntity
-from .protocol import WritableEntry, event_values
+from .protocol import WritableEntry, event_unique_id, event_values
 from .switch import add_entities_as_declared, instance_label, is_kind
 
 BUTTON, COMMAND, DIMMER = 0x3A, 0x3B, 0x3C
@@ -87,7 +87,9 @@ class BTHomeWritableButton(BTHomeWritableEntity, ButtonEntity):
             coordinator, entry, name.replace("_", " ").capitalize()
         )
         # Several buttons share one entry, so the entry alone is not unique.
-        self._attr_unique_id = f"{coordinator.address}-{entry.entry}-{code:02x}"
+        self._attr_unique_id = event_unique_id(
+            coordinator.address, entry.entry, entry.object_id, code
+        )
 
     async def async_press(self) -> None:
         await self.async_apply(event_payload(self._object_id, self._code))
