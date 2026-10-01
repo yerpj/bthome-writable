@@ -3689,6 +3689,16 @@ A leftover row whose target identity is already taken is left alone rather than
 migrated, because a collision fails the config entry and the user loses every
 control instead of one stale row.
 
+**And the second device found the rest of it.** The nice!nano orphaned its text
+entity anyway, because the migration read the declaration from the config entry
+and that entry -- created before D-069 -- had none stored: it returned early,
+every time, for exactly the devices that needed it. The layout is in fact
+available during setup, from the last advertisement the Bluetooth stack already
+holds, so the migration now runs after that seed and takes the declaration from
+the coordinator. The Puck passed only because it had been re-added recently
+enough to have stored one -- a migration tested on the device that does not need
+it proves nothing.
+
 ### Fault 4 — the counter report's buffer and its timing
 
 Two device-side slips, both found by reading back the raw characteristic:

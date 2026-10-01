@@ -366,6 +366,45 @@ async def test_an_entity_registered_before_the_object_id_joined_the_id_is_carrie
     assert hass.states.get(f"{LIGHT}_2") is None, "and no duplicate appears beside it"
 
 
+async def test_an_entry_that_never_stored_a_declaration_still_migrates(
+    hass: HomeAssistant, radio, gatt
+) -> None:
+    """The nice!nano half of D-078. An entry created before D-069 has no stored
+    declaration, so a migration that reads only the stored copy returns early
+    and orphans the entity anyway -- which is what the bench showed, with the
+    live row at `_2` and the original unavailable for ever. The layout is known
+    one line earlier than it looks: the last advertisement the stack already
+    holds is absorbed during setup, so the migration runs off that instead.
+    """
+    from homeassistant.helpers import entity_registry as er
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    from custom_components.bthome_writable.const import DOMAIN
+
+    registry = er.async_get(hass)
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id=DEFAULT_ADDRESS,
+        data={},  # nothing stored: this entry predates D-069
+        title="Espruino Light",
+    )
+    entry.add_to_hass(hass)
+    old = registry.async_get_or_create(
+        "switch",
+        DOMAIN,
+        f"{DEFAULT_ADDRESS}-1",
+        config_entry=entry,
+        suggested_object_id="espruino_light_light",
+    )
+
+    radio.last = service_info("single-light")
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert registry.async_get(old.entity_id).unique_id == f"{DEFAULT_ADDRESS}-e1-1e"
+    assert hass.states.get(f"{LIGHT}_2") is None, "no duplicate beside it"
+
+
 async def test_a_leftover_row_does_not_collide_its_way_into_a_failed_setup(
     hass: HomeAssistant, radio, gatt
 ) -> None:

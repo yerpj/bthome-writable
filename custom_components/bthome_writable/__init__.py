@@ -56,7 +56,10 @@ def _starting_counter(stored: int) -> int:
 
 
 async def _migrate_unique_ids(
-    hass: HomeAssistant, entry: BTHomeWritableConfigEntry, address: str
+    hass: HomeAssistant,
+    entry: BTHomeWritableConfigEntry,
+    address: str,
+    declaration: Declaration | None,
 ) -> None:
     """Carry entities across the unique-id change of D-069/D-078.
 
@@ -76,13 +79,16 @@ async def _migrate_unique_ids(
     platform ever carried a value. Guessing instead is what rewrote the live
     entity onto a stale one's identity and failed the whole config entry.
 
-    The object ID comes from the stored declaration, so a device that has never
-    been heard from is left alone and migrates the next time it is.
+    The object ID comes from the declaration, so this runs once the layout is
+    known -- after the stack's last advertisement has been absorbed, not from
+    the stored copy alone. An entry created before D-069 has no stored
+    declaration to restore, and migrating before the first packet would have
+    returned here and orphaned it anyway: the nice!nano did exactly that
+    (D-078).
     """
-    stored = Declaration.restore(entry.data.get(CONF_DECLARATION))
-    if stored is None:
+    if declaration is None:
         return
-    by_entry = {item.entry: item.object_id for item in stored.entries}
+    by_entry = {item.entry: item.object_id for item in declaration.entries}
     registry = er.async_get(hass)
 
     @callback
@@ -149,8 +155,6 @@ async def async_setup_entry(
             entry, data={**entry.data, CONF_DECLARATION: declaration.stored()}
         )
 
-    await _migrate_unique_ids(hass, entry, address)
-
     coordinator = BTHomeWritableCoordinator(
         hass,
         address,
@@ -180,6 +184,10 @@ async def async_setup_entry(
     service_info = bluetooth.async_last_service_info(hass, address, connectable=True)
     if service_info is not None:
         coordinator.async_handle_advertisement(service_info)
+
+    # After the seed and before the platforms: the migration needs the layout,
+    # and an entry older than D-069 has none stored to read it from.
+    await _migrate_unique_ids(hass, entry, address, coordinator.declaration)
 
     @callback
     def _advertisement(
