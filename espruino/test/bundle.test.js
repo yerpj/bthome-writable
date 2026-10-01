@@ -456,7 +456,7 @@ test("a device does not offer the counter report unless it is turned on", () => 
   const uuids = Object.keys(result.characteristics).map((u) => u.toUpperCase());
 
   assert.ok(
-    !uuids.some((u) => u.startsWith("2FAAFFFF")),
+    !uuids.some((u) => u.startsWith("2FAA1000")),
     `no counter characteristic by default, got ${uuids.join(", ")}`
   );
 });
@@ -475,7 +475,7 @@ test("turning the counter report on adds a characteristic past every entry", () 
   const uuids = Object.keys(result.characteristics).map((u) => u.toUpperCase());
 
   assert.ok(
-    uuids.some((u) => u.startsWith("2FAAFFFF")),
+    uuids.some((u) => u.startsWith("2FAA1000")),
     `expected a counter characteristic, got ${uuids.join(", ")}`
   );
   assert.ok(

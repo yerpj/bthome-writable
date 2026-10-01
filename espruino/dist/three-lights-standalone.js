@@ -76,13 +76,13 @@ which is how the protocol logic is tested without a device.
 */
 
 const DECL_ID = 0xFF; // declaration object, last in the packet (S2.2)
-const COUNTER_UUID = "2FAAFFFF" + "-3B0B-4B1A-9E2A-B4C2952E62F2"; /* the counter
+const COUNTER_UUID = "2FAA1000" + "-3B0B-4B1A-9E2A-B4C2952E62F2"; /* the counter
    report (D-075), off unless `counterReport:true`.
 
-   Not an entry: entries are numbered 1..n and this sits at FFFF, out of their
-   reach for ever. It answers the one question a receiver cannot answer for
-   itself -- what counter is this device at? -- which is what a receiver that
-   lost its state has to guess today.
+   Not an entry: S4.1 keeps 0001-0FFF for entries and reserves 1000 and above
+   for the protocol's own characteristics. It answers the one question a
+   receiver cannot answer for itself -- what counter is this device at? --
+   which is what a receiver that lost its state has to guess today.
 
    Zigbee R23 S4.6.3.8 and Matter's MCSP both do this, and both bind the answer
    to a challenge the asker just produced. So does this: write 8 random bytes,

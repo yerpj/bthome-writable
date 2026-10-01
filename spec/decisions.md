@@ -3513,7 +3513,7 @@ default on both sides, so nothing normative changes and rule 2 is not overturned
 — but it can be demonstrated rather than argued about.
 
 - **Device:** `counterReport: true` in `setup()` adds a characteristic at
-  `2FAAFFFF-…`, past every entry number for ever. Write 8 random bytes, read
+  `2FAA1000-…` (see D-077). Write 8 random bytes, read
   back `seal(challenge || counter u32 LE)` under the read direction byte. The
   counter reported is the last one the device accepted.
 - **Receiver:** `ALLOW_COUNTER_SYNC` in `const.py`. When on and a bindkey is
@@ -3569,3 +3569,36 @@ device, and lands inside the window.
 Four tests, all four failing against the old comparison — checked by reverting
 it. **Still open with him:** the readable counter of D-075, which would remove
 the guess rather than widen the tolerance for it.
+
+
+## D-077 — Characteristic numbers 1000 and above belong to the protocol  [SPEC, agreed with Gordon]
+
+**Status:** proposed by Gordon in espruino#8024 on 2026-10-01, taken the same
+day. `PROTOCOL.md` §4.1, **2.0-draft.6**.
+
+The counter report of D-075 was put at `2FAAFFFF`, on the reasoning that entries
+are numbered from 1 so the top of the range is out of their reach for ever.
+
+> *"Sounds good - just make it `2FAA1000-...` or something like that?"*
+
+He is right, and for a reason the original choice missed: **`FFFF` is a dead
+end.** A second control characteristic would have had to go at `FFFE`, then
+`FFFD`, counting backwards from the ceiling. `1000` opens a block instead.
+
+So §4.1 now splits the second 16-bit group rather than merely moving one number:
+
+| Range | Meaning |
+|---|---|
+| `0000` | the service |
+| `0001`–`0FFF` | entries, and nothing else |
+| `1000`+ | the protocol's own characteristics |
+
+A declaration carries at most 255 entries (§2.1, D-073), so the entry range has
+sixteen times the room it can ever need, and the next control characteristic has
+somewhere obvious to go.
+
+**On his other remark** — *"Shame about the complexity but it's good to properly
+fix these niggles"* — worth recording that the complexity is entirely opt-in. Off
+by default on both sides: a device that does not want the resynchronisation adds
+no characteristic and pays nothing, and a receiver that does not ask is exactly
+what it was before. Only the pair that wants the problem solved carries it.

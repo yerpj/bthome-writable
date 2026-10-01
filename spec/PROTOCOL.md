@@ -1,6 +1,6 @@
 # BTHome Writable — protocol specification
 
-**Version:** 2.0-draft.5 · **Status:** DRAFT, nothing frozen · **License:** MIT
+**Version:** 2.0-draft.6 · **Status:** DRAFT, nothing frozen · **License:** MIT
 
 BTHome standardizes a BLE **uplink**: a device broadcasts its state in
 advertising, a receiver parses it. It has no **downlink**. This document
@@ -185,7 +185,14 @@ Service                      2FAA0000-3B0B-4B1A-9E2A-B4C2952E62F2
 
 One randomly generated 128-bit base; the second 16-bit group is `0000` for the
 service and the entry number *k*, in hexadecimal, for entry *k*. There is exactly
-one writable characteristic per entry, and none for anything else.
+one writable characteristic per entry.
+
+**The second group is split.** `0001`–`0FFF` are entries and nothing else;
+`1000` and above are reserved for characteristics that belong to the protocol
+rather than to an entry. A declaration carries at most 255 entries (§2.1), so the
+entry range has sixteen times the room it can ever need, and the reserved block
+means a later control characteristic has an obvious home instead of being
+squeezed in from the top.
 
 > **Provisional.** These UUIDs freeze permanently at the first public release.
 > Until then they may still change (D-001).
@@ -472,5 +479,8 @@ Open items:
 Settled since draft.1: the size of a write is `ATT_MTU - 3` and fragmentation is
 out of scope (§4.4, `decisions.md` D-058); the settings revision `0x65` is not
 declarable as writable (§2.1, D-072); the declaration carries a length byte, a
-device has exactly one, and the MTU floor is gone (§2.1, §2.2, §4.4, D-073,
-agreed with Gordon in espruino#8013).
+device has exactly one, and the MTU floor is gone (§2.1, §2.2, §4.4, D-073); a
+write counter is accepted when it is *ahead*, within half the 32-bit space
+(§5.3, D-076); and characteristic numbers `1000` and above are reserved for the
+protocol rather than for entries (§4.1, D-077). All agreed with Gordon in
+espruino#8013 and espruino#8024.

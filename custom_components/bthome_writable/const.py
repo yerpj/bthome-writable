@@ -27,13 +27,19 @@ can change by themselves, and readable characteristics to fetch them (§3.2)."""
 UUID_TEMPLATE: Final = "2faa{:04x}-3b0b-4b1a-9e2a-b4c2952e62f2"
 SERVICE_UUID: Final = UUID_TEMPLATE.format(0)
 
-COUNTER_UUID: Final = UUID_TEMPLATE.format(0xFFFF)
+CONTROL_UUID_BASE: Final = 0x1000
+"""Where the protocol's own characteristics start (§4.1).
+
+`0001` to `0FFF` are entries, `1000` and above are the protocol's. A declaration
+carries at most 255 entries, so the entry range has sixteen times the room it
+can ever need, and a later control characteristic has somewhere obvious to go."""
+
+COUNTER_UUID: Final = UUID_TEMPLATE.format(CONTROL_UUID_BASE)
 """Where a device reports the write counter it is at (D-075), if it offers it.
 
-Not an entry: entries are numbered from 1 and this sits at FFFF, out of their
-reach. Write 8 random bytes, read back `seal(challenge || counter)` — the shape
-Zigbee R23 §4.6.3.8 and Matter's MCSP both use, where freshness comes from the
-challenge rather than from the counter being asked about."""
+Write 8 random bytes, read back `seal(challenge || counter)` — the shape Zigbee
+R23 §4.6.3.8 and Matter's MCSP both use, where freshness comes from the challenge
+rather than from the counter being asked about."""
 
 CHALLENGE_LENGTH: Final = 8
 

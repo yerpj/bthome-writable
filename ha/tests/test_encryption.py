@@ -421,8 +421,11 @@ def test_a_report_of_the_wrong_length_is_refused() -> None:
 
 
 def test_the_counter_characteristic_is_not_an_entry() -> None:
-    """Entries are numbered from 1; this sits past every one of them."""
+    """§4.1 splits the range: 0001-0FFF are entries, 1000 and above are the
+    protocol's own. A declaration carries at most 255 entries, so nothing can
+    ever reach the reserved block."""
     from custom_components.bthome_writable.const import COUNTER_UUID
 
     assert characteristic_uuid(1) != COUNTER_UUID
-    assert COUNTER_UUID.startswith("2faaffff")
+    assert characteristic_uuid(0x1000) == COUNTER_UUID
+    assert characteristic_uuid(255) != COUNTER_UUID, "past every possible entry"
