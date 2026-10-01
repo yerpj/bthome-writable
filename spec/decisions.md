@@ -3811,3 +3811,21 @@ that disagreed with its device, because no test had a reason to -- it took
 putting the bench back the way a user would. §4.2's acknowledge-before-validate
 is the multiplier on all of it: every mismatch in this family is silent, so it
 has to be caught at the receiver or not at all.
+
+### Verified on hardware, after the restart that loaded it
+
+| Step | Evidence |
+|---|---|
+| The reconfigure step, on a real device | `flow start: form reconfigure` then `abort reconfigure_successful`; the key was proved by decrypting a live advertisement, not merely accepted |
+| The entry kept its identity | same `entry_id`, and `switch.bureau_mobilesensf7b9_light` kept its name -- no `_2`, so no automation broke |
+| The key reached the receiver | the entry now reads `{'bindkey': <set>, 'declaration': ...}` |
+| D-072's button appeared with it | `button.bureau_mobilesensf7b9_resynchronise_write_counter`, created because a key now exists |
+| The sealed loop, end to end | 101 -> 597 -> 101 lx through Home Assistant, sealed both ways, confirmed by the device's own light sensor |
+| The whole chain | the Puck's sealed advertising decoded by core BTHome, its illuminance carried by an automation to the nice!nano's screen: `text.espruino_b216_text = 'Lux 97.87'` against `sensor...illuminance = 97.87` |
+
+**And D-078 fault 1 reproduced on the way**, from nothing more exotic than a
+reflash: the first sealed loop failed silently (100.8 -> 99.5 lx), one press of
+the resynchronise button fixed it (101.2 -> 596.5 lx). The device walks ahead at
+every reboot and the receiver is never told. A button the user must find, after a
+failure they cannot see, is a workaround for a question the device could answer
+-- which is the argument for `ALLOW_COUNTER_SYNC`, still the owner's to make.
