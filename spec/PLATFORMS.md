@@ -26,13 +26,24 @@ assigns an id; these are **92 objects, counted against `bthome-ble` 3.9.2** with
 | event (`0x3A` button, `0x3C` dimmer, `0x3B` command) | 3 | `button`, one per value |
 | raw (`0x54`) | 1 | — not exposed |
 
-**Corrected 2026-09-23.** This table also carried a row for metadata objects
-`0xF0`–`0xF2`, counted in a total of 95. They are not in the library: the
-integration classifies them as `meta` and refuses them as forbidden entries
-(§2.1), but the classification has nothing to classify. Recount before quoting
-these anywhere that matters — and note that the test virtualenv holds 3.9.2
-while the manifest asks for 3.22.1 or newer, so the suites prove less about
-object coverage than the pin suggests.
+**Recounted 2026-10-03, and the previous correction was wrong twice over.**
+The counts above are measured against **`bthome-ble` 3.22.1**, which is what the
+integration's test environment installs and what `manifest.json` pins as its
+minimum. The note that stood here said 3.9.2 and claimed the metadata objects
+`0xF0`–`0xF2` "are not in the library" — both false:
+
+| library | objects | `0xF0`–`0xF2` |
+|---|---|---|
+| 3.22.1 (integration, `manifest.json`) | 92 | absent |
+| 3.24.0 (tools environment, `requirements-dev.txt`) | 95 | **present**, as `device_type_id`, `firmware_version_4`, `firmware_version_3` |
+
+So they were *added* later rather than never present, and the earlier total of 95
+was right for a newer library than the one it was attributed to. Nothing
+functional turns on it — `FORBIDDEN_ENTRIES` refuses `0xF0`–`0xF2` either way
+(§2.1) — but the numbers in this table move with the library, so **state the
+version whenever you quote them.** The classification itself is read from
+`bthome-ble` at runtime and is never copied into this project, which is why a
+new object type needs no code change here.
 
 ### Why the device decides, not the table
 
@@ -143,7 +154,15 @@ entry and nothing else, so the difficulty disappears (D-048). Its vocabulary is
 five buttons — off, on, toggle, step up, step down — and the step commands carry
 a one-step argument.
 
-## Open: how a brightness finds its light  [DECISION — owner and Gordon]
+Its framing is `<argument length, low 5 bits><opcode><arguments>`, so **one
+entry accepts writes of two different lengths**. That is unlike every other
+object: a fixed-width object has one length and a length-prefixed one announces
+its own. Until 2026-10-03 this sentence was true of the receiver and false of
+the reference device — the Espruino module had no way to describe the framing,
+so every command write it received was refused as `trailing_bytes` (D-081).
+Both sides now agree, and the `writable-command` fixture pins the two shapes.
+
+## How a brightness finds its light  [DECISION — ruled out of scope]
 
 The task breakdown asks for "light+brightness": a writable `light` (`0x1E`)
 paired with a writable level object, presented as one Home Assistant `light`
@@ -162,7 +181,13 @@ candidates all have costs:
 3. **Leave it apart** — a `switch` and a `number`, and let the user group them
    in Home Assistant. Costs nothing and asks something of every user.
 
-This is a protocol question, not an implementation one, so it is not the agent's
-to settle (CLAUDE.md rule 2). **Until it is settled, this project implements
-option 3**: a writable `light` is a switch, a writable level is a number, and
-nothing pairs them.
+**Ruled out of scope** (D-073), by Gordon and accepted by the owner: *"dealing
+with the meaning of the stuff that appears in home assistant is probably out of
+scope of the spec anyway."* The protocol carries a command and says nothing about
+what the receiver makes of it.
+
+**So option 3 is the answer, not a holding position**: a writable `light` is a
+switch, a writable level is a number, and nothing pairs them. A user who wants
+one control groups them in Home Assistant, which is where that kind of meaning
+belongs. The alternatives are kept above because they are the reasoning, and
+because anyone proposing a grouping object to BTHome will meet them again.

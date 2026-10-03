@@ -25,8 +25,10 @@ device advertises BTHome's settings revision (0x65), and you call bw.changed()
 whenever such a change happens, so receivers know to read it again (S3.2).
 
 Types the BTHome module cannot encode (button events, raw) are declared by ID:
-{ id:0x3A, length:1, set:v=>... } for fixed length, or { id:0x54, variable:true }
-for length-prefixed. Their `set` receives the value bytes, or the event code.
+{ id:0x3A, length:1, set:v=>... } for fixed length, { id:0x54, variable:true }
+for length-prefixed. 0x3B command needs neither -- { id:0x3B, set:v=>... } is
+enough, because its framing is fixed by the specification. Their `set` receives
+the value bytes, the event code, or a command's opcode.
 
 Options:
 
@@ -85,10 +87,21 @@ const UUID_TAIL = "-3B0B-4B1A-9E2A-B4C2952E62F2"; // provisional (D-001)
 const SERVICE_UUID = "2FAA0000" + UUID_TAIL;
 const TEXT_TYPES = { text:true }; // encoded by the BTHome module with a length byte
 const EVENT_IDS = { 0x3A:true, 0x3C:true }; // button, dimmer: the value is an event code
+// 0x3B command carries <argument length, low 5 bits><opcode><arguments>, so its
+// length is neither fixed nor BTHome's ordinary length-byte convention. Neither
+// `length` nor `variable` can describe it, which is why a receiver offering it
+// -- and ours does -- had every write refused by this module (D-081).
+const COMMAND_IDS = { 0x3B:true };
 // Signed numeric objects, from bthome.io/format. Not probed through the encoder:
 // the upstream module wraps a negative the same way for every width, so every
 // type would look signed. An entry's own `signed` overrides this.
-const SIGNED_IDS = { 0x02:true, 0x08:true, 0x3F:true, 0x45:true, 0x57:true, 0x58:true, 0x5C:true, 0x5D:true, 0x62:true, 0x63:true };
+//
+// A hand-kept copy of someone else's table drifts, and this one had: it was
+// three ids behind bthome-ble by the time anyone looked (D-081). It is now
+// checked against the library on every CI run -- see
+// tools/tests/test_signed_ids.py -- so the next addition upstream fails a test
+// rather than silently decoding a negative as a large positive.
+const SIGNED_IDS = { 0x02:true, 0x08:true, 0x3F:true, 0x45:true, 0x57:true, 0x58:true, 0x59:true, 0x5A:true, 0x5B:true, 0x5C:true, 0x5D:true, 0x62:true, 0x63:true };
 // S2.1: packet id, the declaration itself, and device information are not data.
 const FORBIDDEN = { 0x00:true, 0x65:true, 0xFF:true, 0xF0:true, 0xF1:true, 0xF2:true };
 
@@ -137,7 +150,13 @@ function parseWrite(pl, w) {
   // has writes the wrong type to this characteristic, and is refused.
   if (pl[0] !== w.id) throw err("objectid_mismatch", `object 0x${pl[0].toString(16)} written to entry ${w.entry}, expected 0x${w.id.toString(16)}`);
   let n;
-  if (w.variable) {
+  if (w.command) {
+    // <argument length, low 5 bits><opcode><arguments>: two bytes of framing
+    // plus however many arguments the low five bits claim. The upper three bits
+    // are reserved by BTHome and are not ours to interpret.
+    if (pl.length < 2) throw err("truncated", "missing argument length");
+    n = 2 + (pl[1] & 0x1F);
+  } else if (w.variable) {
     if (pl.length < 2) throw err("truncated", "missing length byte");
     n = 1 + pl[1];
   } else n = w.length;
@@ -162,6 +181,13 @@ function decodeValue(value, w) {
     }
     case "binary": return value[0] !== 0;
     case "event": return value.length === 1 ? value[0] : value;
+    case "command": {
+      // The argument length is framing, not meaning: set() gets the opcode on
+      // its own when there are no arguments, and the opcode followed by them
+      // when there are -- the same shape the button and dimmer events use.
+      const rest = value.slice(1);
+      return rest.length === 1 ? rest[0] : rest;
+    }
     case "number": {
       let raw = readUint(value, 0, value.length);
       const full = Math.pow(256, value.length);
@@ -177,6 +203,10 @@ function decodeValue(value, w) {
    own tables rather than a copy of them. */
 function writableSpec(e, enc, k) {
   if (e.id !== undefined) {
+    // A command's framing is the specification's, not the declarer's: taking a
+    // `length` here would let a device accept the opcodes that happen to fit it
+    // and refuse the rest, which is worse than refusing all of them.
+    if (COMMAND_IDS[e.id]) return { id:e.id, command:true, codec:"command" };
     if (!e.variable && !(e.length > 0)) throw err("writable_without_length", `entry ${k} declares id 0x${e.id.toString(16)} but no length`);
     return { id:e.id, length:e.length, variable:e.variable === true, codec:EVENT_IDS[e.id] ? "event" : "bytes" };
   }

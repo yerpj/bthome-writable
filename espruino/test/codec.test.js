@@ -76,3 +76,56 @@ test("a captured write stays refused for half the counter space", () => {
   assert.ok(!bw.counterIsAhead(5, 5 + AHEAD - 1));
   assert.ok(bw.counterIsAhead(5, (5 + AHEAD) >>> 0), "and only then");
 });
+
+test("0x3B command: the argument length is framing, and both shapes are accepted", () => {
+  // The receiver encodes a bare opcode as <0><opcode> and a stepped one as
+  // <1><opcode><step> (PROTOCOL.md §2.1). Neither `length` nor `variable` can
+  // describe both, which is why every one of these writes used to be refused
+  // with trailing_bytes (D-081).
+  const spec = bw.writableSpec({ id: 0x3B, set: () => {} }, null, 1);
+  assert.equal(spec.command, true);
+  assert.equal(spec.codec, "command");
+
+  const bare = bw.parseWrite([0x3B, 0x00, 0x01], spec);
+  assert.deepEqual(Array.from(bare), [0x00, 0x01]);
+  assert.equal(bw.decodeValue(bare, spec), 0x01, "set() gets the opcode alone");
+
+  const stepped = bw.parseWrite([0x3B, 0x01, 0x03, 0x01], spec);
+  assert.deepEqual(Array.from(stepped), [0x01, 0x03, 0x01]);
+  assert.deepEqual(
+    Array.from(bw.decodeValue(stepped, spec)),
+    [0x03, 0x01],
+    "and the opcode with its arguments when there are any"
+  );
+});
+
+test("0x3B command: only the low five bits of the argument length count", () => {
+  // The upper three are reserved by BTHome. Reading all eight would make a
+  // reserved bit look like hundreds of missing argument bytes.
+  const spec = bw.writableSpec({ id: 0x3B, set: () => {} }, null, 1);
+
+  assert.deepEqual(
+    Array.from(bw.parseWrite([0x3B, 0xE1, 0x03, 0x07], spec)),
+    [0xE1, 0x03, 0x07]
+  );
+});
+
+test("0x3B command: a short or an over-long write is still refused", () => {
+  const spec = bw.writableSpec({ id: 0x3B, set: () => {} }, null, 1);
+
+  assert.throws(() => bw.parseWrite([0x3B], spec), { code: "truncated" });
+  assert.throws(() => bw.parseWrite([0x3B, 0x01, 0x03], spec), { code: "truncated" });
+  assert.throws(
+    () => bw.parseWrite([0x3B, 0x00, 0x01, 0x99], spec),
+    { code: "trailing_bytes" }
+  );
+});
+
+test("0x3B command: a declared length cannot narrow it", () => {
+  // Honouring one would accept the opcodes that happen to fit and refuse the
+  // rest, which is harder to diagnose than refusing all of them.
+  const spec = bw.writableSpec({ id: 0x3B, length: 2, set: () => {} }, null, 1);
+
+  assert.equal(spec.command, true);
+  assert.deepEqual(Array.from(bw.parseWrite([0x3B, 0x01, 0x03, 0x01], spec)), [0x01, 0x03, 0x01]);
+});

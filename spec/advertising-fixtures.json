@@ -336,6 +336,71 @@
       ]
     },
     {
+      "name": "writable-command",
+      "description": "A writable 0x3B command. Its framing is <argument length><opcode><arguments>, so one entry accepts writes of two different lengths -- which is what the device side has to agree to.",
+      "valid": true,
+      "device_info_byte": "40",
+      "service_data": "40000bff013b",
+      "service_data_length": 6,
+      "objects": [
+        {
+          "object_id": "00",
+          "value": "0b",
+          "name": "packet_id"
+        },
+        {
+          "object_id": "ff",
+          "value": "013b",
+          "name": "declaration"
+        }
+      ],
+      "declaration": {
+        "entries": [
+          "3b"
+        ],
+        "characteristics": [
+          {
+            "entry": 1,
+            "object_id": "3b",
+            "uuid": "2faa0001-3b0b-4b1a-9e2a-b4c2952e62f2"
+          }
+        ],
+        "offered_entries": [
+          1
+        ],
+        "is_last_element": true
+      },
+      "expected_sensors": {
+        "packet_id": 11
+      },
+      "writes": [
+        {
+          "name": "turn-on",
+          "description": "Opcode 0x01 with no arguments: the length byte is zero.",
+          "entry": 1,
+          "uuid": "2faa0001-3b0b-4b1a-9e2a-b4c2952e62f2",
+          "object": {
+            "object_id": "3b",
+            "value": "0001",
+            "name": "command"
+          },
+          "payload": "3b0001"
+        },
+        {
+          "name": "step-up",
+          "description": "Opcode 0x03 takes one argument, so the same entry accepts three value bytes where the last write had two.",
+          "entry": 1,
+          "uuid": "2faa0001-3b0b-4b1a-9e2a-b4c2952e62f2",
+          "object": {
+            "object_id": "3b",
+            "value": "010301",
+            "name": "command"
+          },
+          "payload": "3b010301"
+        }
+      ]
+    },
+    {
       "name": "writable-level",
       "description": "A writable numeric entry: the shape of a dimmer level or a setpoint. Range and step come from the object's width and factor.",
       "valid": true,

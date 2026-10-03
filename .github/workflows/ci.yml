@@ -54,6 +54,26 @@ jobs:
         working-directory: ha
         run: python -m pytest -q
 
+  # The two checks the receiving ends run on a submission, run here instead so a
+  # failure is a red tick rather than a rejected pull request. Neither needs our
+  # dependencies: hassfest reads manifest.json, strings.json and the translations
+  # the way Home Assistant core does, and the HACS action reads the repository
+  # layout the way HACS does. The HACS action is pinned; hassfest publishes only
+  # `master`, so that one tracks whatever Home Assistant core currently requires
+  # -- which is the point of running it, and also means it can go red without us
+  # having changed anything.
+  validate:
+    name: Home Assistant and HACS validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Hassfest
+        uses: home-assistant/actions/hassfest@master
+      - name: HACS
+        uses: hacs/action@22.5.0
+        with:
+          category: integration
+
   javascript:
     name: Espruino module (lint + tests)
     runs-on: ubuntu-latest

@@ -155,6 +155,13 @@ MOISTURE = lambda pct: obj(  # noqa: E731
     0x14, round(pct * 100).to_bytes(2, "little"), "moisture"
 )
 BUTTON = lambda event: obj(0x3A, bytes([event]), "button")  # noqa: E731
+# 0x3B command: <argument length, low 5 bits><opcode><arguments>. Neither a
+# fixed width nor BTHome's ordinary length byte, which is the whole reason it
+# needs pinning here -- the reference device refused every one of these
+# writes while the receiver happily sent them (D-081).
+COMMAND = lambda opcode, *args: obj(  # noqa: E731
+    0x3B, bytes([len(args), opcode, *args]), "command"
+)
 TEXT = lambda s: obj(0x53, bytes([len(s)]) + s, "text")  # noqa: E731
 
 LIGHT_ID, POWER_ID, TEMP8_ID, MOISTURE_ID, BUTTON_ID, TEXT_ID = (
@@ -165,6 +172,7 @@ LIGHT_ID, POWER_ID, TEMP8_ID, MOISTURE_ID, BUTTON_ID, TEXT_ID = (
     0x3A,
     0x53,
 )
+COMMAND_ID = 0x3B
 UNKNOWN_ID = 0x99  # unassigned in BTHome: a type a receiver does not know yet
 
 
@@ -261,6 +269,33 @@ def build_fixtures() -> list[dict[str, Any]]:
                     BUTTON(0x01),
                 ),
                 access("long-press", "0x04 is long_press.", 1, BUTTON(0x04)),
+            ],
+        )
+    )
+
+    fixtures.append(
+        fixture(
+            "writable-command",
+            "A writable 0x3B command. Its framing is <argument length><opcode>"
+            "<arguments>, so one entry accepts writes of two different lengths "
+            "-- which is what the device side has to agree to.",
+            [PACKET_ID(11)],
+            entries=[COMMAND_ID],
+            expected_sensors={"packet_id": 11},
+            writes=[
+                access(
+                    "turn-on",
+                    "Opcode 0x01 with no arguments: the length byte is zero.",
+                    1,
+                    COMMAND(0x01),
+                ),
+                access(
+                    "step-up",
+                    "Opcode 0x03 takes one argument, so the same entry accepts "
+                    "three value bytes where the last write had two.",
+                    1,
+                    COMMAND(0x03, 1),
+                ),
             ],
         )
     )

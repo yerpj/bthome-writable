@@ -49,6 +49,11 @@ function entryIds(fixture) {
 function specFor(fixture, access) {
   const id = parseInt(fixture.declaration.entries[access.entry - 1], 16);
   if (LENGTH_PREFIXED.has(id)) return { id, variable: true, entry: access.entry };
+  // A command's length comes from the write itself, not from the declaration,
+  // so it must not be taken from `access.object.value` here: doing that would
+  // hand the parser the answer and let two writes of different lengths both
+  // pass without the framing ever being exercised (D-081).
+  if (id === 0x3b) return { id, command: true, entry: access.entry };
   return { id, length: hexToBytes(access.object.value).length, entry: access.entry };
 }
 

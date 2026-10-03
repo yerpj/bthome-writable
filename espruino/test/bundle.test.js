@@ -451,13 +451,37 @@ test("a mark written by earlier firmware still loads", () => {
 
 test("a device does not offer the counter report unless it is turned on", () => {
   /* It is a protocol addition still under discussion, and a device that does
-   * not offer it loses nothing that worked before. */
+   * not offer it loses nothing that worked before.
+   *
+   * Asked of `setup()` rather than of the shipped example, which now turns it
+   * on deliberately (D-080) -- this test used to read the example's choice and
+   * so stopped testing the default the moment that choice changed. */
   const result = run(load("encrypted-light-standalone.js"));
+  result.context.bw.setup({
+    advertise: [{ type: "light", set: () => {} }],
+    interval: 1000,
+    bindkey: "231d39c1d7cc1ab1aee224cd096db932",
+  });
   const uuids = Object.keys(result.characteristics).map((u) => u.toUpperCase());
 
   assert.ok(
     !uuids.some((u) => u.startsWith("2FAA1000")),
     `no counter characteristic by default, got ${uuids.join(", ")}`
+  );
+  assert.ok(uuids.some((u) => u.startsWith("2FAA0001")), "but the entry is there");
+});
+
+test("the encrypted example offers the counter report, because it must", () => {
+  /* Its device resumes up to 64 counters ahead of the receiver on every reboot
+   * (D-078 fault 1), and the receiver now asks by default (D-080). An example
+   * that did not answer would demonstrate the silent failure rather than the
+   * mechanism. */
+  const result = run(load("encrypted-light-standalone.js"));
+  const uuids = Object.keys(result.characteristics).map((u) => u.toUpperCase());
+
+  assert.ok(
+    uuids.some((u) => u.startsWith("2FAA1000")),
+    `expected a counter characteristic, got ${uuids.join(", ")}`
   );
 });
 

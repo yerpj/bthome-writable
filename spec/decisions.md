@@ -3194,7 +3194,7 @@ reverting. The Espruino harness gained a `Storage` fake, which is what let a
 reboot be expressed at all.
 
 
-## D-070 — The prose said things the code did not  [DECISION, owner for §4.4]
+## D-070 — The prose said things the code did not  [DECISION, ruled]
 
 **Status:** seven corrections made 2026-09-23, one spec question handed over.
 Found by the independent review of 2026-09-22, which was asked to check a few
@@ -3227,6 +3227,12 @@ stack negotiated. Options, none of which I may take unilaterally:
 2. Drop it, and state the ceiling as the MTU in force rather than one to seek.
 3. Keep it as a device-side SHOULD instead, since a peripheral *can* request an
    MTU and Espruino does.
+
+**Ruled: option 2** (D-073, agreed with Gordon). §4.4 no longer asks anyone to
+negotiate anything; it states the ceiling as the MTU in force. *"The maximum
+write size should be whatever MTU was negotiated."* The `[DECISION]` marker in
+this entry's own heading outlived the ruling by ten days, which is why
+`tools/tests/test_stale_markers.py` now counts them.
 
 **What made this possible.** Every one of these passed review because prose is
 not tested. The measurement figures now have `summarise_latency` to regenerate
@@ -3650,6 +3656,11 @@ by default** once Gordon has ruled: a device that does not offer the
 characteristic is unaffected, and one that does stops silently losing commands
 after every reboot.
 
+> **Since ruled on, by the owner rather than by Gordon** — D-080, 2026-10-01.
+> Turning it on immediately exposed a fault that had made it do nothing at all:
+> the first look is defeated by the receiver's own cached GATT table. Gordon has
+> still not said whether the characteristic should be normative.
+
 ### Fault 2 — a Bluetooth proxy with a stale table acknowledges writes it never delivers
 
 An hour went into this one. Home Assistant reported a successful write — entry
@@ -3924,3 +3935,118 @@ While it is open, the remedy is the button of D-072, and the user has to be told
 it exists -- `docs/home-assistant-install.md` now says so, and no longer claims
 an automatic resynchronisation after two failures. There never was one:
 `resynchronise()` has exactly one caller, and it is the button.
+
+## D-081 -- a status survey, and the five things it found  [DECISION, ruled]
+
+**Status:** 2026-10-03. An independent survey was asked where the project
+actually stands against §7's phases. The useful part was not the status; it was
+that reading the two implementations side by side found a defect neither
+suite could see.
+
+### Fault -- `0x3B command` was offered by the receiver and impossible on the device
+
+`PLATFORMS.md` said *"`0x3B command` **is offered**, which version 1 could not
+do"*, and the receiver does offer it: five buttons, encoding a bare opcode as
+`<0><opcode>` and a stepped one as `<1><opcode><step>`.
+
+The device could accept **neither**. Its framing is
+`<argument length, low 5 bits><opcode><arguments>`, which is neither a fixed
+width nor BTHome's ordinary length byte, and the module had only those two
+shapes. Measured before the fix:
+
+```
+{id:0x3B, variable:true} + [3B 01 03 01] -> trailing_bytes
+{id:0x3B, variable:true} + [3B 00 01]    -> trailing_bytes
+{id:0x3B, length:2}      + [3B 01 03 01] -> trailing_bytes
+```
+
+So **no declaration existed** that made a command writable: `variable` refused
+everything, and a fixed length refused whichever shape it was not. The module
+now knows the framing from the object ID alone -- `{id:0x3B, set:...}`, no
+length, because the length is the specification's to decide -- and reads only
+the low five bits, BTHome reserving the upper three.
+
+**Why neither suite saw it.** Each tested its own side against its own
+expectations: the receiver's five buttons encode correctly, and the device
+parses correctly everything it was asked about. Nothing made them meet, because
+the shared fixtures had no command in them. There is one now
+(`writable-command`, two writes of different lengths through one entry), and
+the JS fixture test no longer derives a command's length from the write it is
+about to parse -- doing that handed the parser the answer.
+
+### Drift -- the signed-object table was three ids behind
+
+`SIGNED_IDS` in the module is a hand-kept copy of `bthome-ble`'s, and `0x59`,
+`0x5A`, `0x5B` had been added upstream without it: every negative value of
+those types would decode as a large positive one. Invisible because the
+upstream `BTHome` module has no type name reaching them, so only a device
+declaring one by raw id would have met it.
+
+Completed, and `tools/tests/test_signed_ids.py` now reads the table out of the
+JavaScript and compares it with the library both ways. The Python side avoids
+this class of bug by never copying the table; the JavaScript cannot import it,
+so the next best thing is a test that fails when the copy falls behind.
+
+### Documentation -- a correction that was wrong twice
+
+`PLATFORMS.md` carried *"Corrected 2026-09-23"*, attributing its object counts
+to `bthome-ble` 3.9.2 and stating that the metadata objects `0xF0`-`0xF2` *"are
+not in the library"*. Recounted:
+
+| library | objects | `0xF0`-`0xF2` |
+|---|---|---|
+| 3.22.1 (integration) | 92 | absent |
+| 3.24.0 (tools) | 95 | **present** |
+
+The counts were right for 3.22.1, not 3.9.2; and the ids were added later
+rather than never present, so the earlier total of 95 had been right for a
+library newer than the one it named. This is the third instance of D-070's
+disease -- prose is not tested -- and the second where the *correction* was the
+error.
+
+### Stale markers
+
+A `[DECISION]` marker claims someone still has to choose. Found claiming it
+falsely: D-070's own heading, ten days after §4.4 was settled by D-073;
+`PLATFORMS.md` heading a question `Open:` that Gordon had ruled out of scope;
+and five in the working document for mechanisms version 2 deleted. All now
+carry their disposition, and `tools/tests/test_stale_markers.py` requires every
+marker outside this archive to say what became of it or be listed as genuinely
+open -- which is two: the plaintext-downgrade policy, and the markers' own
+definition.
+
+**And the working document itself.** `CLAUDE.md` names it the source of truth
+while its §3 and §7 describe version 1 -- same-packet rule, write-all, no-op
+conventions, confirmation by advertising, all deleted. Rewriting it is the
+owner's; until then it opens with a warning naming `PROTOCOL.md` instead, and a
+test keeps the warning there.
+
+### Ruled: battery is out of scope
+
+The dossier had carried *"the experiment to run before submitting"* since
+D-055. The owner's ruling: *"laisse tomber la mesure de consommation, ce n'est
+pas le role de ce module"*.
+
+And on reflection that is the stronger answer, not a concession. A BTHome
+sensor already chooses its advertising interval; a writable one chooses the
+same way, and the downlink neither raises it nor needs it raised, because the
+idle interval does not set command latency (D-024, D-060). What the module adds
+is bounded, configurable and only after someone connected: 100 ms for 30 s. A
+figure for one coin cell would describe that board's advertising budget. The
+objection is now answered in the dossier by argument, and says so rather than
+implying a measurement exists.
+
+### What the survey did not change
+
+`raw` `0x54` is reported `offered` by the receiver and built by no platform, so
+a device declaring it gets no entity and no diagnostic. **Left alone by the
+owner's ruling**, and recorded here rather than silently: it is a cosmetic
+inconsistency in one method's return value, not a path anything takes.
+
+### And the CI gained the two checks the receiving ends run
+
+`hassfest` and `hacs/action`, so a submission fails here rather than on
+someone else's pull request. Adding hassfest immediately found the manifest's
+keys unsorted -- `bluetooth` after `name` instead of first -- which is what
+that check exists for. Neither could be run locally; the first CI run is the
+proof, not this entry.

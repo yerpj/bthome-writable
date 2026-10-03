@@ -133,7 +133,7 @@ review. Still deliberately out of scope: pairing a level with its light
 | Objection | Answer | Source |
 |---|---|---|
 | A connection is too slow for a good experience (#146) | 1.7 s click to action at best, of which 16 ms is the write itself; measured again on version 2 through an ESP32 proxy | `decisions.md` D-013, D-024, D-049; `docs/figures/latency.png` |
-| It costs battery: the device must advertise fast | **Not answered.** This project has measured no power at all (D-055). What is measured is latency, which is a different question: the idle interval does not set command latency, because the device advertises fast only during and after a connection. But §7 asks for connectable advertising at all times and the module advertises at 100 ms for 30 s after every disconnect, and nothing here says what that costs a coin cell. **The experiment to run before submitting** | D-014, D-024, D-055 |
+| It costs battery: the device must advertise fast | **The idle interval is the device's choice, and this extension does not change it.** A BTHome sensor already picks an advertising interval, and a writable one picks the same way: `interval` is the application's, and the downlink neither raises it nor needs it raised, because the idle interval does not set command latency (D-024). What the module adds is bounded and visible: 100 ms for 30 s after a disconnect, both configurable, and only after someone has actually connected. The absolute figure for a given coin cell is a property of that device's advertising budget, not of this mechanism — **out of scope by the owner's ruling of 2026-10-03** (D-081). What this project does owe is the latency evidence showing the fast window is not needed at idle, and that exists | D-014, D-024, D-055, D-060, D-061 |
 | Unknown objects break existing receivers | bthome-ble skips an unknown ID and stops parsing; placing new objects last loses nothing for existing installs. Tested in CI | D-005 |
 | Writes are a security hole | BTHome's own AES-CCM, all three directions (advertising, write, read), the direction bound into the nonce so no recording replays as another; vectors pass on-device on two boards; HA warns once per unencrypted device, and refuses to downgrade a keyed device to plaintext | D-033, D-041, D-042, D-045 |
 | It only works on one bench | Two boards (Puck.js, nice!nano), one HA install, one adapter and one ESP32 proxy. **Weak point** — needs testers outside this bench before submission | `docs/try-it.md` |
@@ -162,3 +162,10 @@ Claims to avoid, because they were wrong once in public:
   write drove the LED — 114 → 601 → 111 lux, read back out of a sealed packet
   (D-063, D-064). It also found a release blocker there, and fixed it.
 - Re-run the prior-art search; update §1 with anything new.
+- ~~Measure what the mechanism costs a coin cell~~ — **out of scope** (D-081,
+  2026-10-03). The advertising interval belongs to the device's application, as
+  it does for any BTHome sensor; the only thing this extension adds to it is a
+  bounded fast window after a connection, and the latency campaign already shows
+  that window is not needed at idle. A number for one coin cell would describe
+  that board's advertising budget rather than this mechanism. The objection is
+  answered in §3 by argument, not by measurement, and says so.

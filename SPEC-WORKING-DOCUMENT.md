@@ -6,6 +6,24 @@
 > v0.4 changes (Gordon's second reply, Sep 2026): **same-packet rule** replaces the list-vs-bitmask debate (solves rotation AND multi-instance in one move); write semantics settled as **write-all in packet order**; no-op conventions defined (len-0 / event "none"); encryption direction implemented via the **BTHome device-information byte** (0x41 advertising / 0xFF writes) — no new nonce field; write-only entities are stateless in HA; roadmap confirmed as PoC-first, then approach BTHome for ID reservation.
 > Items marked **[DECISION]** need confirmation by the project owner (or Gordon where noted) before the corresponding task starts. Items marked **[HW]** require physical hardware and are handed back to the owner. Items marked **[VERIFY]** are cheap checks that gate a design choice — do them early.
 
+> ## ⚠ Sections 3 and 7 describe protocol version 1, which is abandoned
+>
+> **The live specification is [`spec/PROTOCOL.md`](spec/PROTOCOL.md), version
+> 2.0-draft.6.** The v0.4 note above still announces the same-packet rule,
+> write-all in packet order, and len-0/event-"none" no-ops. Version 2 replaced
+> all three: a length-prefixed `0xFF` declaration, **one GATT characteristic per
+> entry**, one object per write, and no no-op conventions at all (D-048, D-059,
+> D-073). Confirmation by refreshed advertising is gone too — a writable value
+> is not advertised (§2.3).
+>
+> What is still current here: §1 (purpose), §2 (core model), §6 (risks) and the
+> **phase structure** of §7. What is not: several of §7's acceptance criteria
+> name mechanisms that no longer exist, so they have no referent to test
+> against. Which tasks are actually done, judged against what exists rather
+> than against this text, is recorded in D-081.
+>
+> Read `spec/PROTOCOL.md` and `spec/decisions.md` for anything normative.
+
 ---
 
 ## 1. Purpose
@@ -48,7 +66,7 @@ Three deliverables:
 - **Placement:** the declaration SHOULD be the **last** element in the service data, so parsers that stop at an unknown object ID (core `bthome-ble` behavior **[VERIFY — T0.5]**) still parse all sensors before hitting it. If `bthome-ble` tolerates/skips unknown IDs, placement is free; if it errors loudly, fall back to the manufacturer-data container below.
 - Capacity constraint (normative): declaration + all writable objects must fit one 31-byte advertising payload alongside the BTHome header. Fine for realistic devices (writable objects are few); state the limit explicitly in the spec.
 - Extension headroom: bitmask limited to 8 writable objects per device for v1; a second bitmask byte can extend later (flagged by declaration length).
-- **Fallback container** (if T0.5 fails, or until BTHome tolerates 0xFF): identical `<tag><bitmask>` payload in an Espruino manufacturer-data AD element **[DECISION — company ID / layout with Gordon]**. Payload byte-identical in both containers; parsing behind a single function per side so migration costs one function.
+- **Fallback container** (if T0.5 fails, or until BTHome tolerates 0xFF): identical `<tag><bitmask>` payload in an Espruino manufacturer-data AD element **[DECISION — moot: the fallback was never needed. `bthome-ble` tolerates the `0xFF` declaration (D-005), so there is no manufacturer-data container.]**. Payload byte-identical in both containers; parsing behind a single function per side so migration costs one function.
 - **Upstream target:** after the PoC works, ask the BTHome maintainers to at minimum reserve the `0xFF` ID, ideally merge the spec (Gordon's plan, = T4.4).
 
 ### 3.2 Write-only entities (official pattern)
@@ -60,7 +78,7 @@ Writable objects with no natural uplink value (text display, buzzer/trigger) are
 
 ### 3.3 The write characteristic
 
-One primary service, one characteristic **[DECISION: final UUIDs — freeze before first release, never change after]**:
+One primary service, one characteristic **[DECISION — generated and in use (D-001), still formally provisional: `PROTOCOL.md` §9. Version 2 has one characteristic *per entry*, not one in total.]**:
 
 ```
 Service (128-bit):                       <to-generate>
@@ -74,7 +92,7 @@ Service (128-bit):                       <to-generate>
   - Event-class objects (button-like triggers): BTHome's existing "none" event value (0x00) = no-op — reuses BTHome's own semantics.
 - MTU: HA requests MTU ≥ 64; devices SHOULD support long writes (text payloads). Worst case at default MTU 23 (20-byte payload) documented.
 - Unknown/extra trailing bytes: reject the write (unlike advertising parsing, writes are a closed format — strictness is safety here).
-- Example (Gordon's, single light): packet `D2FC 40 0161 1E01 FF02` → battery 97 %, light on, light writable (bit 1 of the two objects — bit numbering to pin down in T0.2 **[DECISION: bit 0 = first object, recommended]**); HA writes `1E00` → light off → device re-advertises `1E00`.
+- Example (Gordon's, single light): packet `D2FC 40 0161 1E01 FF02` → battery 97 %, light on, light writable (bit 1 of the two objects — bit numbering to pin down in T0.2 **[DECISION — moot: the bitmask is gone. Version 2 declares object IDs, length-prefixed (D-002, D-073).]**); HA writes `1E00` → light off → device re-advertises `1E00`.
 
 ### 3.4 Encryption
 
@@ -127,8 +145,8 @@ bw.setup({
 - **Matcher:** primary path (0xFF in BTHome service data) → match UUID `0xFCD2` like core BTHome, config flow inspects the advertisement and **aborts `not_supported`** when the declaration is absent (standard shared-UUID mechanism; users never see plain BTHome devices). Fallback container (manufacturer data) → match directly on `manufacturer_id`. Keep both behind the single parsing function of 3.1.
 - Config flow: discovery → confirm → bindkey prompt if the advertising is encrypted (parse via the `bthome-ble` library — dependency, do not reimplement) → unencrypted-actuator warning when applicable.
 - Entity mapping from writable objects → platforms: on/off-class → `switch`/`light`, percentage/level-class → `number`/`light` brightness, text → `text` (stateless when write-only), event/trigger-class → `button`. Table written in T2.1 against the BTHome object list; unknown writable IDs ignored with a debug log.
-- State model: read-write entities are advertising-driven with optimistic update → confirm → revert-on-timeout (default 5 s **[DECISION]**); write-only entities are stateless (3.2).
-- Write composition: coalescing queue per device (latest value per position); each flush produces one write-all payload (3.3); `establish_connection()` (bleak-retry-connector), MTU ≥ 64, write, disconnect. Global simultaneous-connection cap (default 2 **[DECISION]**) for ESPHome proxy slot safety.
+- State model: read-write entities are advertising-driven with optimistic update → confirm → revert-on-timeout (default 5 s **[DECISION — moot: confirmation by refreshed advertising is gone; a writable value is not advertised, §2.3 of `PROTOCOL.md`. D-007 recorded the timeout this replaced.]**); write-only entities are stateless (3.2).
+- Write composition: coalescing queue per device (latest value per position); each flush produces one write-all payload (3.3); `establish_connection()` (bleak-retry-connector), MTU ≥ 64, write, disconnect. Global simultaneous-connection cap (default 2 **[DECISION — settled: D-003, and still the default. Not user-configurable: there is no options flow, D-070.]**) for ESPHome proxy slot safety.
 - Device registry: `DeviceInfo(connections={(CONNECTION_BLUETOOTH, mac)})` → merges with the core BTHome device card.
 - Availability: advertising presence callbacks (habluetooth), same timeout as BTHome.
 - Dependencies: `habluetooth`, `bleak-retry-connector`, `cryptography`, `bthome-ble`.
@@ -158,7 +176,7 @@ bw.setup({
 
 ### Phase 0 — Foundations (no hardware)
 - **T0.1 Repo & scaffolding.** `/spec`, `/espruino`, `/ha`, `/test-vectors`; CI (Python lint+pytest, JS lint). → AC: CI green on skeletons.
-- **T0.2 Spec v1-draft → `/spec/PROTOCOL.md`.** Formalize section 3 (same-packet rule, bitmask numbering, no-op conventions, nonce device-info values); generate UUIDs; resolve remaining [DECISION] items with owner. → AC: reviewed, tagged, linked in discussion espruino#8013.
+- **T0.2 Spec v1-draft → `/spec/PROTOCOL.md`.** Formalize section 3 (same-packet rule, bitmask numbering, no-op conventions, nonce device-info values); generate UUIDs; resolve remaining [DECISION] items with owner. — **done**; the spec is now `spec/PROTOCOL.md` 2.0-draft.6. → AC: reviewed, tagged, linked in discussion espruino#8013.
 - **T0.5 (early) `bthome-ble` tolerance check [VERIFY].** Unit-level: feed payloads with trailing `0xFF` declaration to the `bthome-ble` parser; document behavior; record container decision. → AC: written result in `/spec/decisions.md`; risk #1 closed.
 - **T0.3 Crypto test vectors.** Generator + `test-vectors.json` (≥ 10 vectors both directions, cross-direction replay negative test, edge counters), verified against an independent AES-CCM implementation. → AC: cross-checked.
 - **T0.4 Advertising fixtures.** Sample payloads (hex): declaration placements, multi-instance (several same-ID objects), write-only empty values, rotation with same-packet rule, encrypted. Matching write-all payloads incl. no-ops. → AC: fixtures in `/spec`, used by both test suites.
