@@ -1,6 +1,7 @@
 # Figures
 
-For the espruino#8013 discussion and anything else that needs to show the
+For the espruino#8024 discussion — this project's topic — and anything else that
+needs to show the
 mechanism rather than describe it.
 
 | File | What it shows |
@@ -19,8 +20,8 @@ chrome --headless --disable-gpu --hide-scrollbars \
 ```
 
 The byte strings in `round-trip.png` are copied from the bench, not composed:
-`40 00 f0 01 64 ff 1e 1e 1e` is a Puck.js running `three-lights.js`, where
-`ff 1e 1e 1e` is the declaration -- three `light` entries, served on
+`40 00 f0 01 64 ff 03 1e 1e 1e` is a Puck.js running `three-lights.js`, where
+`ff 03 1e 1e 1e` is the declaration -- three `light` entries, served on
 characteristics `2FAA0001` to `2FAA0003`. None of their values are on the air.
 The latency figures come from the T3.2 runs and from D-049, both recorded in
 `spec/decisions.md`.

@@ -103,8 +103,9 @@ evidence rather than a guess (`decisions.md` D-083).
 
 You will get one warning per device, once:
 
-> *`<device>` exposes 1 writable object(s) without encryption: any device in
-> radio range can operate them.*
+> *`<device>` exposes 1 writable entry without encryption: any device in radio
+> range can operate them. Set a bindkey on the device and reconfigure it here
+> to seal both directions (PROTOCOL.md section 5)*
 
 It means what it says. Without a bindkey the write characteristic is open to
 anyone in range — which for an LED on your desk is fine, and for a lock is not.
@@ -141,7 +142,14 @@ Home Assistant will not silently downgrade to plaintext, because that is what an
 attacker would want it to do, and it will not send a plaintext write to a sealed
 device, because the device would discard it without a word (D-042, D-079).
 
-Fix it with **Settings → Devices & services → the device → Reconfigure**: type
+Home Assistant asks for the key on its own once two advertisements in a row
+fail to decrypt — a notification saying the integration needs reconfiguring,
+which is the same flow core `bthome` raises for the same reason. One failure is
+not enough: a stray packet from a neighbour on the same address should not
+raise anything.
+
+You can also fix it without waiting, with **Settings → Devices & services →
+the device → Reconfigure**: type
 the key, or leave the field empty if the device no longer uses encryption. The
 key is checked against the device's live advertising before it is accepted, so a
 typo is caught there. Nothing else changes — the entities keep their names, and

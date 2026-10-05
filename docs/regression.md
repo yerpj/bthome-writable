@@ -1,8 +1,12 @@
 # The reliability and latency guard
 
-Three test suites check bytes and branches: 241 in `tools`, 123 in `ha`, 211 in
-`espruino`. Not one of them could have caught the changes that moved this
-project's numbers most.
+Three test suites check bytes and branches — `tools`, `ha` and `espruino`; the
+README says how to run them. Not one of them could have caught the changes that
+moved this project's numbers most.
+
+(They used to be counted here, and the count was three releases out of date by
+the time anyone looked. A number in prose that nothing checks is a number that
+is wrong, so this one is gone rather than guarded — D-084.)
 
 - The write batching held a second command behind the first for 1.5 s. Every
   test passed. It took a hardware campaign to see it (D-059, D-060).
@@ -14,6 +18,8 @@ project's numbers most.
 
 Those are the two things a user actually feels: **does a command arrive, and
 when**. This guards them.
+
+Both need `HA_URL` and `HA_TOKEN` in the environment (`docs/shared-bench.md`).
 
 ```
 python -m tools.bench_lock acquire --note "regression run"

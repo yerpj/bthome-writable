@@ -19,7 +19,7 @@ Best done on a board that is not already set up, and ideally by someone else.
 | # | Step | Expected | Result |
 | --- | --- | --- | --- |
 | 1 | Paste `single-light-standalone.js` into the Web IDE, send | console prints the address and `writable entries: [ 30 ]` | |
-| 2 | Scan, or `tools.bthome_write --payload 1e01` | LED on, the write acknowledged in milliseconds | |
+| 2 | Scan, or `python -m tools.bthome_write --address <mac> --payload 1e01` | LED on, the write acknowledged in milliseconds | |
 | 3 | Install via HACS, restart | *BTHome Writable* appears in HACS and in the integration list | |
 | 4 | Look at Devices & services | the board is offered without being asked for | |
 | 5 | Configure it | one switch, no questions beyond confirming | |
@@ -45,7 +45,7 @@ someone who knew too much.
 - **The Web IDE cannot send a single very large statement.** The bundles are
   flat rather than wrapped in a closure for exactly this reason. If you build
   your own and wrap it, it will truncate silently.
-- **The first command after a quiet period is slow** — five to seven seconds at
+- **The first command after a quiet period is slow** — two to three seconds at
   a one-second advertising interval. It is the battery trade, not a fault.
 - **An ESPHome proxy that is configured is not necessarily registered.** Check
   that Home Assistant actually lists it as a scanner before assuming it gives

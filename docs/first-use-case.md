@@ -84,13 +84,14 @@ echoed it back could not produce the second one.
 ## 3. What the device advertises, and what it accepts
 
 The advertised packet is exactly what the specification predicts, declaration
-last, and 13 bytes against a 24-byte budget (`spec/PROTOCOL.md` §2.3).
+last, and 13 bytes against a 24-byte budget (`spec/PROTOCOL.md` §2.4).
 
 A write is the concatenation of every writable object in packet order
 (§4.2). Here there is one, so a write is two bytes: `1E 01` or `1E 00`.
 
 Malformed writes were exercised against the device directly
-(`python -m tools.reject_matrix`). All four were rejected with the expected
+(`python -m tools.reject_matrix --address <mac>`). All four were rejected with
+the expected
 code, and **the advertised state was unchanged afterwards** — nothing was
 partially applied:
 
@@ -348,4 +349,5 @@ Home Assistant side: copy `custom_components/bthome_writable/` into
 own, or under *Add integration → BTHome Writable*.
 
 Full findings and reasoning: `spec/decisions.md` (D-001 to D-011). Open
-questions for the Espruino discussion: [espruino#8013](https://github.com/orgs/espruino/discussions/8013).
+questions for this project's Espruino topic: [espruino#8024](https://github.com/orgs/espruino/discussions/8024)
+(the design was converged in [espruino#8013](https://github.com/orgs/espruino/discussions/8013)).

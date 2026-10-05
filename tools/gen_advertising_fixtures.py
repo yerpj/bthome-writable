@@ -467,8 +467,9 @@ def main() -> None:
             "note": (
                 "A theoretical ceiling. Real devices spend more of the 31 bytes: "
                 "Espruino always advertises its manufacturer ID, and a local name "
-                "costs 2 + its length. Measured object budgets were 7 to 22 bytes "
-                "(PROTOCOL.md §2.4, decisions.md D-030, D-046)."
+                "costs 2 + its length. Measured service data accepted was 5 to "
+                "22 bytes "
+                "(PROTOCOL.md §2.4, decisions.md D-030, D-046, D-049)."
             ),
         },
         "fixtures": fixtures,

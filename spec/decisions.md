@@ -4375,3 +4375,127 @@ silent.** Faults 1, 2 and 5 are all that shape. A guard worth having compares
 us with something outside the project -- the library, the device, a light
 sensor -- because a test written from our own understanding shares our
 misunderstandings, and fault 1 is what that costs.
+
+## D-084 -- the documentation audit: the spec contradicted itself  [DECISION, ruled]
+
+**Status:** 2026-10-05. The owner asked for the whole repository's
+documentation to be brought up to date. A second neutral agent checked every
+factual claim in every document against the code, under the same rules as
+D-083: verify, do not trust; report, do not repair.
+
+### The one that matters -- §2.1 was contradicted by every illustration of it
+
+D-073 put a count byte in the declaration, agreed with Gordon. The normative
+rule was updated. **Every illustration of it was not**: all four worked
+examples of §8, the inline example in §2.2, one more in prose in §2.3, the
+size arithmetic in §2.4, the hardware-test procedure a tester compares real
+bytes against, and the figure offered for the Espruino discussion.
+
+```
+was:  40 00 09 01 61 FF 1E            is:  40 00 09 01 61 FF 01 1E
+was:  40 00 09 FF 1E 1E 53            is:  40 00 09 FF 03 1E 1E 53
+was:  the declaration costs 1 + n     is:  2 + n
+```
+
+So the document that asks BTHome to reserve an object ID taught its format
+wrongly in six places for twelve days, while `spec/advertising-fixtures.json`
+-- generated from the implementations, and normative by rule 7 -- carried the
+count byte the whole time. 648 tests passed throughout, because no test read
+the specification.
+
+**`tools/tests/test_spec_examples.py` now reads it.** Each §8 example is
+compared with the fixture it illustrates, byte for byte, and a second check
+walks the whole document for any declaration whose count does not match the
+object IDs after it. Written as a function rather than inline so the checker
+itself is exercised against the strings the document used to contain -- the
+first draft of it missed `... FF 1E` at the end of a line, which is exactly
+the shape of the historical mistake, and a guard that does not catch the bug
+it was written for is worse than none. It then found a sixth instance nobody
+had reported, `FF 57` in §2.3.
+
+### Two documents still taught version 1, one of them to agents
+
+**`CLAUDE.md`** named `SPEC-WORKING-DOCUMENT.md` as the source of truth and
+told every session to start by re-reading its §3 -- the abandoned protocol.
+Its own one-line description of the project was version 1 too: *"writes new
+values ... to a single GATT characteristic ... the refreshed advertising is
+the confirmation"*. Both of those are the opposite of version 2. An agent
+following those instructions would have implemented the wrong protocol, and
+the only reason none did is that the working document's banner (added in
+D-081) contradicted the file pointing at it.
+
+**`docs/discussion-status-2026-09-16.md`** described the bitmask, the
+write-all payload and advertising-as-confirmation as current, with no banner.
+It has one now, like `docs/first-use-case.md`.
+
+### A SHOULD the reference receiver deliberately disobeys
+
+§4.2 said *"Several writes to one device SHOULD share a connection."* D-059 is
+the owner's ruling that it must not, and D-060 measured why: a second command
+sat behind the first for 1.5 s. The spec kept the old SHOULD for six weeks
+after the ruling that reversed it. It now states one command per connection,
+and says what the earlier draft asked.
+
+### Commands that do not run, and figures that disagree
+
+| Where | What was wrong |
+|---|---|
+| `docs/walkthrough.md` | `tools.bthome_write --payload 1e01` -- no `python -m`, and `--address` is required |
+| `docs/first-use-case.md` | `python -m tools.reject_matrix` without the required `--address` |
+| `espruino/HARDWARE-TEST.md` | `reject_matrix` after a setup that installs `single-light.js`, whose state is `light`, while the tool defaults to `lamp.on` -- it would report a failure on a correct device |
+| `README.md` | POSIX venv paths in a Windows checkout, and a pip line naming `bthome-ble` again after the paragraph above it warns that doing so causes the version clash |
+| `docs/shared-bench.md` and others | **no document mentioned `HA_URL` or `HA_TOKEN`**, which four tools require and fail without |
+| `docs/measurements.md` | *"Every tool above takes `--address`"* -- two of them take `--device` |
+| `docs/espruino-quickstart.md` | the encrypted bundle called *self-contained* still `require`s `AESCCM`, a repo-local module the Web IDE cannot fetch: pasting it gives a device that advertises and throws on its first seal |
+
+Numbers that disagreed with their own evidence: the connect-time multiples
+(1.8× against tables whose minima are 2.0× and 1.9×), the first-command
+latency in the walkthrough (five to seven seconds against a baseline median of
+1.7 s -- the ninth decile quoted as the typical case), the three-light
+declaration (4 bytes, in the figure and in the measurements, against the 5 the
+same paragraph derives), `PLATFORMS.md`'s object counts still attributed to
+the library version the file itself says was the wrong answer, and the object
+budget stated as 7-22 when D-049 had measured 5.
+
+### Test counts: removed rather than guarded
+
+`docs/regression.md` and `ha/HARDWARE-TEST.md` both stated exact suite sizes
+and all four numbers were wrong. They are gone. A count in prose drifts on
+every test added, and the only cheap guard would have to collect from two
+virtualenvs that cannot import each other. **A number nothing checks is a
+number that is wrong**, so the claim was deleted instead of corrected -- what
+mattered in that sentence was never the count.
+
+### Undocumented, now documented
+
+- **`counterReport`** was absent from the module's own Options list and from
+  the quickstart, while D-080 made Home Assistant ask for it by default. A
+  reader following the quickstart built a device that could not answer.
+- **The reauthentication flow** (D-082) was not mentioned: the install guide
+  described Reconfigure but never said Home Assistant asks on its own.
+- Two of the eight examples appeared in no document.
+
+### And one more claim the code made and did not honour
+
+`MIN_MTU = 64`, logged as *"the protocol asks for 64"*, twelve days after
+§4.4 dropped that floor (D-073) -- and `_check_mtu`'s docstring said a large
+write *"is refused outright"* when the function only writes a debug line.
+Renamed `COMFORTABLE_MTU`, with both the message and the docstring saying what
+it actually is: the size above which anything this protocol sends certainly
+fits, and a note in the log rather than a refusal.
+
+### What this says about the method
+
+Every fault here is the same one as D-083's, moved one layer out: **prose is
+not tested, so it drifts in the direction nobody looks.** The pattern is
+sharpest in the declaration count byte -- the code was changed, the generated
+contract was regenerated, three test suites went on passing, and the document
+that teaches the format stayed wrong, because nothing in the project read it.
+
+The guards that work are the ones that compare a claim with something outside
+the claim: the §8 examples against the fixtures, `SIGNED_IDS` against the
+library (D-081), the nonce against `BTHomeData.get_nonce()` (D-083). The
+guards that do not exist are for prose that describes behaviour, and that is
+still most of `docs/`. Three audits have each found a documentation fault the
+previous two missed; the only durable answer is fewer unverifiable claims,
+which is why the test counts were deleted rather than fixed.

@@ -65,9 +65,9 @@
   <div class="card dev">
     <div class="what">1 — Ordinary BTHome advertising</div>
     <div class="why">Packet id and battery, as before, plus a declaration listing the object types this device accepts writes for — here three lights.</div>
-    <code>40 <i>00 f0</i> <i>01 64</i> <b>ff 1e 1e 1e</b></code>
+    <code>40 <i>00 f0</i> <i>01 64</i> <b>ff 03 1e 1e 1e</b></code>
     <div class="why" style="margin-top:6px">
-      <b style="color:#b3261e">ff 1e 1e 1e</b> → entries 1, 2, 3, served on 2FAA0001…0003.
+      <b style="color:#b3261e">ff 03 1e 1e 1e</b> → entries 1, 2, 3, served on 2FAA0001…0003.
       Last in the service data, so any BTHome receiver skips it; nothing else changes.
     </div>
   </div>
@@ -83,7 +83,7 @@
   <div class="card dev" style="grid-row:3">
     <div class="what">4 — Applies it, and acknowledges</div>
     <div class="why">The write response says the bytes arrived; the second light going out says what they did. The advertising is unchanged but for the packet id — a written value is never advertised.</div>
-    <code>40 <i>00 f3</i> <i>01 64</i> ff 1e 1e 1e</code>
+    <code>40 <i>00 f3</i> <i>01 64</i> ff 03 1e 1e 1e</code>
   </div>
   <div class="arrow">
     <div class="label">one GATT write</div>
@@ -98,6 +98,6 @@
 
 <div class="foot">
   <div><b>1.7 s</b> click → action, of which 16 ms is the write</div>
-  <div><b>4 bytes</b> on the air for three writable lights, and none of their values</div>
+  <div><b>5 bytes</b> on the air for three writable lights, and none of their values</div>
   <div><b>AES-CCM</b> both directions, BTHome's own, when a bindkey is set</div>
 </div>

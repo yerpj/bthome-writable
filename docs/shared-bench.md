@@ -13,6 +13,22 @@ one of each. Home Assistant's configuration is reachable over SMB at
 
 ## The rule
 
+## Anything that talks to Home Assistant needs two environment variables
+
+`tools.regression`, `tools.ha_bench`, `tools.ha_probe` and the latency sweeps
+read `HA_URL` and `HA_TOKEN` from the environment and fail without them. No
+document said so until 2026-10-05, which made every command block below look
+like it would work from a clean shell.
+
+```sh
+export HA_URL=http://<your-home-assistant>:8123
+export HA_TOKEN=<a long-lived access token>
+```
+
+The token is read from the environment and sent only to `HA_URL`; it is never
+read from a file in the repository. On this bench both live in `.ha-env`, which
+is gitignored -- `source .ha-env` before anything in this document.
+
 **Reads are always free. Writes are serialised by a lock.**
 
 A read is anything that only observes: `python -m tools.ha_probe`, reading the

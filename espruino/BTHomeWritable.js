@@ -52,7 +52,16 @@ Options:
   maxServiceData what the radio will really accept, in bytes. S2.4's arithmetic
                  says 24 and every measured radio takes less: a Puck.js 17, or
                  20 with showName false; a nice!nano 7, or 22 with showName
-                 false. Set it and the packet is checked at setup.
+                 false. On 2v29.396 the nice!nano takes 5 with its name and 20
+                 without, because the 16-bit UUID is emitted again (D-049).
+                 Set it and the packet is checked at setup.
+  counterReport  offer the counter report of §5.6 at 2FAA1000 (default false,
+                 and only with a bindkey). Without it this device resumes its
+                 write counter ahead of the receiver after every restart and
+                 silently refuses writes until the receiver catches up (D-078);
+                 with it the receiver asks instead of guessing. Home Assistant
+                 asks by default, so a device that does not offer it simply
+                 keeps the old behaviour.
   onError        called with a rejected write's error
 
 Everything above the DIVIDER is pure JS - no NRF, no I/O - and runs under Node,

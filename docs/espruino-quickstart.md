@@ -14,9 +14,10 @@ board, and paste the whole of
 [`espruino/dist/single-light-standalone.js`](../espruino/dist/single-light-standalone.js)
 into the right-hand pane. Send it.
 
-That file is generated and self-contained: the `BTHomeWritable` module is
-inlined into it, so there is nothing else to install. `require("BTHome")` is
-resolved by the Web IDE from Espruino's own module library.
+That file is generated with the `BTHomeWritable` module inlined, so there is
+nothing of this project to install. `require("BTHome")` is resolved by the Web
+IDE from Espruino's own module library. (The encrypted example needs one more
+module -- see the note under *Other examples*.)
 
 The console should answer with the board's address and which object types it is
 offering writes for — `30` is `0x1E`, BTHome's `light`:
@@ -72,7 +73,7 @@ announces itself; there is nothing to type.
 
 ## 4. Now make it your own device
 
-The example is thirty lines. The part that matters:
+The example is forty lines, most of them comment. The part that matters:
 
 ```js
 var bw = require("BTHomeWritable");
@@ -102,7 +103,7 @@ Each entry is one BTHome object.
   itself: a knob, a button, a schedule. Its characteristic becomes readable, the
   device advertises BTHome's settings revision (`0x65`), and your code calls
   `bw.changed()` after a local change so receivers read it again.
-  `espruino/examples/button-light.js` is the whole pattern in forty lines.
+  `espruino/examples/button-light.js` is the whole pattern in fifty-four lines.
 
 Reach for `get` and `set` only when something other than a receiver can change
 the value. A light that only Home Assistant switches needs no readback: a
@@ -145,8 +146,10 @@ front:
 - **Your board's firmware needs AES.** Most official Espruino builds have it;
   some custom ones do not. `require("crypto").AES` tells you in one line.
 - **Encryption costs advertising space.** The counter and the MIC take eight
-  bytes, and this radio's real limit is lower than §2.3's arithmetic suggests
-  (D-030). If `setup()` reports `advertising_rejected`, drop an object.
+  bytes, and this radio's real limit is lower than §2.4's arithmetic suggests
+  (D-030). If `setup()` reports `advertising_rejected`, try `showName: false`
+  first — the local name shares those 31 bytes and costs 3 on a Puck.js and the
+  whole name on a nice!nano — and drop an object if that is not enough.
 
 ## Other examples
 
@@ -156,10 +159,20 @@ front:
 | `light-loop.js` | The LED plus the board's own light sensor, so a receiver sees the write had a *physical* effect rather than an echo. |
 | `three-lights.js` | Three objects sharing one BTHome ID, told apart by entry number. |
 | `button-light.js` | A light the board's own button also switches: readable characteristic, settings revision, `bw.changed()`. |
-| `encrypted-light.js` | The same, sealed with a bindkey. |
+| `encrypted-light.js` | The same, sealed with a bindkey, and offering the counter report (`counterReport: true`). |
 | `oled-text.js` | A writable `text` object driving an SSD1306. |
+| `display-text.js` | The same idea without a screen: the text is printed to the console, so the write path can be followed on a board with no display. |
+| `light-loop-no-led.js` | `light-loop.js` with the write driving no pin, to separate the radio's cost from the LED's when a coin cell stalls a write (D-052). |
 
-Each has a self-contained build under `espruino/dist/`.
+Each has a build under `espruino/dist/` with `BTHomeWritable` inlined.
+
+**`encrypted-light-standalone.js` is the exception to "paste and go":** it still
+calls `require("AESCCM")`, which lives in this repository (`espruino/AESCCM.js`)
+and is not something the Web IDE can fetch from espruino.com. Either send it with
+`python -m tools.espruino_deploy --address <mac> --app
+espruino/examples/encrypted-light.js`, which uploads both modules to Storage, or
+paste `AESCCM.js` into Storage yourself first. Pasting the bundle alone gives a
+device that advertises and then throws on its first seal.
 
 ## When something does not work
 

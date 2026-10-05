@@ -97,7 +97,16 @@ DEFAULT_MAX_CONNECTIONS: Final = 2
 """A typical ESPHome proxy offers three slots; two leaves room for an Espruino
 UART/Web-IDE session (decisions.md D-003)."""
 
-MIN_MTU: Final = 64
+COMFORTABLE_MTU: Final = 64
+"""Above this, a write of any size this protocol produces certainly fits.
+
+Not a requirement. §4.4 *used* to ask receivers to negotiate at least 64 bytes
+and that was dropped (D-073): `bleak` exposes no MTU-request API on BlueZ, so
+the SHOULD was unimplementable on the platform Home Assistant runs on. The
+number survives only as the threshold below which a large write is worth a
+line in the log, and it was called `MIN_MTU` -- and logged as "the protocol
+asks for 64" -- for twelve days after the protocol stopped asking (D-084)."""
+
 DEFAULT_MTU_PAYLOAD: Final = 20
 """What fits in a write at BLE's default 23-byte MTU. Most writes are a couple
 of bytes, so the MTU is only worth asking about above this."""

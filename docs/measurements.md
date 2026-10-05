@@ -45,7 +45,8 @@ channel 38 as well.
 
 This is not a footnote. A device at −66 dBm should have 24 dB of margin against a
 BLE receiver's −90 dBm sensitivity, yet at that level a first command took five
-times as long as at −44 dBm (§ below, and D-056). A quieter site will do better
+times as long as at −44 dBm (D-056, from `docs/data/tx-power-puck.json`). A
+quieter site will do better
 than these figures; a site with access points spread over channels 1, 6 and 11
 will do worse. Treat the numbers here as this building's, not the protocol's.
 
@@ -142,7 +143,7 @@ dial that moves this number, and it moves it proportionally: 0.31 s at 100 ms,
 12.34 s at 5 s on the Puck.
 
 **It costs more than one advertising event, consistently.** As a multiple of the
-interval the median connect time sits at **1.8–3.2× on the Puck and 1.8–4.2× on
+interval the median connect time sits at **2.0–3.2× on the Puck and 1.9–4.2× on
 the nice!nano**, with no interval where either device managed one. A receiver
 does not listen continuously: it scans with a duty cycle and divides its
 attention across the three advertising channels, so several of a device's
@@ -283,7 +284,7 @@ a tenth of a millisecond, and nothing was lost on either side.
 
 ### What this measurement cannot see, and it matters
 
-**The device acknowledges a write before it decrypts it.** That is §3, and it is
+**The device acknowledges a write before it decrypts it.** That is §4.2, and it is
 deliberate: the GATT layer answers, and only then does the module unseal the
 payload, check the counter and apply the value. So the AES-CCM cost on the
 device falls *after* the acknowledgement this campaign times, in the window
@@ -360,9 +361,8 @@ measured with `tools/adv_budget.py` or by bisection on the device.
 | nice!nano 2v29.396, `showName:false` | 20 bytes | | D-049 |
 
 For scale: a declaration costs one byte per writable entry plus two — the
-`0xFF` and the count — and
-version 2 advertises no writable values at all. Three writable lights are 4
-bytes.
+`0xFF` and the count — and version 2 advertises no writable values at all.
+Three writable lights are 5 bytes: `ff 03 1e 1e 1e`.
 
 ## 6. Encryption cost, on the device
 
@@ -394,7 +394,9 @@ integration: nothing here can make a device grey out faster.
 
 ## Reproducing any of this
 
-Every tool above takes `--address` and nothing else that matters, and every one
+Most of the tools above take `--address`; `tools.regression` and
+`tools.latency_sweep_write` take `--device` instead, naming a board from
+`tools/devices.py`. Every one
 of them is safe to run against a device someone else is using except for the
 sweep in §1, which changes the device's advertising interval. Take the bench
 lock first (`docs/shared-bench.md`):

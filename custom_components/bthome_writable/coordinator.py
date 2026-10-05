@@ -25,13 +25,13 @@ from .const import (
     AUTHENTICATION_FAILURES_BEFORE_REAUTH,
     BTHOME_SERVICE_UUID,
     CHALLENGE_LENGTH,
+    COMFORTABLE_MTU,
     COUNTER_RESTART_CEILING,
     COUNTER_STRIDE,
     COUNTER_UUID,
     DEFAULT_MAX_CONNECTIONS,
     DEFAULT_MTU_PAYLOAD,
     EVENT_WRITE,
-    MIN_MTU,
     READ_RETRY,
     RESYNC_JUMP,
     SERVICE_UUID,
@@ -917,12 +917,17 @@ class BTHomeWritableCoordinator:
         _LOGGER.debug("%s: cleared the cached GATT table", self.address)
 
     async def _check_mtu(self, client: Any, payload: bytes) -> None:
-        """Note when the MTU cannot carry this write (§4.4).
+        """Note when this write may be too large for the link (§4.4).
 
-        A write larger than `MTU - 3` is refused outright rather than split into
-        a long write, so the MTU is a hard ceiling, not a performance hint
+        A write larger than `MTU - 3` is refused by the stack rather than split
+        into a long write, so the MTU is a ceiling and not a performance hint
         (decisions.md D-017). BlueZ reports the 23-byte default until asked,
         hence `_acquire_mtu()`.
+
+        **This only writes a line in the log.** It does not refuse anything --
+        the docstring said it did, for as long as there was a floor to refuse
+        against (D-084). Refusing here would need a size the protocol no longer
+        states, and the stack's own error is the honest one.
         """
         if len(payload) <= DEFAULT_MTU_PAYLOAD:
             return
@@ -935,14 +940,15 @@ class BTHomeWritableCoordinator:
                 _LOGGER.debug("%s: could not read the MTU: %s", self.address, error)
 
         mtu = getattr(client, "mtu_size", None)
-        if mtu is not None and mtu < MIN_MTU:
+        if mtu is not None and mtu < COMFORTABLE_MTU:
             _LOGGER.debug(
-                "%s: MTU is %s and this write is %d bytes; the protocol asks "
-                "for %s, so it may not fit",
+                "%s: MTU is %s and this write is %d bytes, so it may not fit. "
+                "The protocol states no floor (§4.4); %s is simply the size "
+                "above which anything this protocol sends certainly fits",
                 self.address,
                 mtu,
                 len(payload),
-                MIN_MTU,
+                COMFORTABLE_MTU,
             )
 
     @property

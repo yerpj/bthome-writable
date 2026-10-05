@@ -58,7 +58,9 @@ cannot be fixed over the air. Running from RAM means a power cut undoes whatever
 you just broke (`decisions.md` D-029). Save it to flash once you are happy with
 it, not before.
 
-**A — with the tool in this repo.** Needs Python and `bleak`; does the whole
+**A — with the tool in this repo.** Needs Python and `bleak`. On its first run
+it also fetches the upstream `BTHome` module from espruino.com, caching it in
+`.module-cache/`, so that run needs network. It does the whole
 thing in one command, verifies each module's CRC after writing it, and erases
 `.bootcde` so the application really is RAM-only.
 

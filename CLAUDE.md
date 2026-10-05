@@ -2,11 +2,13 @@
 
 ## What this project is
 
-A minimal, BTHome-compatible **downlink** for BLE devices in Home Assistant: devices declare in their BTHome advertising which objects are *writable*; HA connects briefly, writes new values in BTHome's own format to a single GATT characteristic, disconnects; the refreshed advertising is the confirmation. Two implementations: an **Espruino JS module** (nRF52-class devices) and a **HA custom integration** (HACS). Goal: get the mechanism adopted by the BTHome project once proven (ID reservation, ideally a merge).
+A minimal, BTHome-compatible **downlink** for BLE devices in Home Assistant: devices declare in their BTHome advertising which objects are *writable*; HA connects briefly, writes one value in BTHome's own object format to that entry's own GATT characteristic, disconnects; the write response is the confirmation — a writable value is never advertised. Two implementations: an **Espruino JS module** (nRF52-class devices) and a **HA custom integration** (HACS). Goal: get the mechanism adopted by the BTHome project once proven (ID reservation, ideally a merge).
 
 ## Source of truth
 
-**`SPEC-WORKING-DOCUMENT.md` in this repo. Read it entirely before writing any code.** It contains the protocol draft (§3), both implementation designs (§4–5), the risk list (§6 — read before coding, several risks gate design choices), the task breakdown with acceptance criteria (§7), and open decisions (§8).
+**`spec/PROTOCOL.md` is the protocol, and it is normative.** Read it entirely before writing any code. `spec/decisions.md` is the decision log — read the end of it; `spec/PLATFORMS.md` maps BTHome objects to Home Assistant entities.
+
+`SPEC-WORKING-DOCUMENT.md` is the original working document and is **superseded in part**: its §3 and §7 describe protocol version 1 — a positional bitmask, a write-all payload, confirmation by refreshed advertising — all replaced in version 2 (D-048, D-059, D-073). Take from it §1 (purpose), items 1–2 of §2 (core model), §6 (the risk list, still current and still gating design choices) and the phase structure of §7. Its own banner says which parts to distrust. Nothing in it is normative.
 
 The design was converged publicly with **Gordon Williams (@gfwilliams)**, creator and maintainer of Espruino. There are now **two** discussions to follow, and they are not interchangeable:
 
@@ -15,7 +17,7 @@ The design was converged publicly with **Gordon Williams (@gfwilliams)**, creato
 
 The split exists because the two were being mixed up: a request about the *other* integration's web panel arrived addressed to this project. When reading either thread, check which extension a comment is about before acting on it.
 
-You may fetch both for context, but the working document supersedes them — earlier iterations there, e.g. a 4-characteristic "EHAC" GATT profile or an objectID-list declaration, are **abandoned**; do not resurrect them.
+You may fetch both for context, but `spec/PROTOCOL.md` supersedes them — earlier iterations there, e.g. a 4-characteristic "EHAC" GATT profile or an objectID-list declaration, are **abandoned**; do not resurrect them.
 
 The project owner (JP, @yerpj on GitHub) drives the discussion with Gordon; you drive the code.
 
@@ -43,4 +45,4 @@ The project owner (JP, @yerpj on GitHub) drives the discussion with Gordon; you 
 
 Follow §7 of the working document: T0.1 → T0.2 (pause for owner decisions) → T0.5 (early verify: `bthome-ble` tolerance of the 0xFF declaration — it gates the container choice) → T0.3 + T0.4 → T1.1 + T1.2 → hand back for hardware testing → continue per phases.
 
-Start every session by re-reading `SPEC-WORKING-DOCUMENT.md` §3 and §6, and `/spec/decisions.md` if it exists.
+Start every session by re-reading `spec/PROTOCOL.md`, `SPEC-WORKING-DOCUMENT.md` §6 (the risks), and the most recent decisions at the end of `/spec/decisions.md`.

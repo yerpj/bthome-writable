@@ -16,7 +16,10 @@
 > D-073). Confirmation by refreshed advertising is gone too — a writable value
 > is not advertised (§2.3).
 >
-> What is still current here: §1 (purpose), §2 (core model), §6 (risks) and the
+> What is still current here: §1 (purpose), **items 1–2 of §2** — items 3–6 are
+> version 1 to the word, describing a write of *all* writable values to a single
+> characteristic, an immediate advertising refresh, confirmation from the next
+> advertisement and a revert on timeout, none of which exist — §6 (risks) and the
 > **phase structure** of §7. What is not: several of §7's acceptance criteria
 > name mechanisms that no longer exist, so they have no referent to test
 > against. Which tasks are actually done, judged against what exists rather

@@ -15,7 +15,7 @@ time BTHome assigns a new id.
 
 `bthome-ble` already sorts every object into four kinds, and that sorting is the
 one this table uses. The counts are of the library, so they move when BTHome
-assigns an id; these are **92 objects, counted against `bthome-ble` 3.9.2** with
+assigns an id; these are **92 objects, counted against `bthome-ble` 3.22.1** with
 `protocol.describe`:
 
 | kind | count | writable ⇒ platform |

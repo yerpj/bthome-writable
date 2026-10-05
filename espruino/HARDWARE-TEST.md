@@ -58,22 +58,23 @@ and look at the **Service Data** for UUID `0xFCD2`.
 Expected, with `<pid>` incrementing and `<batt>` your battery level:
 
 ```
-40 00 <pid> 01 <batt> FF 1E
+40 00 <pid> 01 <batt> FF 01 1E
 ```
 
 - `40` — BTHome v2, unencrypted.
 - `00 <pid>` — packet id, changes every interval.
 - `01 <batt>` — battery.
-- `FF 1E` — the declaration, last in the service data: one entry, `0x1E`
+- `FF 01 1E` — the declaration, last in the service data: a count of one,
+  then one entry, `0x1E`
   (`light`), served on characteristic `2FAA0001`.
 
 The light's own value is **not** there, and must not be (§2.3).
 
-**Record the exact hex string.** If `FF 1E` is missing, `setup()` threw — check
+**Record the exact hex string.** If `FF 01 1E` is missing, `setup()` threw — check
 the IDE console.
 
 > **Done, 2026-09-17.** `light-loop.js` advertises
-> `40 00 <pid> 01 64 05 <lux×3> FF 1E`, 11 bytes, packet id incrementing.
+> `40 00 <pid> 01 64 05 <lux×3> FF 01 1E`, 12 bytes, packet id incrementing.
 
 ## Step 2 — the service is discoverable
 
@@ -143,11 +144,13 @@ it.
 
 > **Done, 2026-09-17.** All four cases produced exactly the codes in the table,
 > and `lamp.on` was unchanged afterwards. Rerun with
-> `python -m tools.reject_matrix --address <mac>`.
+> `python -m tools.reject_matrix --address <mac> --state light.on` — the
+> `--state` is needed because this step's Setup installs `single-light.js`,
+> whose state is `light`, while the tool defaults to `lamp.on`.
 
 ## Step 6 — the entry number addresses the instance
 
-Send `examples/three-lights.js`: three `light` entries, `FF 1E 1E 1E`. Write
+Send `examples/three-lights.js`: three `light` entries, `FF 03 1E 1E 1E`. Write
 `1E01` to `2FAA0001`, then to `2FAA0002`, then to `2FAA0003`.
 
 Expected: each write moves one lamp, and it is the one whose number was

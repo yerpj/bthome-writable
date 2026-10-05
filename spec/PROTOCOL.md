@@ -63,7 +63,7 @@ The declaration is one element of the BTHome service data:
   accepts writes of this object type on writable characteristic *k*" (§4.1).
 - The entry's object ID alone determines the value's format, length, unit and
   meaning, from BTHome's own object table. Nothing else is declared.
-- The same object ID MAY appear several times: `FF 1E 1E` is a device with two
+- The same object ID MAY appear several times: `FF 02 1E 1E` is a device with two
   writable lights. Instances are distinguished by entry number, which is also how
   a receiver numbers them in its user interface.
 - A declaration with no entries is legal and means "nothing writable"; a device
@@ -101,15 +101,16 @@ what can be written; it carries no state.
 
 An object in the same packet with the same ID as an entry is an ordinary sensor
 and unrelated to it. A thermostat advertising `02 C4 09` (temperature 25.00 °C)
-and declaring `FF 57` (a writable temperature) reports a measured temperature and
-accepts a target; the two are never confused, because the target is never in the
-packet.
+and declaring `FF 01 57` (a writable temperature) reports a measured
+temperature and accepts a target; the two are never confused, because the
+target is never in the packet.
 
 State, where a device has any worth reporting, is read over GATT (§3).
 
 ### 2.4 Capacity
 
-The declaration costs `1 + n` bytes for `n` entries. It MUST fit, with the rest
+The declaration costs `2 + n` bytes for `n` entries: the object ID, the count,
+and one byte per entry. It MUST fit, with the rest
 of the service data, in a single legacy advertising payload; devices MUST check
 this at configuration time and fail loudly rather than truncate.
 
@@ -117,8 +118,10 @@ The 31 bytes of a legacy payload are not all available to BTHome objects. Flags
 (3 bytes), the service data header (4) and the device-information byte (1) always
 come out, and in practice so do other elements: Espruino always advertises its
 manufacturer ID (4 bytes), and a local name costs `2 +` its length. Measured on
-real devices, between 7 and 22 bytes remain for objects (`decisions.md` D-030,
-D-046). Implementations SHOULD move the local name to the scan response when
+real devices, between 5 and 22 bytes of service data are accepted at all
+(`decisions.md` D-030, D-046, D-049) -- the device-information byte and the
+packet id come out of that, not out of the arithmetic above. The low end is a
+nice!nano advertising its name; the same board with `showName:false` takes 22. Implementations SHOULD move the local name to the scan response when
 space is short.
 
 ### 2.5 Container fallback (contingency, not in use)
@@ -433,7 +436,12 @@ anyone in radio range, which the advertising is.
   of declaration, since a changed layout usually means new firmware and a rebuilt
   table.
 - **Writing.** Connect, write with response to the entry's characteristic,
-  disconnect. Several writes to one device SHOULD share a connection.
+  disconnect. **One command per connection**: a receiver MUST NOT hold the link
+  open waiting for a second command, and MUST NOT bundle commands that happen to
+  be queued together. An earlier draft asked the opposite -- writes to one device
+  SHOULD share a connection -- and the reference receiver measured the cost: a
+  second command sat behind the first for 1.5 s, on a device that serves one
+  central at a time (`decisions.md` D-059, D-060).
 - **Failure.** A write that is not acknowledged MUST be reported to the user and
   MUST NOT be shown as applied.
 - **State.** Assumed state for §3.1 devices; read state for §3.2 devices.
@@ -455,17 +463,25 @@ anyone in radio range, which the advertising is.
 
 ## 8. Worked examples
 
+> Every packet below is a fixture in `spec/advertising-fixtures.json`, generated
+> from the reference implementations and checked against the real `bthome-ble`
+> parser on every CI run. They were hand-written once and drifted: all four
+> omitted the declaration's count byte for the twelve days after §2.1 gained it
+> (D-083). Compare against the fixture file rather than against this prose.
+
 ### 8.1 One light
 
 Advertising service data for `0xFCD2` (BTHome v2, unencrypted):
 
 ```
-40 00 09 01 61 FF 1E
-|  |     |     |
-|  |     |     +-- declaration: entry 1 = 0x1E light
-|  |     +-------- 0x01 battery = 97 %
-|  +-------------- 0x00 packet id = 9
-+----------------- device-information byte
+40 00 09 01 61 FF 01 1E
+|  |     |     |  |  |
+|  |     |     |  |  +-- entry 1 = 0x1E light
+|  |     |     |  +----- one entry
+|  |     |     +-------- 0xFF declaration
+|  |     +-------------- 0x01 battery = 97 %
+|  +-------------------- 0x00 packet id = 9
++----------------------- device-information byte
 ```
 
 To switch the light on, the receiver writes `1E 01` to characteristic
@@ -475,11 +491,14 @@ the device needs no settings revision and the receiver shows it as assumed state
 ### 8.2 Thermostat with a local knob
 
 ```
-40 00 09 02 C4 09 65 03 FF 10 57
-         |        |     |
-         |        |     +-- entries: 1 = 0x10 power, 2 = 0x57 temperature (target)
-         |        +-------- 0x65 settings revision = 3
-         +----------------- 0x02 temperature = 25.00 °C (measured, a sensor)
+40 00 09 02 C4 09 65 03 FF 02 10 57
+         |        |     |  |  |
+         |        |     |  |  +-- entries: 1 = 0x10 power,
+         |        |     |  |                2 = 0x57 temperature (target)
+         |        |     |  +----- two entries
+         |        |     +-------- 0xFF declaration
+         |        +-------------- 0x65 settings revision = 3
+         +----------------------- 0x02 temperature = 25.00 °C (measured, a sensor)
 ```
 
 - Target 22 °C: write `57 16` to characteristic `2FAA0002-…`.
@@ -492,11 +511,13 @@ the device needs no settings revision and the receiver shows it as assumed state
 ### 8.3 Two lights and a display
 
 ```
-40 00 09 FF 1E 1E 53
-            |  |  |
-            |  |  +-- entry 3: 0x53 text -> characteristic 2FAA0003
-            |  +----- entry 2: 0x1E light -> characteristic 2FAA0002
-            +-------- entry 1: 0x1E light -> characteristic 2FAA0001
+40 00 09 FF 03 1E 1E 53
+            |  |  |  |  |
+            |  |  |  |  +-- entry 3: 0x53 text -> characteristic 2FAA0003
+            |  |  |  +----- entry 2: 0x1E light -> characteristic 2FAA0002
+            |  |  +-------- entry 1: 0x1E light -> characteristic 2FAA0001
+            |  +----------- three entries
+            +-------------- 0xFF declaration
 ```
 
 Turning off the second light writes `1E 00` to characteristic 2 and nothing else.
@@ -505,7 +526,7 @@ Showing "Hello" writes `53 05 48 65 6C 6C 6F` to characteristic 3.
 ### 8.4 A momentary action
 
 ```
-40 00 09 FF 3A
+40 00 09 FF 01 3A
 ```
 
 Writing `3A 01` (button, press) to characteristic 1 opens a gate. There is nothing
@@ -526,8 +547,10 @@ Open items:
    standardization step (`bthome-dossier.md`), pursued once a working
    implementation exists.
 2. **UUIDs are provisional** (D-001).
-3. **Settings revision in the Espruino module.** The upstream `BTHome` module has
-   no type for `0x65` yet; devices use its `raw` escape hatch until it does.
+3. **Settings revision in the Espruino module.** The upstream `BTHome` module
+   has no type for `0x65`, so `BTHomeWritable` emits the object itself rather
+   than through that module's tables. Nothing is lost; it is one more place the
+   wrapper has to know a format upstream will probably gain.
 4. **§5.6 is implemented but not yet agreed.** Both reference implementations
    ship the counter report, and the reference receiver asks for it by default
    (`decisions.md` D-075, D-077, D-080); Gordon has commented on its

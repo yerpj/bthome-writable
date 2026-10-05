@@ -20,7 +20,9 @@ makes those characteristics readable and bumps BTHome's settings revision
 
 Status: **draft / pre-release**, protocol version 2.0-draft.7. The protocol is
 converged publicly with Gordon Williams (Espruino) in
-[espruino#8013](https://github.com/orgs/espruino/discussions/8013). Nothing here is
+[espruino#8024](https://github.com/orgs/espruino/discussions/8024), which is this
+project's topic; [espruino#8013](https://github.com/orgs/espruino/discussions/8013)
+is where the design was converged and is kept for history. Nothing here is
 frozen yet; UUIDs and wire formats freeze at the first public release.
 
 Version 2 replaces version 1's positional bitmask, its write-all payload and its
@@ -66,17 +68,26 @@ release the test harness pins holds back.
 
 ```sh
 # Spec tooling: test vectors, advertising fixtures, the bthome-ble checks
-python -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
-.venv/bin/pytest -q
+python -m venv .venv
+.venv/bin/python -m pip install -r requirements-dev.txt     # Scripts/ on Windows
+.venv/bin/python -m pytest -q
 
 # Home Assistant integration
 python -m venv .venv-ha
-.venv-ha/bin/pip install -r ha/requirements-test.txt bthome-ble bleak-retry-connector
-cd ha && ../.venv-ha/bin/pytest -q
+.venv-ha/bin/python -m pip install -r ha/requirements-test.txt
+cd ha && ../.venv-ha/bin/python -m pytest -q
 
 # Espruino module
 cd espruino && npm install && npm test && npm run lint
 ```
+
+Two notes on those commands, both learned the hard way. On Windows the
+interpreter is `.venv/Scripts/python.exe`, not `.venv/bin/python`. And install
+**only** `ha/requirements-test.txt`: it already pins `bthome-ble` and
+`bleak-retry-connector` at versions that match the Home Assistant release it
+brings, and naming either package again on that line resolves it to the newest
+release -- which is the very clash the paragraph above warns about. CI installs
+the file alone (`.github/workflows/ci.yml`).
 
 `test-vectors/test-vectors.json` and `spec/advertising-fixtures.json` are
 generated, and both are consumed by the Python and the JavaScript suites — they

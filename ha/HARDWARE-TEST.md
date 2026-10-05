@@ -1,7 +1,7 @@
 # T1.2 — hardware test procedure `[HW]`
 
-The integration is complete and covered by 116 automated tests, but every one of
-them runs against a fake radio and a fake GATT client. This is the part that
+The integration is complete and covered by the `ha` test suite, but every one of
+those tests runs against a fake radio and a fake GATT client. This is the part that
 needs a real Espruino board, a real Home Assistant, and — for step 5 — a real
 ESPHome Bluetooth proxy.
 

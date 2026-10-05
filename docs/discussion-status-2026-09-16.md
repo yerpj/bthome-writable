@@ -1,5 +1,15 @@
 **Status update — bthome-writable**
 
+> **This is a snapshot of 16 September 2026, and it describes protocol
+> version 1** — a positional bitmask declaration, a write carrying every
+> writable object to a single characteristic, and confirmation from the
+> refreshed advertising. Version 2 replaced all three (D-048). Kept as written
+> because it records what was agreed with Gordon on that date; read
+> `spec/PROTOCOL.md` for what the protocol is now.
+>
+> It also points at `spec/for-gordon.md`, which is owner-side working notes and
+> deliberately not in the repository.
+
 Phases 0–3 of the plan are done and verified on hardware; phase 4 is release work.
 
 - **Protocol** — unchanged since we converged it. The declaration is object `0xFF`, one positional bitmask byte, MUST be last in the service data. A write carries every writable object in packet order to a single GATT characteristic, and the refreshed advertising is the confirmation. No ack channel.
