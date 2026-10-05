@@ -35,6 +35,7 @@ from custom_components.bthome_writable.protocol import (
     characteristic_uuid,
     decrypt_advertising,
     is_encrypted,
+    mac_included,
     nonce,
     nonce_address,
     objects_at,
@@ -44,6 +45,7 @@ from custom_components.bthome_writable.protocol import (
     seal,
     seal_write,
     split_sealed,
+    trigger_based,
 )
 
 from .conftest import settle, setup_device
@@ -377,12 +379,78 @@ def test_the_objects_start_after_the_header_the_flags_describe() -> None:
 
 def test_the_nonce_uses_the_mac_the_device_put_in_the_packet() -> None:
     """They differ for a device advertising under a random address, and the
-    device sealed with the one it transmitted."""
-    packet = bytes([MAC_INCLUDED_ENCRYPTED]) + bytes.fromhex("aabbccddeeff") + b"rest"
-    assert nonce_address(packet, "A4:C1:38:8E:1F:2B") == "AA:BB:CC:DD:EE:FF"
+    device sealed with the one it transmitted.
+
+    **Least-significant byte first on the air.** This test used to assert the
+    opposite -- `aabbccddeeff` in the packet meaning `AA:BB:CC:DD:EE:FF` -- and
+    so pinned the bug in place rather than catching it (D-083).
+    """
+    packet = bytes([MAC_INCLUDED_ENCRYPTED]) + bytes.fromhex("2b1f8e38c1a4") + b"rest"
+    assert nonce_address(packet, "11:22:33:44:55:66") == "A4:C1:38:8E:1F:2B"
     assert nonce_address(bytes([0x41]) + b"rest", "A4:C1:38:8E:1F:2B") == (
         "A4:C1:38:8E:1F:2B"
     )
+
+
+def test_our_nonce_is_the_nonce_bthome_ble_builds() -> None:
+    """The guard that was missing, and the only kind that could have worked.
+
+    Every other test here pins the nonce against a value written by hand, which
+    is how a reversed MAC survived three weeks and a test that asserted it
+    (D-083). `bthome_ble.parser.BTHomeData.get_nonce()` is the authority -- an
+    encrypted device is readable exactly when the receiver agrees with it -- so
+    it is the oracle, for both states of the MAC-included flag and for a device
+    advertising under an address different from the one it transmits.
+    """
+    from bthome_ble.parser import BTHomeData
+
+    from .conftest import service_info
+
+    key_cases = (
+        # (device-info byte, in-packet MAC or None, advertised address)
+        (0x41, None, "A4:C1:38:8E:1F:2B"),
+        (0x45, None, "A4:C1:38:8E:1F:2B"),
+        (0x43, "2b1f8e38c1a4", "11:22:33:44:55:66"),
+        (0x43, "665544332211", "A4:C1:38:8E:1F:2B"),
+    )
+
+    for info, in_packet, advertised in key_cases:
+        body = b"ciphertext"
+        counter = 4_242
+        payload = (
+            bytes([info])
+            + (bytes.fromhex(in_packet) if in_packet else b"")
+            + body
+            + counter.to_bytes(4, "little")
+            + b"MMMM"
+        )
+        info_blob = service_info(
+            "single-light", address=advertised, service_data=payload
+        )
+
+        theirs = BTHomeData(info_blob).get_nonce()
+        ours = nonce(nonce_address(payload, advertised), info, counter)
+
+        assert ours == theirs, (
+            f"device-info 0x{info:02X}, in-packet MAC {in_packet}: "
+            f"ours {ours.hex()} vs bthome-ble {theirs.hex()}"
+        )
+
+
+def test_the_whole_header_matches_bthome_ble_not_just_the_nonce() -> None:
+    """The other two things read out of that byte, against the same authority:
+    where the objects start, and whether the device is sleepy."""
+    from bthome_ble.parser import BTHomeData
+
+    from .conftest import service_info
+
+    for info in (0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47):
+        payload = bytes([info]) + bytes(6) + b"body" + bytes(8)
+        data = BTHomeData(service_info("single-light", service_data=payload))
+
+        assert mac_included(payload) == data._is_mac_included()
+        assert trigger_based(payload) == data.is_sleepy_device()
+        assert objects_at(payload) == (7 if data._is_mac_included() else 1)
 
 
 def test_a_sealed_advertisement_opens_under_whatever_byte_it_carried() -> None:
@@ -404,19 +472,88 @@ def test_a_sealed_advertisement_opens_under_whatever_byte_it_carried() -> None:
 
 
 def test_an_encrypted_packet_carrying_its_mac_opens() -> None:
-    """The header is seven bytes and the nonce is built from the MAC inside
-    it -- both wrong before the review, and wrong in the same packet."""
+    """The header is seven bytes and the nonce is built from the MAC inside it.
+
+    Sealed the way a device seals: the MAC goes on the air least-significant
+    byte first, and the nonce uses it in natural order. This test previously
+    did both ends the wrong way round, so it passed against a receiver that was
+    also wrong and proved nothing (D-083).
+    """
     key = bytes(range(16))
-    advertised = "A4:C1:38:8E:1F:2B"
-    inside = "AA:BB:CC:DD:EE:FF"
+    advertised = "11:22:33:44:55:66"
+    inside = "A4:C1:38:8E:1F:2B"
     objects = bytes.fromhex("000109ff011e")
 
+    on_the_air = bytes(reversed(bytes.fromhex(inside.replace(":", ""))))
     sealed = (
         bytes([MAC_INCLUDED_ENCRYPTED])
-        + bytes.fromhex("aabbccddeeff")
+        + on_the_air
         + seal(objects, key, inside, MAC_INCLUDED_ENCRYPTED, 9)
     )
     assert decrypt_advertising(sealed, key, advertised) == objects
+
+    # And the advertised address is not what opens it: that is the whole point
+    # of the flag, for a device using a random address.
+    assert decrypt_advertising(sealed, key, inside) == objects
+    assert (
+        decrypt_advertising(
+            bytes([MAC_INCLUDED_ENCRYPTED])
+            + bytes.fromhex(inside.replace(":", ""))
+            + seal(objects, key, inside, MAC_INCLUDED_ENCRYPTED, 9),
+            key,
+            advertised,
+        )
+        is None
+    ), "a MAC written the wrong way round on the air must not open"
+
+
+async def test_a_read_that_does_not_authenticate_is_not_a_successful_read(
+    hass: HomeAssistant, gatt
+) -> None:
+    """D-083. `async_read_all` returned True once the *connection* succeeded, so
+    the settings revision was marked read even when every entry had been
+    refused -- and nothing read again until the revision moved. For a setpoint
+    nobody touches twice that is for ever, which is exactly what §3.2 exists to
+    prevent."""
+    key, address = bytes(range(16)), "A4:C1:38:8E:1F:2B"
+    coordinator = BTHomeWritableCoordinator(hass, address, bindkey=key)
+    coordinator.declaration = Declaration.restore(
+        {"layout": [0x10, 0x57], "settings_revision": 3}
+    )
+
+    # Entry 1 answers something that will not authenticate; entry 2 is honest.
+    gatt.declare(
+        2,
+        readable={
+            1: b"rubbish-not-sealed",
+            2: seal(bytes.fromhex("5714"), key, address, DEVICE_INFO_BYTE_READ, 4),
+        },
+    )
+
+    assert await coordinator.async_read_all() is False, (
+        "one refused entry means the revision has not been read"
+    )
+    # The honest entry is still kept: a partial read is better than none.
+    assert coordinator._values[2] == bytes.fromhex("14")
+
+
+async def test_a_read_where_every_entry_answers_is_a_successful_read(
+    hass: HomeAssistant, gatt
+) -> None:
+    """The other side of it, so the fix cannot be "always return False"."""
+    key, address = bytes(range(16)), "A4:C1:38:8E:1F:2B"
+    coordinator = BTHomeWritableCoordinator(hass, address, bindkey=key)
+    coordinator.declaration = Declaration.restore(
+        {"layout": [0x10], "settings_revision": 3}
+    )
+    gatt.declare(
+        1,
+        readable={
+            1: seal(bytes.fromhex("1001"), key, address, DEVICE_INFO_BYTE_READ, 4)
+        },
+    )
+
+    assert await coordinator.async_read_all() is True
 
 
 # --- the counter report (D-075) ---------------------------------------------

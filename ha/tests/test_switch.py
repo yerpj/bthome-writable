@@ -324,6 +324,56 @@ async def test_an_entry_that_changes_type_does_not_collide(
     assert light.unique_id != other.unique_id
 
 
+async def test_a_control_whose_entry_changed_type_refuses_to_write(
+    hass: HomeAssistant, radio, gatt
+) -> None:
+    """D-083. New firmware can turn entry 1 from a light into a text. Nothing
+    removes the entities built for the old layout, so the stale switch stayed
+    *operable*: it handed its value to the new entry's encoder and produced
+    `53 01` -- a text object claiming one character and carrying none -- which
+    §4.2 acknowledged before the device refused it, so Home Assistant reported
+    success and showed the switch as on.
+
+    The existing layout-change test only ever changed the *number* of entries,
+    which is why this went unseen.
+    """
+    from homeassistant.exceptions import HomeAssistantError
+
+    await setup_device(hass, radio, "single-light")
+    assert hass.states.get(LIGHT) is not None
+
+    # Same entry number, different object: a light becomes a display.
+    radio.push(service_info("single-light", service_data=bytes.fromhex("400009ff0153")))
+    await hass.async_block_till_done()
+
+    state = hass.states.get(LIGHT)
+    assert state is not None and state.state == "unavailable", (
+        "a control for a layout the device has replaced must not look operable"
+    )
+
+    # Home Assistant drops a service call aimed at an unavailable entity, so
+    # being unavailable already stops the ordinary path.
+    before = list(gatt.writes)
+    await hass.services.async_call(
+        "switch", "turn_on", {"entity_id": LIGHT}, blocking=True
+    )
+    assert gatt.writes == before, "nothing reached the wire"
+
+    # And the write path refuses on its own, for any caller that does not go
+    # through entity extraction. Belt and braces, because the failure this
+    # guards against is silent: the device acknowledges before validating.
+    from custom_components.bthome_writable.switch import BTHomeWritableSwitch
+
+    stale = next(
+        entity
+        for entity in hass.data["entity_components"]["switch"].entities
+        if isinstance(entity, BTHomeWritableSwitch)
+    )
+    with pytest.raises(HomeAssistantError, match="no longer declares entry"):
+        await stale.async_apply(b"")
+    assert gatt.writes == before
+
+
 async def test_an_entity_registered_before_the_object_id_joined_the_id_is_carried_over(
     hass: HomeAssistant, radio, gatt
 ) -> None:

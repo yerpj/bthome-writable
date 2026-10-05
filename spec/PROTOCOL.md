@@ -1,6 +1,6 @@
 # BTHome Writable — protocol specification
 
-**Version:** 2.0-draft.6 · **Status:** DRAFT, nothing frozen · **License:** MIT
+**Version:** 2.0-draft.7 · **Status:** DRAFT, nothing frozen · **License:** MIT
 
 BTHome standardizes a BLE **uplink**: a device broadcasts its state in
 advertising, a receiver parses it. It has no **downlink**. This document
@@ -348,6 +348,13 @@ SHOULD seed from its own system clock: seconds since 1970 is monotonic, so it is
 ahead of anything an earlier receiver can have sent, and it lands inside the
 window above without having to ask the device anything.
 
+**Neither helps the ordinary case**, which is a device that restarted. The rule
+above tells a device to resume ahead of anything it accepted, so a device that
+obeys it is ahead of its receiver after every restart, and nothing in the
+advertising says so: the receiver's next writes are refused, and refused
+silently, because §4.2 acknowledges before validating. A device MAY therefore
+offer the counter report of §5.6, which lets the receiver ask instead of guess.
+
 **One receiver per device.** The counter is a single number the device compares
 against, so two receivers writing to the same device keep two counters it cannot
 tell apart: whichever falls behind has every write refused, and refused silently,
@@ -369,6 +376,52 @@ implementations: bindkey, MAC, direction, counter, plaintext, sealed payload, fo
 advertising, writes and reads, including cross-direction negative cases. Both
 reference implementations consume it. A change to that file is a change to this
 specification.
+
+### 5.6 Counter report (optional)
+
+A device MAY expose one further characteristic, at the reserved number `1000`
+(§4.1):
+
+```
+Counter report   2FAA1000-3B0B-4B1A-9E2A-B4C2952E62F2
+```
+
+It answers the one question a receiver cannot answer for itself: *what write
+counter are you at?* It exists because §5.3 makes the device resume ahead of the
+receiver after every restart, and gives the receiver no way to learn that.
+
+**The exchange.** The receiver writes a **fresh 8-byte challenge**, with
+response. It then reads the same characteristic, and the device answers
+
+```
+seal( challenge || counter )        sealed as §5.2, under the read direction byte
+```
+
+where `counter` is the last write counter the device accepted, as a `u32` little
+endian. The receiver MUST check that the challenge it sent comes back, MUST
+discard the report otherwise, and on success SHOULD resume at `counter + 1`.
+
+**The challenge is not decoration.** Sealing stops a forgery; only the challenge
+stops a *replay*, and a replay is precisely what a receiver in this situation
+cannot otherwise detect — having lost its state, it has no idea what counter to
+expect, which is why it is asking. Binding the answer to a nonce the asker chose
+is how Zigbee R23 §4.6.3.8 and Matter's MCSP solve the same problem.
+
+**Requirements.**
+
+- The device MUST seal the report; it MUST NOT answer in clear, even if the
+  challenge arrived in clear.
+- The device MUST NOT treat a write to this characteristic as an entry write,
+  and MUST NOT let it advance the write counter of §5.3.
+- The device SHOULD answer only the most recent challenge it received.
+- A receiver MUST tolerate the characteristic being absent, and fall back to the
+  seeding above. Absence is the expected case: this is optional.
+- A receiver MUST NOT accept a report that does not authenticate, and MUST NOT
+  lower its counter on the strength of one.
+
+**Why a characteristic rather than an advertising object.** The answer has to be
+fresh, which means the asker has to speak first; and it must not be readable by
+anyone in radio range, which the advertising is.
 
 ---
 
@@ -475,6 +528,13 @@ Open items:
 2. **UUIDs are provisional** (D-001).
 3. **Settings revision in the Espruino module.** The upstream `BTHome` module has
    no type for `0x65` yet; devices use its `raw` escape hatch until it does.
+4. **§5.6 is implemented but not yet agreed.** Both reference implementations
+   ship the counter report, and the reference receiver asks for it by default
+   (`decisions.md` D-075, D-077, D-080); Gordon has commented on its
+   characteristic number but not on whether it belongs in this document. It is
+   written here because the code speaks it — a specification that omits what the
+   implementations do is worse than one with an unsettled section — and it is
+   marked optional throughout so that a device ignoring it is fully conformant.
 
 Settled since draft.1: the size of a write is `ATT_MTU - 3` and fragmentation is
 out of scope (§4.4, `decisions.md` D-058); the settings revision `0x65` is not

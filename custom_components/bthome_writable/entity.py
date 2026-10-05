@@ -83,6 +83,11 @@ class BTHomeWritableEntity(Entity):
 
     @property
     def available(self) -> bool:
+        if not self.coordinator.still_declared(self._entry, self._object_id):
+            # The device no longer declares this entry as this object. The
+            # control is a leftover from an earlier layout and must not look
+            # operable -- pressing it would write to whatever took its place.
+            return False
         # `sleepy_device or ...` is core `bthome`'s own line
         # (binary_sensor.py, sensor.py): a trigger-based device is not absent
         # between its events, and marking it unavailable would make a control
@@ -127,6 +132,25 @@ class BTHomeWritableEntity(Entity):
         milliseconds. That is the price of an honest answer, and it is the
         ecosystem's price too: a Z-Wave action routinely blocks longer.
         """
+        if not self.coordinator.still_declared(self._entry, self._object_id):
+            # A leftover from an earlier layout. Being unavailable is not enough
+            # on its own: an automation naming this entity still reaches here,
+            # and the write would be encoded for whatever object took the
+            # entry's place -- malformed, acknowledged, and reported as a
+            # success (D-083).
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="write_failed",
+                translation_placeholders={
+                    "name": self.name or self.entity_id or "",
+                    "error": (
+                        f"the device no longer declares entry {self._entry} as "
+                        f"object 0x{self._object_id:02X}; this control belongs "
+                        "to a layout the device has replaced"
+                    ),
+                },
+            )
+
         self._in_flight = value if self._coalesce else None
         self.async_write_ha_state()
         try:

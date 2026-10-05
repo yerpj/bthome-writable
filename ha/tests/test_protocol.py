@@ -152,3 +152,23 @@ def test_a_read_of_the_wrong_length_is_refused(payload: str) -> None:
     entry = WritableEntry(entry=1, object_id=0x53 if payload.startswith("53") else 0x1E)
     with pytest.raises(ProtocolError):
         decode_object(entry, bytes.fromhex(payload))
+
+
+def test_a_declaration_behind_the_settings_revision_survives_the_walk() -> None:
+    """Why `manifest.json` cannot ask for an older `bthome-ble` (D-083).
+
+    The walk stops at the first object ID the library does not know (D-005),
+    and `0x65` sits *before* the declaration in a device that reports its own
+    state. A library without `0x65` therefore stops there and the declaration
+    behind it disappears: the device is discovered and offers nothing. The
+    floor reads like caution; it is not. `tools/tests/test_library_floor.py`
+    checks the table, this checks the consequence.
+    """
+    from custom_components.bthome_writable.protocol import parse_declaration
+
+    # A thermostat: temperature, settings revision 3, then the declaration.
+    declaration = parse_declaration(bytes.fromhex("02c4096503ff021057"))
+
+    assert declaration is not None, "the declaration must survive 0x65"
+    assert declaration.layout == (0x10, 0x57)
+    assert declaration.settings_revision == 3

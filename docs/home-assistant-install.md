@@ -1,6 +1,6 @@
 # Install it in Home Assistant
 
-You need Home Assistant 2025.1 or newer with Bluetooth working — an adapter on
+You need Home Assistant **2026.7 or newer** with Bluetooth working — an adapter on
 the host, or an ESPHome Bluetooth proxy in range of your device. If the core
 BTHome integration already shows your device's sensors, Bluetooth is working.
 
@@ -80,6 +80,24 @@ when it first sees the device, and again each time the revision changes. Those
 entities are not assumed state: they show what the device said. If a read fails
 because something else held the device's one connection, it is retried on a
 later advertisement (D-049).
+
+## Why 2026.7 and not older
+
+This integration needs `bthome-ble` 3.22.1 or newer, because older versions do
+not know BTHome's settings-revision object `0x65` — and a receiver that does not
+know an object stops parsing there, taking the writability declaration behind it
+with it.
+
+Home Assistant's own `bthome` integration pins an exact `bthome-ble` version, and
+on 2025.1 that pin is `==3.9.1`. **Two integrations with incompatible pins on one
+instance fight**: each setup finds the other's version unsatisfactory and
+reinstalls, every restart, and whichever module is on disk first is what both
+then run against. This is not a theoretical conflict — it is exactly what the two
+manifests say.
+
+2026.7 is where we have measured the two coexisting. The oldest version that
+works is probably older; nobody has established which, so the floor is the
+evidence rather than a guess (`decisions.md` D-083).
 
 ## Unencrypted devices
 

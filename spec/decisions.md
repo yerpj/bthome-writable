@@ -4078,7 +4078,7 @@ what the comparison then turned up systematically.
 |---|---|---|
 | nonce | `mac[6] || D2FC || device-info[1] || counter u32 LE` | identical |
 | device-info byte | as transmitted (`_get_adv_info`) | as transmitted (D-068) |
-| nonce MAC | the packet's when the flag says so (`get_mac_readable`) | `nonce_address()`, same rule |
+| nonce MAC | the packet's when the flag says so (`get_mac_readable`) | `nonce_address()` ~~same rule~~ **this was false when written: the MAC was read as transmitted and theirs is reversed. Fixed in D-083, and now pinned against `BTHomeData.get_nonce()` rather than asserted** |
 | framing | `ciphertext || counter || MIC[4]` | identical |
 | key | 16 bytes, 32 hex characters | identical |
 
@@ -4203,3 +4203,175 @@ Everything above was read out of
 `homeassistant/components/bthome/{__init__,config_flow,coordinator,const,strings}`
 and `bthome_ble/parser.py` as installed in this repo's own test environment,
 rather than from memory of them.
+
+## D-083 -- an independent audit, and the reversed MAC it found  [DECISION, ruled]
+
+**Status:** 2026-10-05. The owner asked for an analysis of bthome-writable by
+a neutral agent: bugs, and consistency with official BTHome. It was given the
+installed `bthome-ble` and the installed core `bthome` to read, told to verify
+before asserting, and told explicitly to treat **this file** as a claim to
+check rather than as evidence. It found something ten days of our own work,
+two earlier reviews and 648 passing tests had not.
+
+### Fault 1 -- the nonce was built from the MAC backwards  [fixed]
+
+The in-packet MAC of a BTHome v2 advertisement travels **least-significant
+byte first**. `bthome_ble.parser.BTHomeData._get_mac` does
+`to_mac(bthome_mac_reversed[::-1])`. `nonce_address()` returned `payload[1:7]`
+as transmitted. Verified here before the finding was accepted:
+
+```
+bthome-ble reads the MAC : A4:C1:38:8E:1F:2B
+we read the MAC          : 2B:1F:8E:38:C1:A4
+nonce bthome-ble : a4c1388e1f2bd2fc430b000000
+nonce ours       : 2b1f8e38c1a4d2fc430b000000
+```
+
+Any device setting the MAC-included flag -- legal, and readable by core
+`bthome` throughout -- was **unusable**, and since D-082 it also raised a
+reauthentication flow telling the user their correct key was wrong. The
+reference firmware clears the flag, which is why no bench caught it.
+
+**Three places were wrong, not one.** The code; a test that asserted the
+mistake, so the suite defended it; and this file, where D-082's comparison
+table said *"same rule"*. A test written from the same misunderstanding as the
+code it tests is worth less than no test: it turns a bug into a requirement.
+
+**So the guard is now an oracle rather than an expectation.**
+`test_our_nonce_is_the_nonce_bthome_ble_builds` compares our nonce with
+`BTHomeData.get_nonce()` for both states of the flag and for a device whose
+advertised address differs from the one it transmits; a second test does the
+same for the other two things read out of that byte. An encrypted device is
+readable exactly when the receiver agrees with that library, so the library is
+the only thing worth asserting against. Everything hand-written here was
+hand-written by whoever misunderstood the format.
+
+### Fault 2 -- a read that did not authenticate counted as a success  [fixed]
+
+`async_read_all` returned `True` as soon as the *connection* succeeded, however
+many entries then failed to authenticate or decode. `_read_loop` took that as
+permission to mark the settings revision read, so a refused entry stayed stale
+until the revision moved again -- for a setpoint nobody touches twice, for
+ever. §3.2 exists to prevent exactly that, defeated by its own success check.
+And `_revision_read`'s docstring claimed the opposite: *"Moves only when a read
+succeeds."*
+
+It now returns `not failed`, a partially-read device keeps the entries that did
+answer, and two tests pin both directions so the fix cannot become *always*
+return False.
+
+### Fault 3 -- §5.6 did not exist  [fixed, and needs the owner's eye]
+
+Both implementations ship the counter report, D-080 made the receiver ask for
+it **by default**, and `PROTOCOL.md` contained no mention of it: zero hits for
+`2FAA1000`, "counter report" or "challenge". For a project whose ask is an ID
+reservation, the normative document did not describe the protocol the code
+speaks. The mechanism was agreed with Gordon in D-075/D-077; the text was
+simply never written.
+
+Written now as §5.6, optional throughout, with the exchange, the reason the
+challenge is there, and five MUST/SHOULD requirements. The document is bumped
+to **2.0-draft.7** and both generators with it. §9 says plainly that Gordon has
+ruled on its characteristic number and not on whether it belongs in the
+document. **The owner should read §5.6 before it goes to him.**
+
+### Fault 4 -- the dependency pins are mutually unsatisfiable  [partly fixed]
+
+Measured, not argued:
+
+```
+HA 2025.1.4 : core bthome requires bthome-ble==3.9.1
+us          : bthome-ble>=3.22.1
+hacs.json   : homeassistant 2025.1.0
+```
+
+Two integrations with incompatible pins on one instance reinstall each other's
+library on every restart, and whichever module is on disk first is what both
+then run against. Our floor is load-bearing: without `0x65` in `MEAS_TYPES` the
+object walk stops at the settings revision and the declaration behind it
+disappears (D-005).
+
+The declared minimum was therefore a false promise, and is now **2026.7.0** --
+the version where the two have actually been measured coexisting, on this
+bench. `docs/home-assistant-install.md` says why, and
+`tools/tests/test_library_floor.py` plus a companion in the HA suite now pin
+the reason, which until today was two steps removed from the number and so
+read like caution.
+
+**Still open, and the owner's.** The oldest Home Assistant that works is
+probably older than 2026.7 and nobody has established which. Two other routes
+exist and both are packaging policy rather than correctness: carry our own
+`0x65` length so the floor can drop to core's pin, or declare no `bthome-ble`
+requirement at all and use whatever core `bthome` installed. Note also that
+the test environment pins 2025.1.4, so the suites no longer run against the
+version we claim to support -- they still prove the logic, they just do not
+prove the floor.
+
+### Fault 5 -- a control outlived its layout and still wrote  [fixed]
+
+New firmware turns entry 1 from a light into a text. Nothing removes the
+entities built for the old layout, so the stale switch stayed operable: it
+handed its value to the **new** entry's encoder and produced `53 01`, a text
+object claiming one character and carrying none. §4.2 acknowledged it before
+the device refused it, so Home Assistant reported success and showed the switch
+as on.
+
+`still_declared(number, object_id)` is the device's own desync guard, on the
+receiving side. Such a control is unavailable -- already enough for the
+ordinary path, since Home Assistant drops a service call aimed at an
+unavailable entity -- and the write path refuses as well, for any caller that
+does not go through entity extraction. Both layers are tested.
+
+The existing layout-change test only ever changed the *number* of entries,
+which is why this went unseen. There is now one that changes a **type**.
+
+### Recorded, not fixed
+
+Kept so none of it is lost. Nothing below was in the owner's list.
+
+| # | Finding | Note |
+|---|---|---|
+| 6 | The read and flush tasks use `hass.async_create_task` rather than `entry.async_create_background_task`, so they outlive an unload -- a reload can have two coordinators connecting to a one-central device. Home Assistant's lingering-task assertion would catch it, but `ha/tests/conftest.py` overrides `verify_cleanup` to a bare `yield` | Real, and the overridden fixture is why the suite is silent |
+| 7 | `_check_mtu` does none of what its docstring claims (*"refused outright rather than split"*): it logs once below 64, a floor §4.4 deliberately dropped, and a 40-character text write goes out unchecked while the entity advertises `native_max = 255` | Prose contradicting code, the D-070 disease again |
+| 8 | `raw` `0x54` is reported `offered` and no platform builds it: the confirm step would promise one writable object and setup create nothing | Left alone by the owner's ruling (D-081) |
+| 9 | `CONF_MAX_CONNECTIONS` is read from options no options flow can set, and `connection_semaphore()` keys by limit *value*, so two entries with different limits get two semaphores -- not the process-wide cap the comment claims | Two defects in one knob |
+| 10 | Numbers carry a unit and no `device_class`, so no conversion for a Fahrenheit user; entity names are hardcoded English with no `entity:` section in `strings.json` | Core review would block on this |
+| 11 | `async_sync_write_counter` sets `self._counter = reported + 1` unconditionally. A command issued during the setup window is sealed with the clock seed (~1.76e9); the sync then drops the counter to ~1 and every later write is behind what the device just accepted. `max(self._counter, reported + 1)` closes it | Suspected, not reproduced. **The one to fix next** |
+| 12 | Clock seeding leaves the device's acceptance window after 2038-01-19: once `time.time() > 2**31` a seeded receiver is *behind* in circular terms and every write is refused, with the resync button unable to help | Suspected |
+| 13 | The Espruino advertising fallback publishes `[info, 0x00, pid]` -- for a keyed device `info` is `0x41`, "encrypted", over an unsealed body | Suspected |
+| 14 | The connect and disconnect handlers are registered on every `setup()` with no removal; `goFast()` is the connect handler and can throw `advertising_rejected` into it unguarded, where `handleWrite` guards the same case | Suspected |
+| 15 | The receiver never checks the BTHome version bits (5-7); `bthome-ble` refuses anything that is not version 2, so a future-version packet is parsed here and dropped there. And `0x50` (timestamp) classifies as numeric, so it would be offered as a 0-4294967295 number box | Suspected |
+
+### On consistency with BTHome, which was the other half of the question
+
+The verdict was that the protocol work is idiomatic and well argued -- `0xFF`
+last, values as BTHome objects byte for byte, `0x65` used for what it was made
+for, the direction byte in the nonce *"a genuinely elegant divergence that is
+stated and justified"* -- and that the pushback would be elsewhere:
+
+**We re-implement what `bthome-ble` owns.** Advertising decryption, the replay
+check, the device-info flags, the object walk. Only the `0xFF` offset genuinely
+needs local code. That is contrary to **our own rule 3**, and it is the direct
+cause of fault 1.
+
+Which is the lesson of this entry. D-082 aligned the *vocabulary* and the
+*policies* a day earlier and left in place the duplication that produces the
+bugs: the alignment done then was the visible one, not the deep one.
+`BTHomeData` has a public surface -- `get_nonce`, `get_encrypted_payload`,
+`get_mic`, `get_associated_data`, `get_mac_readable`, `is_sleepy_device` -- so
+delegating the whole advertising path and keeping only the declaration walk is
+available without touching a private method. **Not done here**: it is a
+restructuring with no behavioural gain now that the oracle guards exist, and it
+belongs with a merge rather than before one. Recorded as the shape of the real
+fix.
+
+### What this says about the method
+
+Three independent reviews have each found something the previous two missed,
+and this one found the worst by reading the *library* rather than the code. The
+pattern across D-078, D-079, D-080, D-081 and this entry is one failure shape:
+**§4.2 acknowledges before validating, so every disagreement in this protocol is
+silent.** Faults 1, 2 and 5 are all that shape. A guard worth having compares
+us with something outside the project -- the library, the device, a light
+sensor -- because a test written from our own understanding shares our
+misunderstandings, and fault 1 is what that costs.

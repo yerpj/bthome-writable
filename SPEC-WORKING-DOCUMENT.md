@@ -9,7 +9,7 @@
 > ## ⚠ Sections 3 and 7 describe protocol version 1, which is abandoned
 >
 > **The live specification is [`spec/PROTOCOL.md`](spec/PROTOCOL.md), version
-> 2.0-draft.6.** The v0.4 note above still announces the same-packet rule,
+> 2.0-draft.7.** The v0.4 note above still announces the same-packet rule,
 > write-all in packet order, and len-0/event-"none" no-ops. Version 2 replaced
 > all three: a length-prefixed `0xFF` declaration, **one GATT characteristic per
 > entry**, one object per write, and no no-op conventions at all (D-048, D-059,
@@ -176,7 +176,7 @@ bw.setup({
 
 ### Phase 0 — Foundations (no hardware)
 - **T0.1 Repo & scaffolding.** `/spec`, `/espruino`, `/ha`, `/test-vectors`; CI (Python lint+pytest, JS lint). → AC: CI green on skeletons.
-- **T0.2 Spec v1-draft → `/spec/PROTOCOL.md`.** Formalize section 3 (same-packet rule, bitmask numbering, no-op conventions, nonce device-info values); generate UUIDs; resolve remaining [DECISION] items with owner. — **done**; the spec is now `spec/PROTOCOL.md` 2.0-draft.6. → AC: reviewed, tagged, linked in discussion espruino#8013.
+- **T0.2 Spec v1-draft → `/spec/PROTOCOL.md`.** Formalize section 3 (same-packet rule, bitmask numbering, no-op conventions, nonce device-info values); generate UUIDs; resolve remaining [DECISION] items with owner. — **done**; the spec is now `spec/PROTOCOL.md` 2.0-draft.7. → AC: reviewed, tagged, linked in discussion espruino#8013.
 - **T0.5 (early) `bthome-ble` tolerance check [VERIFY].** Unit-level: feed payloads with trailing `0xFF` declaration to the `bthome-ble` parser; document behavior; record container decision. → AC: written result in `/spec/decisions.md`; risk #1 closed.
 - **T0.3 Crypto test vectors.** Generator + `test-vectors.json` (≥ 10 vectors both directions, cross-direction replay negative test, edge counters), verified against an independent AES-CCM implementation. → AC: cross-checked.
 - **T0.4 Advertising fixtures.** Sample payloads (hex): declaration placements, multi-instance (several same-ID objects), write-only empty values, rotation with same-packet rule, encrypted. Matching write-all payloads incl. no-ops. → AC: fixtures in `/spec`, used by both test suites.

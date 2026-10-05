@@ -491,12 +491,25 @@ def nonce_address(payload: bytes, address: str) -> str:
     """The MAC the nonce is built from.
 
     The one in the packet when the device put it there, the advertised address
-    otherwise -- which is what `bthome-ble` does, and the two differ for a device
-    advertising under a random address.
+    otherwise -- the two differ for a device advertising under a random address.
+
+    **The in-packet MAC travels least-significant byte first**, and has to be
+    reversed before it goes into the nonce. This read it as transmitted for
+    three weeks: `bthome_ble.parser.BTHomeData._get_mac` does
+    `bthome_mac_reversed[::-1]`, so every MAC-included device sealed its
+    advertising under one nonce and we opened it under the mirror image. Such a
+    device -- legal, and readable by core `bthome` -- was simply unusable here,
+    and after D-082 it also told the user their correct key was wrong. Nothing
+    caught it because the reference firmware clears the flag, and because the
+    test asserted the mistake (D-083).
+
+    `test_our_nonce_is_the_nonce_bthome_ble_builds` now pins this against
+    `BTHomeData.get_nonce()` rather than against a hand-written expectation, so
+    the two cannot drift apart again.
     """
     if not mac_included(payload) or len(payload) < 7:
         return address
-    return ":".join(f"{byte:02X}" for byte in payload[1:7])
+    return ":".join(f"{byte:02X}" for byte in reversed(payload[1:7]))
 
 
 def split_sealed(payload: bytes) -> tuple[bytes, int, bytes]:

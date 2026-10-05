@@ -163,7 +163,10 @@ class BTHomeWritableCoordinator:
         """The revision whose values are in `_values`. Moves only when a read
         succeeds: an Espruino device serves one central at a time, so a read
         attempted while something else holds the link fails, and marking the
-        revision seen at that point would leave the state stale indefinitely."""
+        revision seen at that point would leave the state stale indefinitely.
+
+        "Succeeds" means every entry, not merely the connection -- the looser
+        reading is what made this stale anyway (D-083)."""
         self._read_failed_at: float | None = None
         self._read_task: asyncio.Task[None] | None = None
         self._read_again = False
@@ -424,6 +427,22 @@ class BTHomeWritableCoordinator:
         if self.declaration is None or not 1 <= number <= len(self.declaration.entries):
             return None
         return self.declaration.entries[number - 1]
+
+    def still_declared(self, number: int, object_id: int) -> bool:
+        """Whether entry `number` is still the object the caller thinks it is.
+
+        New firmware can turn entry 1 from a light into a text, and the entities
+        built for the old layout are not removed -- so a control from before the
+        change would otherwise take its value, hand it to the *new* entry's
+        encoder, and put a malformed object on the wire. Measured: a stale
+        switch produced `53 01`, a text object claiming one character and
+        carrying none, and §4.2 acknowledged it before the device refused it, so
+        Home Assistant reported success (D-083).
+
+        This is the device's own desync guard, on the receiving side.
+        """
+        declared = self.entry(number)
+        return declared is not None and declared.object_id == object_id
 
     # --- Counters (§5.3) ----------------------------------------------------
 
@@ -800,7 +819,15 @@ class BTHomeWritableCoordinator:
     async def async_read_all(self) -> bool:
         """Read every offered, readable entry over one connection.
 
-        Returns whether the device was read; raises if the connection fails.
+        Returns whether the device was read -- **all of it**; raises if the
+        connection fails.
+
+        It used to return True as soon as the connection had been made, however
+        many entries then failed to authenticate or decode. `_read_loop` took
+        that as permission to mark the settings revision read, so an entry whose
+        read was refused stayed stale until the revision moved again, which for
+        a knob nobody touches twice is for ever. That is the thing §3.2 exists
+        to prevent, defeated by its own success check (D-083).
         """
         if self.declaration is None:
             return False
@@ -811,6 +838,7 @@ class BTHomeWritableCoordinator:
             return False
 
         changed = False
+        failed = False
         async with self._semaphore:
             client = await establish_connection(
                 client_class=BleakClientWithServiceCache,
@@ -828,7 +856,13 @@ class BTHomeWritableCoordinator:
                         continue
                     raw = bytes(await client.read_gatt_char(characteristic))
                     value = self._open_read(entry, raw)
-                    if value is not None and self._values.get(entry.entry) != value:
+                    if value is None:
+                        # Refused, unauthenticated or undecodable. `_open_read`
+                        # has said why; what matters here is that this entry's
+                        # value is not the one the revision promised.
+                        failed = True
+                        continue
+                    if self._values.get(entry.entry) != value:
                         self._values[entry.entry] = value
                         changed = True
             finally:
@@ -836,7 +870,7 @@ class BTHomeWritableCoordinator:
 
         if changed:
             self._notify()
-        return True
+        return not failed
 
     def _open_read(self, entry: WritableEntry, raw: bytes) -> bytes | None:
         """A read's value, or None -- with the reason logged -- if unusable."""
