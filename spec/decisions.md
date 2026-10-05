@@ -4050,3 +4050,156 @@ someone else's pull request. Adding hassfest immediately found the manifest's
 keys unsorted -- `bluetooth` after `name` instead of first -- which is what
 that check exists for. Neither could be run locally; the first CI run is the
 proof, not this entry.
+
+## D-082 -- align the secure mode on core `bthome`, line by line  [DECISION, ruled]
+
+**Status:** 2026-10-05. The owner's instruction: *"vois ce que tu peux faire
+pour t'aligner au maximum sur bthome actuel sans casser de mecanismes lies a
+bthome-writable. Notre objectif etant l'acceptation de notre modification par
+les reviewer bthome."* Prompted by a real incident, below.
+
+### The incident that started it
+
+The owner noticed the Puck's illuminance no longer moved in Home Assistant
+while the LED plainly lit. Neither the sensor nor our integration was at
+fault: core `bthome`'s own config entry for that device held **no bindkey**,
+because the entry predated the device being reflashed encrypted. Its sensor
+was frozen on its last plaintext reading -- `97.87` -- and stayed *available*,
+because availability follows advertising presence and the device was still
+advertising.
+
+Core `bthome` had done the right thing: a reauthentication flow was waiting,
+`bthome get_encryption_key reauth`. **Ours would not have raised one.** That is
+what the comparison then turned up systematically.
+
+### Identical before this, and verified so
+
+| | `bthome_ble.parser` | us |
+|---|---|---|
+| nonce | `mac[6] || D2FC || device-info[1] || counter u32 LE` | identical |
+| device-info byte | as transmitted (`_get_adv_info`) | as transmitted (D-068) |
+| nonce MAC | the packet's when the flag says so (`get_mac_readable`) | `nonce_address()`, same rule |
+| framing | `ciphertext || counter || MIC[4]` | identical |
+| key | 16 bytes, 32 hex characters | identical |
+
+Our writes and reads reuse that construction with a different device-info
+value in the nonce (`0xFF`, `0xFE`), which is the extension itself and touches
+nothing on BTHome's advertising path.
+
+### Four things adopted
+
+**1. A reauthentication flow.** The gap, and the one a reviewer would have
+found first, because `reauth` is the convention for a credential that stopped
+working. Core raises it after **two** failures -- *"we only ask for
+reautentification after the decryption has failed twice"* -- and so do we, for
+their reason: one failure is a stray packet, and a flow raised for one teaches
+the user to dismiss them. We previously logged a warning and went quiet, which
+is this session's recurring failure shape (D-078, D-079, D-080) in a fourth
+place.
+
+The flow carries the advertisement that would not open, as core carries its
+whole `DeviceData` and reads `last_service_info` off it. Without that the first
+implementation aborted on `not_on_the_air`, because a notification answered an
+hour later finds the device quiet -- caught by the test, not by reasoning.
+
+**2. The advertising replay check**, copied rather than invented, thresholds
+included: refuse a counter that has not increased, *unless* the key has never
+opened anything (nothing to compare against) or the new value is below 100 (a
+wrap, or a battery change). We had no check at all. The impact was small -- a
+replayed advertisement reasserts a declaration, not a command -- but a packet
+this integration acts on should be one core `bthome` would have shown the user.
+
+**3. `sleepy_device`**, their key name and their rule: `sleepy_device or
+super().available`. A trigger-based device is not absent between its events,
+and it is persisted in the config entry so its controls are available straight
+after a restart rather than hours later. Same literal string, so a device
+configured in both integrations reads the same in both.
+
+**4. Their vocabulary.** The key step is `get_encryption_key`, not `bindkey`;
+the errors are `expected_32_characters` and `decryption_failed`, in core's own
+wording, and they sit on the `bindkey` field rather than on `base`; the field
+is `vol.All(str, vol.Strip)`. None of it changes behaviour. All of it means a
+reviewer reads their own code.
+
+### Kept, and why
+
+`async_step_reconfigure` (D-079) has no counterpart in core. It stays: reauth
+answers *the key stopped working*, reconfigure answers *I want to change or
+remove the key*, and only the second can clear a key from a device that went
+back to advertising in clear. It is a superset, not a divergence.
+
+Our config flow also scans with `connectable=True` where core passes `False`.
+Deliberate: core only listens, we have to connect.
+
+### Still divergent, and not ours to close
+
+**Two integrations, two copies of one key, with nothing linking them** -- which
+is exactly what bit the owner. No amount of alignment fixes it from here; a
+merge into core `bthome` does. It belongs in the dossier as an argument *for*
+the merge rather than as a defect.
+
+**We are not a `PassiveBluetoothProcessorCoordinator`.** Core builds on that
+helper; we hold our own coordinator because we also connect, write, read back
+and queue. Converting is a structural change with no behavioural gain, and it
+would be better done as part of a merge than before one. Recorded, not
+attempted (and it is D-070's open note, still open).
+
+### Verified on hardware, and it took a detour
+
+The reproduction is the incident itself: reflash the Puck with a **different**
+bindkey, leave the receiver's alone.
+
+```
+FLOW step='get_encryption_key' source='reauth' entry=01M3VJN3PG6BYYD8KB0WDWSZWZ
+wrong key  -> form get_encryption_key {'bindkey': 'decryption_failed'}
+right key  -> abort reauth_successful
+sealed loop -> PASS: 108 -> 602 -> 111 lx
+```
+
+Exercised twice, because putting the original key back on the device raises it
+again from the other side. The replay check appeared on hardware unprompted:
+four duplicate packets skipped, *"the new encryption counter (12000229) is not
+larger than the previous value (12000229)"* -- the local adapter delivering the
+same advertisement twice, which is exactly what it is for.
+
+### Two things the detour taught
+
+**`/api/error_log` returns 404 on this installation, and nothing writes a log
+file to `/config`.** Every *"no errors in the log"* in this session's earlier
+entries rested on a 404 and was worth nothing. The log is reachable at the
+`system_log/list` WebSocket command, which also carries tracebacks. The first
+attempt at this validation failed and explained nothing because of it.
+
+**And the first failure was the bench, not the code.** `system_log` showed the
+Pi's adapter wedged -- *"Failed to connect after 10 attempt(s)"*,
+*"bluetooth_auto_recovery: Could not reset the power state of hci0"*, *"last
+advertisement 65s ago"* -- so no advertisement reached the coordinator during
+the window, and nothing could have been counted. Core `bthome`'s flow, which I
+took as proof the packets were arriving, was a leftover from the owner's own
+incident an hour earlier. Reading a stale flow as live evidence cost most of
+the detour.
+
+### And a real defect, found by the crash it caused
+
+`system_log` carried an unretrieved task exception:
+
+```
+File "/config/custom_components/bthome_writable/coordinator.py", line 778,
+  in async_sync_write_counter
+...  in split_sealed
+    raise ProtocolError(f"{len(payload)} bytes is shorter than the framing...")
+```
+
+`open_counter_report` promises *"or None if the report is not this one's"*, and
+every caller treats None as *"could not be opened"*. A payload **shorter than
+the framing** did not return None: `split_sealed` raised, through two openers,
+and killed the background task D-080 had just made run by default. A device can
+answer anything, so that is wire data rather than a programming error, and
+`_open` now returns None for it. Four occurrences before the fix, none after.
+
+### Where the number came from
+
+Everything above was read out of
+`homeassistant/components/bthome/{__init__,config_flow,coordinator,const,strings}`
+and `bthome_ble/parser.py` as installed in this repo's own test environment,
+rather than from memory of them.

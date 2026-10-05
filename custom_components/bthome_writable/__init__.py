@@ -21,10 +21,12 @@ from .const import (
     CONF_BINDKEY,
     CONF_DECLARATION,
     CONF_MAX_CONNECTIONS,
+    CONF_SLEEPY_DEVICE,
     CONF_WRITE_COUNTER,
     COUNTER_EPOCH_SEED,
     DEFAULT_MAX_CONNECTIONS,
     DOMAIN,
+    REAUTH_SERVICE_INFO,
 )
 from .coordinator import BTHomeWritableCoordinator
 from .protocol import Declaration, entity_unique_id, event_unique_id
@@ -146,6 +148,30 @@ async def async_setup_entry(
         )
 
     @callback
+    def _remember_sleepy_device(sleepy: bool) -> None:
+        # Core `bthome` persists the same flag under the same key, so a
+        # trigger-based device's entities are available straight after a restart
+        # rather than after its next event, which may be hours away.
+        hass.config_entries.async_update_entry(
+            entry, data={**entry.data, CONF_SLEEPY_DEVICE: sleepy}
+        )
+
+    @callback
+    def _ask_for_the_key_again() -> None:
+        # Core `bthome`'s line, for the same reason: a key that no longer opens
+        # the device's packets is something only the user can fix, and an
+        # integration that merely logs it shows nothing and explains nothing.
+        #
+        # The failing advertisement travels with the flow, as core sends its
+        # whole `DeviceData`: the notification may be answered hours later, and
+        # a key that cannot be checked against anything would have to be taken
+        # on trust.
+        entry.async_start_reauth(
+            hass,
+            data={REAUTH_SERVICE_INFO: entry.runtime_data.last_service_info},
+        )
+
+    @callback
     def _remember_declaration(declaration: Declaration) -> None:
         # So the controls exist at the next startup even if the device is asleep
         # or out of range. Core `bthome` restores its sensors from the entry for
@@ -167,6 +193,9 @@ async def async_setup_entry(
         on_counter=_remember_counter,
         declaration=Declaration.restore(entry.data.get(CONF_DECLARATION)),
         on_declaration=_remember_declaration,
+        sleepy_device=entry.data.get(CONF_SLEEPY_DEVICE, False),
+        on_sleepy_device=_remember_sleepy_device,
+        on_authentication_failure=_ask_for_the_key_again,
     )
     entry.runtime_data = coordinator
 

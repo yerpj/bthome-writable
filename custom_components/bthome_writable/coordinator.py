@@ -22,8 +22,10 @@ from homeassistant.core import HomeAssistant, callback
 
 from .const import (
     ALLOW_PLAINTEXT_DOWNGRADE,
+    AUTHENTICATION_FAILURES_BEFORE_REAUTH,
     BTHOME_SERVICE_UUID,
     CHALLENGE_LENGTH,
+    COUNTER_RESTART_CEILING,
     COUNTER_STRIDE,
     COUNTER_UUID,
     DEFAULT_MAX_CONNECTIONS,
@@ -38,6 +40,7 @@ from .protocol import (
     Declaration,
     ProtocolError,
     WritableEntry,
+    advertising_counter,
     decode_object,
     decrypt_advertising,
     encode_object,
@@ -47,6 +50,7 @@ from .protocol import (
     open_read,
     parse_declaration,
     seal_write,
+    trigger_based,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -101,12 +105,38 @@ class BTHomeWritableCoordinator:
         on_counter: Callable[[int], None] | None = None,
         declaration: Declaration | None = None,
         on_declaration: Callable[[Declaration], None] | None = None,
+        sleepy_device: bool = False,
+        on_sleepy_device: Callable[[bool], None] | None = None,
+        on_authentication_failure: Callable[[], None] | None = None,
     ) -> None:
         self.hass = hass
         self.address = address
         self.name = name or address
         self.bindkey = bindkey
         """The device's BTHome key, or None for a plain device (§5)."""
+
+        self.bindkey_verified: bool | None = None
+        """Whether a bindkey has ever opened an advertisement from this device.
+
+        Core `bthome` keeps the same flag under the same name, and for the same
+        two purposes: it gates the replay check -- there is no counter to
+        compare against until one packet has been read -- and it is what the
+        reauthentication flow proves (D-082)."""
+
+        self._authentication_failures = 0
+        self._on_authentication_failure = on_authentication_failure
+
+        self.last_service_info: BluetoothServiceInfoBleak | None = None
+        """The most recent advertisement, kept the way core `bthome` keeps it.
+
+        A reauthentication flow needs an advertisement to check a key against,
+        and the user may answer it long after the device went quiet."""
+
+        self.encryption_counter = 0
+        """The highest advertising counter accepted, for the replay check."""
+
+        self.sleepy_device = sleepy_device
+        self._on_sleepy_device = on_sleepy_device
 
         self.advertises_encrypted: bool | None = None
         """Whether the last advertisement was sealed, or None before the first.
@@ -155,6 +185,10 @@ class BTHomeWritableCoordinator:
         payload = service_info.service_data.get(BTHOME_SERVICE_UUID)
         if not payload:
             return
+
+        self.last_service_info = service_info
+
+        self._notice_sleepy(trigger_based(payload))
 
         objects = self._plaintext(payload)
         if objects is None:
@@ -268,6 +302,13 @@ class BTHomeWritableCoordinator:
                 "%s: advertising is encrypted and no bindkey is configured",
                 self.address,
             )
+            # A device that is sealed while we hold no key is the case core
+            # `bthome` raises a reauthentication flow for, and so do we: the
+            # alternative is an integration that silently shows nothing.
+            self._authentication_failed()
+            return None
+
+        if not self._counter_increased(payload):
             return None
 
         objects = decrypt_advertising(payload, self.bindkey, self.address)
@@ -277,7 +318,76 @@ class BTHomeWritableCoordinator:
                 "wrong, or another device may be using this address",
                 self.address,
             )
+            self._authentication_failed()
+            return None
+
+        self.bindkey_verified = True
+        self._authentication_failures = 0
+        counter = advertising_counter(payload)
+        if counter is not None:
+            self.encryption_counter = counter
         return objects
+
+    def _counter_increased(self, payload: bytes) -> bool:
+        """`bthome-ble`'s replay check, thresholds included.
+
+        A sealed advertisement carries its counter in the clear, so a replay can
+        be dropped before an AES is spent on it. The rule is copied rather than
+        invented, because a packet this integration acts on should be one core
+        `bthome` would have shown the user:
+
+        * only once a key has opened something, since before that there is
+          nothing to compare against;
+        * and only above `COUNTER_RESTART_CEILING`, because a counter that
+          wrapped or a device whose battery was changed resumes near zero and
+          refusing those would make it unreadable until it caught up.
+
+        See `bthome_ble.parser._check_encryption_counter`.
+        """
+        counter = advertising_counter(payload)
+        if counter is None or self.bindkey_verified is not True:
+            return True
+        if counter > self.encryption_counter or counter < COUNTER_RESTART_CEILING:
+            return True
+        _LOGGER.warning(
+            "%s: the new encryption counter (%i) is not larger than the "
+            "previous value (%i). The data might be compromised. BLE "
+            "advertisement will be skipped",
+            self.address,
+            counter,
+            self.encryption_counter,
+        )
+        return False
+
+    def _authentication_failed(self) -> None:
+        """Count a packet we could not open, and ask for the key once it is not
+        a one-off.
+
+        Core `bthome` asks after two: *"we only ask for reautentification after
+        the decryption has failed twice."* One failure is a stray packet -- a
+        neighbour on this address, a corrupted frame -- and a reauthentication
+        flow raised for one of those teaches the user to dismiss them.
+        """
+        self.bindkey_verified = False
+        self._authentication_failures += 1
+        if (
+            self._authentication_failures >= AUTHENTICATION_FAILURES_BEFORE_REAUTH
+            and self._on_authentication_failure is not None
+        ):
+            self._on_authentication_failure()
+
+    def _notice_sleepy(self, sleepy: bool) -> None:
+        """Remember a trigger-based device, the way core `bthome` does.
+
+        Persisted rather than merely noted, so the entities of a device that
+        speaks once an hour are available immediately after a restart instead of
+        an hour later.
+        """
+        if sleepy == self.sleepy_device:
+            return
+        self.sleepy_device = sleepy
+        if self._on_sleepy_device is not None:
+            self._on_sleepy_device(sleepy)
 
     @callback
     def async_add_listener(self, listener: Callable[[], None]) -> Callable[[], None]:

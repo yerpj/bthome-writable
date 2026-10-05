@@ -7,16 +7,21 @@ Phase 3, a bindkey for encrypted devices.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 import logging
 from typing import Any
 
 from habluetooth import BluetoothServiceInfoBleak
 from homeassistant.components.bluetooth import async_discovered_service_info
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import (
+    SOURCE_REAUTH,
+    ConfigFlow,
+    ConfigFlowResult,
+)
 from homeassistant.const import CONF_ADDRESS
 import voluptuous as vol
 
-from .const import BTHOME_SERVICE_UUID, CONF_BINDKEY, DOMAIN
+from .const import BTHOME_SERVICE_UUID, CONF_BINDKEY, DOMAIN, REAUTH_SERVICE_INFO
 from .protocol import (
     Declaration,
     ProtocolError,
@@ -114,7 +119,7 @@ class BTHomeWritableConfigFlow(ConfigFlow, domain=DOMAIN):
             # Nothing else about this device is readable yet: its declaration,
             # its objects and whether it has any are all inside the ciphertext.
             # The one question rule 4 allows is exactly this one.
-            return await self.async_step_bindkey()
+            return await self.async_step_get_encryption_key()
 
         declaration = declaration_from(discovery_info)
         if declaration is None:
@@ -128,7 +133,7 @@ class BTHomeWritableConfigFlow(ConfigFlow, domain=DOMAIN):
         self._declaration = declaration
         return await self.async_step_confirm()
 
-    async def async_step_bindkey(
+    async def async_step_get_encryption_key(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Ask for the device's BTHome key, and prove it before accepting it.
@@ -147,27 +152,75 @@ class BTHomeWritableConfigFlow(ConfigFlow, domain=DOMAIN):
             except ValueError:
                 bindkey = b""
             if len(bindkey) * 2 != BINDKEY_LENGTH:
-                errors["base"] = "invalid_bindkey"
+                errors[CONF_BINDKEY] = "expected_32_characters"
             else:
                 declaration = declaration_from(self._discovery, bindkey)
                 if declaration is None:
-                    errors["base"] = "wrong_bindkey"
+                    errors[CONF_BINDKEY] = "decryption_failed"
                 elif not declaration.offered:
                     return self.async_abort(reason="nothing_writable")
                 else:
                     self._bindkey = bindkey
                     self._declaration = declaration
+                    if self.source == SOURCE_REAUTH:
+                        # The device is already configured; only its key was
+                        # wrong or missing. Nothing to confirm, and nothing else
+                        # about the entry changes.
+                        return self.async_update_reload_and_abort(
+                            self._get_reauth_entry(),
+                            data_updates={CONF_BINDKEY: bindkey.hex()},
+                        )
                     return await self.async_step_confirm()
 
         return self.async_show_form(
-            step_id="bindkey",
-            data_schema=vol.Schema({vol.Required(CONF_BINDKEY): str}),
+            step_id="get_encryption_key",
+            data_schema=vol.Schema(
+                {vol.Required(CONF_BINDKEY): vol.All(str, vol.Strip)}
+            ),
             errors=errors,
             description_placeholders={
                 "name": self._discovery.name,
                 "address": self._discovery.address,
             },
         )
+
+    async def async_step_reauth(
+        self, entry_data: Mapping[str, Any]
+    ) -> ConfigFlowResult:
+        """Ask for a key again, because the device's packets stopped opening.
+
+        Core `bthome` does exactly this, and it is the piece that was missing
+        here: without it a key that goes wrong -- a device reflashed with
+        encryption on, a key changed, an entry created while the device happened
+        to be advertising in clear -- produces an integration that shows
+        nothing, logs a warning nobody reads, and waits (D-082).
+
+        The flow needs a live advertisement to check a key against, so it is
+        looked up here rather than carried in `entry_data`: ours is raised from
+        a packet that has just arrived, and the Bluetooth stack still has it.
+        """
+        address = self._get_reauth_entry().unique_id
+        assert address is not None
+
+        self._discovery = entry_data.get(REAUTH_SERVICE_INFO) or next(
+            (
+                info
+                for info in async_discovered_service_info(self.hass, connectable=True)
+                if info.address == address
+            ),
+            None,
+        )
+        if self._discovery is None:
+            return self.async_abort(reason="not_on_the_air")
+
+        if not needs_bindkey(self._discovery):
+            # It is advertising in clear, so there is no key to get right. The
+            # write path refuses to send a sealed write to it and says so
+            # (D-042), which is a better place to deal with this than a form.
+            return self.async_abort(reason="reauth_successful")
+
+        self.context["title_placeholders"] = {"name": self._discovery.name}
+        return await self.async_step_get_encryption_key()
 
     async def async_step_confirm(
         self, user_input: dict[str, Any] | None = None
@@ -237,7 +290,7 @@ class BTHomeWritableConfigFlow(ConfigFlow, domain=DOMAIN):
             text = text.replace("-", "").replace(":", "")
             if not text:
                 if needs_bindkey(discovery):
-                    errors["base"] = "bindkey_required"
+                    errors[CONF_BINDKEY] = "bindkey_required"
                 else:
                     return self.async_update_reload_and_abort(
                         entry, data_updates={CONF_BINDKEY: None}
@@ -248,9 +301,9 @@ class BTHomeWritableConfigFlow(ConfigFlow, domain=DOMAIN):
                 except ValueError:
                     bindkey = b""
                 if len(bindkey) * 2 != BINDKEY_LENGTH:
-                    errors["base"] = "invalid_bindkey"
+                    errors[CONF_BINDKEY] = "expected_32_characters"
                 elif declaration_from(discovery, bindkey) is None:
-                    errors["base"] = "wrong_bindkey"
+                    errors[CONF_BINDKEY] = "decryption_failed"
                 else:
                     return self.async_update_reload_and_abort(
                         entry, data_updates={CONF_BINDKEY: bindkey.hex()}
@@ -258,7 +311,9 @@ class BTHomeWritableConfigFlow(ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="reconfigure",
-            data_schema=vol.Schema({vol.Optional(CONF_BINDKEY, default=""): str}),
+            data_schema=vol.Schema(
+                {vol.Optional(CONF_BINDKEY, default=""): vol.All(str, vol.Strip)}
+            ),
             errors=errors,
             description_placeholders={
                 "name": entry.title,
@@ -291,7 +346,7 @@ class BTHomeWritableConfigFlow(ConfigFlow, domain=DOMAIN):
             self._discovery = discovery
 
             if needs_bindkey(discovery):
-                return await self.async_step_bindkey()
+                return await self.async_step_get_encryption_key()
 
             declaration = declaration_from(discovery)
             if declaration is None or not declaration.offered:

@@ -278,12 +278,12 @@ async def test_the_key_is_proved_against_the_air_before_it_is_accepted(
         wrong = await hass.config_entries.flow.async_configure(
             result["flow_id"], {CONF_BINDKEY: "00" * 16}
         )
-        assert wrong["errors"] == {"base": "wrong_bindkey"}
+        assert wrong["errors"] == {CONF_BINDKEY: "decryption_failed"}
 
         short = await hass.config_entries.flow.async_configure(
             result["flow_id"], {CONF_BINDKEY: "abcd"}
         )
-        assert short["errors"] == {"base": "invalid_bindkey"}
+        assert short["errors"] == {CONF_BINDKEY: "expected_32_characters"}
 
     assert CONF_BINDKEY not in entry.data
 
@@ -330,7 +330,7 @@ async def test_an_encrypted_device_cannot_have_its_key_cleared(
             result["flow_id"], {CONF_BINDKEY: ""}
         )
 
-    assert result["errors"] == {"base": "bindkey_required"}
+    assert result["errors"] == {CONF_BINDKEY: "bindkey_required"}
 
 
 async def test_a_key_is_not_accepted_for_a_device_that_is_not_on_the_air(
@@ -343,3 +343,150 @@ async def test_a_key_is_not_accepted_for_a_device_that_is_not_on_the_air(
 
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "not_on_the_air"
+
+
+# --- alignment with core `bthome` (D-082) ------------------------------------
+
+
+async def test_the_key_step_is_named_and_worded_as_core_bthome_names_it() -> None:
+    """Not cosmetic. This integration is meant to be proposed into core
+    `bthome`, so a reviewer should meet their own vocabulary: the step is
+    `get_encryption_key`, the errors are `expected_32_characters` and
+    `decryption_failed`, and both sit on the `bindkey` field rather than on
+    `base` (core's config_flow.py, strings.json).
+    """
+    import json
+    from pathlib import Path
+
+    strings = json.loads(
+        (
+            Path(__file__).resolve().parents[2]
+            / "custom_components"
+            / "bthome_writable"
+            / "strings.json"
+        ).read_text(encoding="utf-8")
+    )["config"]
+
+    assert "get_encryption_key" in strings["step"]
+    assert "bindkey" not in strings["step"], "renamed, not duplicated"
+    assert "expected_32_characters" in strings["error"]
+    assert "decryption_failed" in strings["error"]
+    assert "reauth_successful" in strings["abort"]
+
+
+async def test_a_key_that_stops_working_raises_a_reauth_flow(
+    hass: HomeAssistant, radio, gatt
+) -> None:
+    """The gap this closes. Core `bthome` starts a reauth flow once decryption
+    has failed twice; this integration used to log a warning and go quiet, so a
+    device reflashed with encryption on simply showed nothing for ever (D-082).
+    """
+    from homeassistant.config_entries import SOURCE_REAUTH
+
+    from .conftest import setup_device
+
+    entry = await setup_device(
+        hass, radio, "single-light", entry_data={CONF_BINDKEY: "00" * 16}
+    )
+
+    # Two advertisements this key cannot open: one is a stray packet, two is a
+    # key that is wrong.
+    for _ in range(2):
+        radio.push(service_info("single-light", service_data=bytes.fromhex(SEALED)))
+        await hass.async_block_till_done()
+
+    flows = [
+        flow
+        for flow in hass.config_entries.flow.async_progress()
+        if flow["context"].get("source") == SOURCE_REAUTH
+        and flow["context"].get("entry_id") == entry.entry_id
+    ]
+    assert flows, "a key that no longer opens the device must be asked for again"
+    assert flows[0]["step_id"] == "get_encryption_key"
+
+
+async def test_one_unreadable_advertisement_is_not_enough_to_ask(
+    hass: HomeAssistant, radio, gatt
+) -> None:
+    """Core's threshold, and its reason: a single failure is a stray packet, and
+    a reauthentication raised for one teaches the user to dismiss them."""
+    from homeassistant.config_entries import SOURCE_REAUTH
+
+    from .conftest import setup_device
+
+    entry = await setup_device(
+        hass, radio, "single-light", entry_data={CONF_BINDKEY: "00" * 16}
+    )
+    radio.push(service_info("single-light", service_data=bytes.fromhex(SEALED)))
+    await hass.async_block_till_done()
+
+    assert not [
+        flow
+        for flow in hass.config_entries.flow.async_progress()
+        if flow["context"].get("source") == SOURCE_REAUTH
+        and flow["context"].get("entry_id") == entry.entry_id
+    ]
+
+
+async def test_reauth_updates_the_key_in_place(hass: HomeAssistant, radio) -> None:
+    """It is the same device: the entry keeps its identity and its entities."""
+    from homeassistant.config_entries import SOURCE_REAUTH
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id=DEFAULT_ADDRESS,
+        data={CONF_BINDKEY: "00" * 16},
+        title="Espruino Light",
+    )
+    entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.bthome_writable.config_flow.async_discovered_service_info",
+        return_value=[sealed_info()],
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": SOURCE_REAUTH, "entry_id": entry.entry_id},
+            data=entry.data,
+        )
+        assert result["step_id"] == "get_encryption_key"
+
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {CONF_BINDKEY: BINDKEY}
+        )
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "reauth_successful"
+    assert entry.data[CONF_BINDKEY] == BINDKEY
+    assert entry.unique_id == DEFAULT_ADDRESS
+
+
+async def test_reauth_on_a_device_advertising_in_clear_asks_nothing(
+    hass: HomeAssistant, radio
+) -> None:
+    """There is no key to get right. The write path refuses to seal for such a
+    device and says so (D-042), which is a better place for it than a form."""
+    from homeassistant.config_entries import SOURCE_REAUTH
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        unique_id=DEFAULT_ADDRESS,
+        data={CONF_BINDKEY: BINDKEY},
+        title="Espruino Light",
+    )
+    entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.bthome_writable.config_flow.async_discovered_service_info",
+        return_value=[service_info("single-light")],
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={"source": SOURCE_REAUTH, "entry_id": entry.entry_id},
+            data=entry.data,
+        )
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "reauth_successful"

@@ -20,9 +20,9 @@
           "bindkey": "Bindkey"
         }
       },
-      "bindkey": {
+      "get_encryption_key": {
         "title": "Encryption key",
-        "description": "{name} ({address}) advertises encrypted, so its key is needed before Home Assistant can see what it offers. It is the same 32-character BTHome bindkey the device was given.",
+        "description": "The data broadcast by {name} ({address}) is encrypted. In order to decrypt it, and to seal the commands sent back to it, we need a 32 character hexadecimal bindkey — the same one the device was given.",
         "data": {
           "bindkey": "Bindkey"
         }
@@ -34,12 +34,13 @@
       "nothing_writable": "This device carries a writability declaration, but it lists no object type this integration can offer.",
       "no_devices_found": "No writable BTHome device is currently within range. These devices announce themselves, so if yours is powered and nearby it will appear on its own — check that it is in range of a Bluetooth adapter or proxy.",
       "not_on_the_air": "This device is not currently advertising, so a key cannot be checked against it. Accepting one unverified is how a device comes to be configured and then never work — try again once it is in range.",
+      "reauth_successful": "The encryption key was updated.",
       "reconfigure_successful": "The encryption key was updated."
     },
     "error": {
-      "invalid_bindkey": "A bindkey is 32 hexadecimal characters.",
-      "wrong_bindkey": "That key does not decrypt this device's advertising.",
-      "bindkey_required": "This device advertises encrypted, so it needs a key."
+      "bindkey_required": "This device advertises encrypted, so it needs a key.",
+      "expected_32_characters": "Expected a 32 character hexadecimal bindkey.",
+      "decryption_failed": "The provided bindkey did not work, sensor data could not be decrypted. Please check it and try again."
     }
   },
   "exceptions": {

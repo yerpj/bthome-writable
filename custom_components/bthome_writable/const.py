@@ -72,6 +72,13 @@ MAC, and the objects start seven bytes in rather than one. The MAC in the packet
 is also the one the nonce uses, which matters for a device advertising under a
 random address."""
 
+DEVICE_INFO_TRIGGER_BASED: Final = 1 << 2
+"""Set when the device advertises only on an event rather than on a timer.
+
+`bthome-ble` calls such a device *sleepy* and core `bthome` keeps its entities
+available between packets, because a device that speaks once an hour is not an
+absent device. We follow that, under their name and their rule."""
+
 DEVICE_INFO_BYTE_ADVERTISING: Final = 0x41
 """What the reference firmware transmits: BTHome v2, encrypted, nothing else.
 
@@ -107,6 +114,14 @@ the device advertising, which is what its advertising interval buys or costs."""
 
 CONF_BINDKEY: Final = "bindkey"
 CONF_WRITE_COUNTER: Final = "write_counter"
+
+CONF_SLEEPY_DEVICE: Final = "sleepy_device"
+"""Core `bthome`'s own key, deliberately the same string.
+
+It persists what the trigger-based flag last said, so an entity is available
+immediately after a restart rather than after the device's next event -- which,
+for a trigger-based device, may be hours. Sharing the literal means a device
+configured in both integrations reads the same in both config entries."""
 
 CONF_DECLARATION: Final = "declaration"
 """The last declaration heard, kept so the controls exist before the device is.
@@ -162,3 +177,29 @@ it is a receiver policy, not part of section 5.
 The case is not hypothetical: it is how a Puck.js reflashed from the encrypted
 example to the plain one stopped responding to Home Assistant entirely, with
 nothing in the log (D-042)."""
+
+REAUTH_SERVICE_INFO: Final = "last_service_info"
+"""What a reauthentication flow carries: the advertisement that would not open.
+
+Core `bthome` passes its whole `DeviceData` and reads `device.last_service_info`
+off it; we pass the service info directly, which is the part that matters. The
+point is the same -- the user may answer the notification hours later, when the
+device has gone quiet, and a key has to be checkable against something."""
+
+AUTHENTICATION_FAILURES_BEFORE_REAUTH: Final = 2
+"""How many advertisements must fail to authenticate before asking for the key.
+
+Two, which is core `bthome`'s own number: *"we only ask for reautentification
+after the decryption has failed twice."* One failure is a stray packet -- a
+neighbour on the same address, a corrupted frame -- and raising a reauthentication
+flow for it would train the user to dismiss them."""
+
+COUNTER_RESTART_CEILING: Final = 100
+"""Below this, a non-increasing advertising counter is a restart, not a replay.
+
+`bthome-ble`'s rule, with its reasoning: a counter that has wrapped or a device
+whose battery was changed resumes from zero, and refusing those would make a
+device unreadable until it caught up. Above it, a counter that does not increase
+is treated as a replay and the advertisement is skipped. We apply the same
+thresholds so that a packet this integration accepts is one core `bthome` accepts
+(`bthome_ble.parser._check_encryption_counter`)."""

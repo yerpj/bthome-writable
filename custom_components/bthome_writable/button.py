@@ -126,7 +126,11 @@ class BTHomeWritableResyncButton(ButtonEntity):
 
     @property
     def available(self) -> bool:
-        return self.coordinator.available
+        # `sleepy_device or ...` is core `bthome`'s own line
+        # (binary_sensor.py, sensor.py): a trigger-based device is not absent
+        # between its events, and marking it unavailable would make a control
+        # that works look broken for however long the device stays quiet.
+        return self.coordinator.sleepy_device or self.coordinator.available
 
     async def async_press(self) -> None:
         self.coordinator.resynchronise()

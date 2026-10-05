@@ -573,6 +573,117 @@ async def test_a_replayed_report_leaves_the_counter_alone(
     assert coordinator.next_write_counter() == 5_001, "not rolled back to 8"
 
 
+# --- the advertising replay check, borrowed from bthome-ble (D-082) ----------
+
+
+def sealed_advertisement(counter: int, key: bytes, address: str) -> bytes:
+    """One sealed packet carrying a declaration, at a chosen counter."""
+    objects = bytes.fromhex("000109ff011e")
+    return bytes([DEVICE_INFO_BYTE_ADVERTISING]) + seal(
+        objects, key, address, DEVICE_INFO_BYTE_ADVERTISING, counter
+    )
+
+
+def feed(coordinator, payload: bytes, address: str) -> None:
+    from .conftest import service_info
+
+    coordinator.async_handle_advertisement(
+        service_info("single-light", address=address, service_data=payload)
+    )
+
+
+async def test_an_advertisement_whose_counter_did_not_move_is_skipped(
+    hass: HomeAssistant,
+) -> None:
+    """`bthome_ble.parser._check_encryption_counter`, same rule and same
+    thresholds. A packet this integration acts on should be one core `bthome`
+    would have shown the user, and a replayed declaration is still a replay.
+    """
+    key, address = bytes(range(16)), "A4:C1:38:8E:1F:2B"
+    coordinator = BTHomeWritableCoordinator(hass, address, bindkey=key)
+
+    feed(coordinator, sealed_advertisement(5_000, key, address), address)
+    assert coordinator.bindkey_verified is True
+    assert coordinator.encryption_counter == 5_000
+
+    # The same packet again, and one from before it.
+    feed(coordinator, sealed_advertisement(5_000, key, address), address)
+    feed(coordinator, sealed_advertisement(4_999, key, address), address)
+    assert coordinator.encryption_counter == 5_000, "neither was accepted"
+
+    feed(coordinator, sealed_advertisement(5_001, key, address), address)
+    assert coordinator.encryption_counter == 5_001
+
+
+async def test_a_counter_that_restarted_near_zero_is_not_a_replay(
+    hass: HomeAssistant,
+) -> None:
+    """Core's exemption, with core's reasoning: a counter that wrapped, or a
+    device whose battery was changed, resumes near zero. Refusing those would
+    make the device unreadable until it had caught up -- which, from a 32-bit
+    counter, is never."""
+    key, address = bytes(range(16)), "A4:C1:38:8E:1F:2B"
+    coordinator = BTHomeWritableCoordinator(hass, address, bindkey=key)
+
+    feed(coordinator, sealed_advertisement(5_000, key, address), address)
+    feed(coordinator, sealed_advertisement(7, key, address), address)
+
+    assert coordinator.encryption_counter == 7, "a restart, not a replay"
+
+
+async def test_nothing_is_skipped_before_a_key_has_opened_anything(
+    hass: HomeAssistant,
+) -> None:
+    """There is nothing to compare against yet, which is why core guards the
+    check with `bindkey_verified is True`."""
+    key, address = bytes(range(16)), "A4:C1:38:8E:1F:2B"
+    coordinator = BTHomeWritableCoordinator(hass, address, bindkey=key)
+    coordinator.encryption_counter = 9_999
+
+    feed(coordinator, sealed_advertisement(5_000, key, address), address)
+
+    assert coordinator.encryption_counter == 5_000
+
+
+async def test_a_trigger_based_device_is_sleepy_and_stays_available(
+    hass: HomeAssistant,
+) -> None:
+    """Core `bthome` reads the same bit, calls it `sleepy_device`, and keeps
+    such a device's entities available between packets: a device that speaks
+    once an hour is not an absent device."""
+    key, address = bytes(range(16)), "A4:C1:38:8E:1F:2B"
+    remembered: list[bool] = []
+    coordinator = BTHomeWritableCoordinator(
+        hass, address, bindkey=key, on_sleepy_device=remembered.append
+    )
+
+    sleepy = bytes([SLEEPY_ENCRYPTED]) + seal(
+        bytes.fromhex("000109ff011e"), key, address, SLEEPY_ENCRYPTED, 11
+    )
+    feed(coordinator, sleepy, address)
+
+    assert coordinator.sleepy_device is True
+    assert remembered == [True], (
+        "persisted, or a restart forgets it until the next event"
+    )
+
+    coordinator.async_set_unavailable()
+    assert coordinator.sleepy_device is True, "and that is what keeps the entity up"
+
+
+def test_a_report_too_short_to_be_sealed_is_refused_not_raised() -> None:
+    """Found on hardware: a device answered the counter report with something
+    shorter than the framing, `split_sealed` raised, and the background task
+    that asked died with an unretrieved exception. Every caller of these
+    openers expects None for "this will not authenticate", and a payload too
+    short is exactly that (D-082)."""
+    key, address, challenge = bytes(range(16)), "A4:C1:38:8E:1F:2B", b"12345678"
+
+    for payload in (b"", b"short", challenge):
+        assert open_counter_report(payload, key, address, challenge) is None
+        assert open_read(payload, key, address) is None
+
+
 def test_the_counter_characteristic_is_not_an_entry() -> None:
     """§4.1 splits the range: 0001-0FFF are entries, 1000 and above are the
     protocol's own. A declaration carries at most 255 entries, so nothing can

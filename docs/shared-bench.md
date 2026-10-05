@@ -155,3 +155,29 @@ in range of the Home Assistant host's own adapter and work without it.
 
 **If you re-enable it:** reboot the ESP32 first, and expect every write to a
 device you have reflashed since to vanish silently until you do.
+
+## Reading the Home Assistant log on this installation
+
+**`GET /api/error_log` returns 404 here, and nothing writes a log file to
+`/config`.** Grepping either one returns nothing whether or not anything is
+wrong, which is the worst possible failure for a diagnostic: a whole session's
+worth of "no errors in the log" rested on a 404 (D-082).
+
+Use the WebSocket command instead. It returns captured warnings and errors,
+with tracebacks and occurrence counts:
+
+```python
+from tools.ha_bench import _ws
+rows = await _ws(session, {"type": "system_log/list"})
+for row in rows:
+    print(row["level"], row["name"], row["count"], row["message"])
+    print(row.get("exception"))
+```
+
+There is no `system_log/clear`; a restart empties it. The counts matter -- a
+warning at `count: 312` is a loop, not an incident.
+
+**And read the flow list sceptically.** `config_entries/flow/progress` shows
+flows that are merely *open*, including ones a person left open hours ago. A
+reauthentication flow sitting there is not evidence that anything just
+happened; mistaking one for live evidence cost most of an afternoon.

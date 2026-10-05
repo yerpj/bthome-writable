@@ -24,6 +24,7 @@ from .const import (
     DEVICE_INFO_BYTE_WRITE,
     DEVICE_INFO_ENCRYPTED,
     DEVICE_INFO_MAC_INCLUDED,
+    DEVICE_INFO_TRIGGER_BASED,
     PACKET_ID_OBJECT_ID,
     SETTINGS_REVISION_OBJECT_ID,
     UUID_TEMPLATE,
@@ -456,6 +457,31 @@ def mac_included(payload: bytes) -> bool:
     return bool(payload) and bool(payload[0] & DEVICE_INFO_MAC_INCLUDED)
 
 
+def trigger_based(payload: bytes) -> bool:
+    """Whether the device advertises on events rather than on a timer (§2.1).
+
+    `bthome-ble` reads the same bit and calls it `sleepy_device`; core `bthome`
+    keeps such a device's entities available between packets. Same bit, same
+    name, same consequence (`bthome_ble.parser._is_sleepy_device`).
+    """
+    return bool(payload) and bool(payload[0] & DEVICE_INFO_TRIGGER_BASED)
+
+
+def advertising_counter(payload: bytes) -> int | None:
+    """The counter a sealed advertisement carries, or None if it carries none.
+
+    Readable without the key: it is in the clear, after the ciphertext, which is
+    what lets a receiver reject a replay before spending an AES on it.
+    """
+    if not is_encrypted(payload):
+        return None
+    try:
+        _ciphertext, counter, _mic = split_sealed(payload[objects_at(payload) :])
+    except ProtocolError:
+        return None
+    return counter
+
+
 def objects_at(payload: bytes) -> int:
     """Where the object stream starts: past the header the flags describe."""
     return 7 if mac_included(payload) else 1
@@ -494,7 +520,14 @@ def _open(
     from cryptography.exceptions import InvalidTag
     from cryptography.hazmat.primitives.ciphers.aead import AESCCM
 
-    ciphertext, counter, mic = split_sealed(payload)
+    try:
+        ciphertext, counter, mic = split_sealed(payload)
+    except ProtocolError:
+        # Too short to be a sealed frame at all. That is wire data, not a
+        # programming error: a device can answer anything, and one did -- a
+        # short counter report crashed the background task that asked for it,
+        # because every caller here expects None and this raised (D-082).
+        return None
     try:
         return AESCCM(bindkey, tag_length=MIC_LENGTH).decrypt(
             nonce(address, device_info, counter), ciphertext + mic, None
