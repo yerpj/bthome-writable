@@ -4557,3 +4557,71 @@ selects a wrapper that runs a Docker image tagged `main`, and `hassfest`
 publishes only `master`. Both deliberately track what the receiving end
 currently requires -- which is the point of running them, and also means either
 can go red without this repository having changed.
+
+## D-086 -- a refused write will say so  [DECISION, agreed with Gordon]
+
+**Status:** 2026-10-06, agreed in espruino#8024. Gordon raised seven points on
+the counter report; the reply addressed each and he assented to all of it. A
+thumbs-up rather than a line-by-line review, so this records the direction
+agreed, not a detailed specification review.
+
+### What was agreed
+
+**Espruino will be able to fail a write with an ATT error.** His words: that
+Espruino does not allow it today is not a reason for a write with acknowledgement
+not to fail when the counter is wrong.
+
+**This needs nothing new from the protocol.** §4.2 has said since draft.1 that a
+device SHOULD reject a write with an ATT error where its platform allows it, and
+names Espruino as the exception. Lifting the limitation makes an existing SHOULD
+start being honoured. The receiver needs no change either: a failed GATT write
+already raises through `bleak` and reaches the user as an error (D-064).
+
+**And then a refused write triggers the counter report**, which was Gordon's own
+suggestion: a wrong counter means a restarted device, so ask it on the next
+write. That is the answer to D-080's open question -- better than either option
+put to him, because it needs no new bit in the advertising and no new SHOULD
+about when to ask.
+
+### What was declined, and why
+
+He offered `0xFF` inside the declaration's own list as an error marker. Declined:
+**the list is positional.** Entries are numbered from 1 in the order they appear
+and that order is the mapping to characteristic numbers (§4.1), so a marker that
+is not an entry breaks it.
+
+`0x26` (BTHome's `problem` binary sensor, one byte -- a real object, checked
+against `bthome-ble`) is kept as a documented fallback for platforms that cannot
+fail a write, not as the primary signal: it is device-wide rather than bound to
+the write that failed, it costs advertising bytes, and a receiver can miss the
+packet.
+
+`Receiver` stays as the word for the central, with a line in §1 saying so -- it
+is BTHome's own term and renaming it would make this document disagree with the
+one it extends. The counter persistence MUST stays, because the counter report
+is optional and a device may not offer it.
+
+### Nothing to implement yet, and that is deliberate
+
+The work is Espruino's first. Until a write can fail, a failed write means an
+unreachable device or a connection slot taken, and asking for the counter in
+those cases spends a connection for nothing. So:
+
+- **Espruino**, Gordon: let a write characteristic reject with an ATT error.
+- **This module**, then: return that error from the counter check and the desync
+  guard, which both currently throw after the stack has already answered.
+- **The receiver**, then: re-ask the counter on a refused write rather than once
+  at set-up, which also makes `ALLOW_COUNTER_SYNC` (D-080) a cheaper default.
+- **§4.2**, then: drop the parenthetical naming Espruino as unable.
+
+An open question nobody has raised yet: a receiver has to tell *this write was
+refused for its counter* from *this write was refused for its contents*, or it
+will re-ask the counter after every malformed write. Whether that is a distinct
+ATT error code or a convention is for when the firmware exists.
+
+### Why this one matters more than its size
+
+§4.2 acknowledging before validating is the single cause behind D-078, D-079,
+D-080 and two of D-083's three faults: every disagreement in this protocol is
+currently silent, so each one had to be found by a bench rather than reported by
+a device. This closes the class, not an instance.
