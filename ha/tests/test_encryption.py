@@ -639,6 +639,35 @@ async def test_asking_the_device_resumes_above_what_it_reports(
     assert gatt.disconnects == 1, "the link is not held open"
 
 
+async def test_asking_never_moves_the_counter_backwards(
+    hass: HomeAssistant, gatt
+) -> None:
+    """D-083, suspicion 11: the adoption used to be unconditional.
+
+    The two numbers are not the same order of magnitude. A receiver seeds from
+    its clock, so it starts near 1.76e9 (D-064); a freshly flashed device
+    resumes near 1. This runs as a background task during setup while
+    `_write_now` takes its counter *before* the connection semaphore -- so a
+    command issued in that window goes out at ~1.76e9, is accepted, and the
+    adoption then drops the receiver to 2. Every later write is behind what the
+    device just accepted, and refused in silence.
+    """
+    key, address = bytes(range(16)), "A4:C1:38:8E:1F:2B"
+    marks: list[int] = []
+    coordinator = BTHomeWritableCoordinator(
+        hass, address, bindkey=key, write_counter=1_760_000_000, on_counter=marks.append
+    )
+    gatt.offer_counter_report(
+        lambda: counter_report(1, gatt.writes[-1][1], key, address)
+    )
+
+    assert await coordinator.async_sync_write_counter() is None
+    assert not marks, "nothing is persisted, because nothing was adopted"
+    assert coordinator.next_write_counter() > 1_760_000_000, (
+        "a device that reports a counter we are past must not drag us back"
+    )
+
+
 async def test_a_device_without_the_report_is_left_exactly_as_it_was(
     hass: HomeAssistant, gatt
 ) -> None:

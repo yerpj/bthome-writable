@@ -742,8 +742,9 @@ class BTHomeWritableCoordinator:
         with no state cannot tell a captured report from a current one.
 
         Returns the counter adopted, or None when the device does not offer the
-        characteristic, cannot be reached, or answers something that does not
-        authenticate. None is not a failure: the clock seed stands.
+        characteristic, cannot be reached, answers something that does not
+        authenticate, or reports a counter we are already ahead of. None is not
+        a failure: whatever counter we hold stands.
         """
         if self.bindkey is None:
             return None
@@ -803,8 +804,34 @@ class BTHomeWritableCoordinator:
             )
             return None
 
-        # Ahead of what the device last accepted, which is what it just told us.
-        self._counter = (reported + 1) % 2**32
+        # Ahead of what the device last accepted, which is what it just told
+        # us -- but never *behind* where we already are.
+        #
+        # This ran unconditionally, and the two numbers are not the same order
+        # of magnitude: a receiver seeds from its clock, so it starts near
+        # 1.76e9 (D-064), while a freshly flashed device resumes near 1. This
+        # method is a background task started during setup, and `_write_now`
+        # takes its counter before the connection semaphore -- so a command
+        # issued in that window goes out sealed at ~1.76e9, is accepted, and
+        # then the adoption drops us to 2. Every later write is behind what the
+        # device just accepted, and refused in silence because §4.2
+        # acknowledges before validating (D-083).
+        #
+        # In the case this exists for -- the receiver behind a device that
+        # restarted ahead -- `reported + 1` is larger and wins, so the guard
+        # costs nothing where it is not needed.
+        resumed = (reported + 1) % 2**32
+        if resumed <= self._counter:
+            _LOGGER.debug(
+                "%s: the device reports write counter %d; keeping %d, which is "
+                "already ahead of it",
+                self.address,
+                reported,
+                self._counter,
+            )
+            return None
+
+        self._counter = resumed
         self._counter_mark = self._counter + COUNTER_STRIDE
         if self._on_counter is not None:
             self._on_counter(self._counter_mark)
