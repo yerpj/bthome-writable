@@ -1,0 +1,165 @@
+<!doctype html>
+<meta charset="utf-8">
+<style>
+  :root {
+    --ink: #1a1d21;
+    --muted: #5b6570;
+    --line: #d5dbe1;
+    --dev: #0b6e4f;
+    --ha: #0b5394;
+    --bytes: #7a3e00;
+    --warm: #b3261e;
+    --wash: #f6f8fa;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: #fff; color: var(--ink);
+    font: 15px/1.5 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    width: 1080px; padding: 34px 40px 28px;
+  }
+  h1 { font-size: 21px; margin: 0 0 3px; letter-spacing: -0.01em; }
+  .sub { color: var(--muted); font-size: 14px; margin: 0 0 24px; }
+  .sub b { color: var(--ink); font-weight: 600; }
+
+  .panel { font-size: 12px; letter-spacing: .09em; text-transform: uppercase;
+           font-weight: 700; color: var(--muted); margin: 0 0 11px; }
+
+  /* ---------- a) the setup ---------- */
+  .setup { display: grid; grid-template-columns: 318px 1fr; gap: 24px;
+           align-items: center; background: var(--wash);
+           border: 1px solid var(--line); border-radius: 11px; padding: 14px 22px; }
+  .need { margin: 0; padding: 0; list-style: none; }
+  .need li { padding: 3.5px 0 3.5px 20px; position: relative; font-size: 13.5px; }
+  .need li::before { content: ""; position: absolute; left: 2px; top: 10.5px;
+                     width: 7px; height: 7px; border-radius: 50%; background: var(--dev); }
+  .need li.ha::before { background: var(--ha); }
+  .need li.time::before { background: var(--muted); }
+  .need b { font-weight: 600; }
+  .need .hint { color: var(--muted); }
+
+  /* ---------- b) the exchange ---------- */
+  .seq { display: grid; grid-template-columns: 1fr 44px 1fr 44px 1fr 44px 1fr;
+         align-items: stretch; }
+  .step { border: 1px solid var(--line); border-radius: 10px; padding: 11px 13px;
+          background: #fff; display: flex; flex-direction: column; }
+  .step.dev { border-top: 3px solid var(--dev); }
+  .step.ha  { border-top: 3px solid var(--ha); }
+  .who { font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase;
+         font-weight: 700; }
+  .step.dev .who { color: var(--dev); }
+  .step.ha  .who { color: var(--ha); }
+  .what { font-weight: 600; font-size: 13.5px; margin-top: 2px; }
+  .why { color: var(--muted); font-size: 12px; margin-top: 4px; flex: 1; }
+  code { font: 11.5px/1.5 "SF Mono", "Cascadia Mono", Consolas, monospace;
+         color: var(--bytes); display: block; margin-top: 8px; white-space: nowrap; }
+  code b { color: var(--warm); font-weight: 700; }
+  code i { color: var(--muted); font-style: normal; }
+
+  .gap { display: flex; flex-direction: column; align-items: center;
+         justify-content: center; gap: 5px; }
+  .gap .t { font-size: 10px; color: var(--muted); white-space: nowrap; }
+
+  .foot { margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--line);
+          display: flex; gap: 34px; color: var(--muted); font-size: 13px; }
+  .foot b { color: var(--ink); font-weight: 600; }
+  .lux { color: var(--warm); font-weight: 700; }
+</style>
+
+<h1>Try it in ten minutes — a Puck.js that measures what it was told to do</h1>
+<p class="sub">Home Assistant switches the LED; the Puck's <b>own light sensor</b> reports the result back as illuminance. The loop is closed by a measurement, not by an echo.</p>
+
+<p class="panel">a — what you need</p>
+<div class="setup">
+  <svg width="318" height="150" viewBox="0 0 318 150">
+    <!-- desk -->
+    <line x1="6" y1="126" x2="312" y2="126" stroke="#c7cfd6" stroke-width="2"/>
+
+    <!-- puck under the mug: drawn first, so the glass-like mug sits over it -->
+    <circle cx="96" cy="111" r="22" fill="#0b6e4f" opacity=".13"/>
+    <circle cx="96" cy="111" r="13" fill="#fff" stroke="#0b6e4f" stroke-width="2"/>
+    <circle cx="96" cy="111" r="5" fill="#0b6e4f"/>
+
+    <!-- mug, upside down, translucent so the Puck reads as underneath -->
+    <path d="M52 126 L52 56 Q52 46 64 46 L128 46 Q140 46 140 56 L140 126 Z"
+          fill="#e8eef3" fill-opacity=".82" stroke="#9fb0bf" stroke-width="2"/>
+    <path d="M140 66 q26 0 26 21 t-26 21" fill="none" stroke="#9fb0bf" stroke-width="2"/>
+    <text x="96" y="38" text-anchor="middle" font-size="11" fill="#5b6570"
+          font-family="-apple-system, Segoe UI, Roboto, sans-serif">an opaque mug</text>
+    <text x="96" y="145" text-anchor="middle" font-size="11.5" fill="#0b6e4f"
+          font-weight="700" font-family="-apple-system, Segoe UI, Roboto, sans-serif">Puck.js</text>
+
+    <!-- radio -->
+    <g stroke="#0b5394" fill="none" stroke-width="2" opacity=".5">
+      <path d="M186 96 q11 -13 0 -26"/>
+      <path d="M197 103 q19 -20 0 -40"/>
+    </g>
+
+    <!-- home assistant -->
+    <rect x="224" y="62" width="62" height="48" rx="9" fill="#fff"
+          stroke="#0b5394" stroke-width="2"/>
+    <path d="M240 88 l15 -13 15 13" fill="none" stroke="#0b5394" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="248" y="88" width="14" height="12" fill="#0b5394" opacity=".22"/>
+    <text x="255" y="126" text-anchor="middle" font-size="11.5" fill="#0b5394"
+          font-weight="700" font-family="-apple-system, Segoe UI, Roboto, sans-serif">Home Assistant</text>
+  </svg>
+
+  <ul class="need">
+    <li><b>A Puck.js</b> <span class="hint">— from the Web IDE, or one command</span></li>
+    <li><b>Something opaque to cover it</b> <span class="hint">— a mug upside down will do</span></li>
+    <li class="ha"><b>Home Assistant with Bluetooth</b> <span class="hint">— an adapter, or an ESPHome proxy</span></li>
+    <li class="time"><b>About ten minutes</b> <span class="hint">— <code style="display:inline;color:inherit;font-size:12.5px">docs/try-it.md</code> walks both routes</span></li>
+  </ul>
+</div>
+
+<p class="panel" style="margin-top:24px">b — what then happens on the air</p>
+<div class="seq">
+  <div class="step dev">
+    <div class="who">Puck.js</div>
+    <div class="what">Advertises</div>
+    <div class="why">Ordinary BTHome: battery and illuminance — plus a declaration saying it accepts writes for a <i>light</i>.</div>
+    <code>40 <i>00 09</i> <i>01 64</i> <b>ff 01 1e</b></code>
+  </div>
+
+  <div class="gap">
+    <div class="t">heard</div>
+    <svg width="32" height="12"><path d="M0 6 H26 M20 1 l6 5 -6 5" fill="none" stroke="#9fb0bf" stroke-width="2"/></svg>
+  </div>
+
+  <div class="step ha">
+    <div class="who">Home Assistant</div>
+    <div class="what">Offers a switch, unasked</div>
+    <div class="why">The declaration is the configuration. The control appears beside the sensors core BTHome already made.</div>
+    <code><i>no YAML, no pairing</i></code>
+  </div>
+
+  <div class="gap">
+    <div class="t">1.7 s</div>
+    <svg width="32" height="12"><path d="M0 6 H26 M20 1 l6 5 -6 5" fill="none" stroke="#9fb0bf" stroke-width="2"/></svg>
+  </div>
+
+  <div class="step ha">
+    <div class="who">Home Assistant</div>
+    <div class="what">Writes one object</div>
+    <div class="why">Connect, write to that entry's own characteristic, disconnect. The write response is the acknowledgement.</div>
+    <code>→ 2FAA0001 <b>1e 01</b></code>
+  </div>
+
+  <div class="gap">
+    <div class="t">16 ms</div>
+    <svg width="32" height="12"><path d="M0 6 H26 M20 1 l6 5 -6 5" fill="none" stroke="#9fb0bf" stroke-width="2"/></svg>
+  </div>
+
+  <div class="step dev">
+    <div class="who">Puck.js</div>
+    <div class="what">Lights the LED — and the sensor sees it</div>
+    <div class="why">The next packet carries what the <i>sensor</i> now reads. The written value itself is never advertised.</div>
+    <code>40 <i>00 0a</i> <i>01 64</i> <b>05 …</b> <i>ff 01 1e</i></code>
+  </div>
+</div>
+
+<div class="foot">
+  <div><span class="lux">≈103 → ≈595 lux</span> and back, under the mug</div>
+  <div><b>5 bytes</b> on the air for the declaration</div>
+  <div><b>AES-CCM</b> both ways, BTHome's own, with a bindkey</div>
+</div>

@@ -8,6 +8,7 @@ mechanism rather than describe it.
 | --- | --- |
 | `round-trip.png` | The four steps, with real bench bytes: advertising carrying the `0xFF` declaration, discovery, the write to one entry's characteristic, the acknowledgement. |
 | `latency.png` | Click → action → confirmation, measured on one Raspberry Pi with no ESPHome proxy: 10.7 s baseline down to 1.7 s. |
+| `try-it.png` | What the ten-minute replication needs, and the four exchanges it produces. For anyone deciding whether to bother — `docs/try-it.md` is the long form. |
 
 Each `.png` is rendered from the `.html` beside it, so the numbers stay
 editable and the figure stays reproducible:
