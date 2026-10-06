@@ -58,10 +58,13 @@ jobs:
   # failure is a red tick rather than a rejected pull request. Neither needs our
   # dependencies: hassfest reads manifest.json, strings.json and the translations
   # the way Home Assistant core does, and the HACS action reads the repository
-  # layout the way HACS does. The HACS action is pinned; hassfest publishes only
-  # `master`, so that one tracks whatever Home Assistant core currently requires
-  # -- which is the point of running it, and also means it can go red without us
-  # having changed anything.
+  # layout the way HACS does.
+  #
+  # Neither is really pinned. hassfest publishes only `master`, and the HACS
+  # action's tag selects a wrapper that runs a Docker image tagged `main`. Both
+  # therefore track what the receiving end currently requires -- which is the
+  # point of running them, and also means either can go red without us having
+  # changed anything.
   validate:
     name: Home Assistant and HACS validation
     runs-on: ubuntu-latest
@@ -73,6 +76,16 @@ jobs:
         uses: hacs/action@22.5.0
         with:
           category: integration
+          # `brands` asks whether this integration's domain is registered in
+          # home-assistant/brands. It is not, and it cannot be satisfied from
+          # inside this repository: it needs a pull request there, which is
+          # task T4.3 and the owner's to file. Ignored until it is -- remove
+          # this line with the same commit that lands the brands PR, so the
+          # check starts enforcing the moment it can pass.
+          #
+          # Every other HACS check stays on, including the ones that would have
+          # caught a missing hacs.json or a disabled issue tracker.
+          ignore: brands
 
   javascript:
     name: Espruino module (lint + tests)
