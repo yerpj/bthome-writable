@@ -76,16 +76,74 @@ jobs:
         uses: hacs/action@22.5.0
         with:
           category: integration
-          # `brands` asks whether this integration's domain is registered in
-          # home-assistant/brands. It is not, and it cannot be satisfied from
-          # inside this repository: it needs a pull request there, which is
-          # task T4.3 and the owner's to file. Ignored until it is -- remove
-          # this line with the same commit that lands the brands PR, so the
-          # check starts enforcing the moment it can pass.
+          # Two checks are ignored because neither can be satisfied from
+          # inside this repository today:
           #
-          # Every other HACS check stays on, including the ones that would have
-          # caught a missing hacs.json or a disabled issue tracker.
-          ignore: brands
+          #   brands  the domain is not registered in home-assistant/brands.
+          #           That needs a pull request there -- task T4.3.
+          #   topics  the GitHub repository has no topics set. That is a
+          #           repository setting, not a file.
+          #
+          # Both are release work, not defects, and a permanently red tick
+          # teaches people to stop reading ticks. **The step below is what
+          # stops this being forgotten**: it fails as soon as either check
+          # could pass, naming the word to delete from this line. Every other
+          # HACS check stays on.
+          ignore: brands topics
+
+      # An ignore that nobody revisits is how a release ships without its brand
+      # assets. So this asks, on every run, whether the two exemptions above are
+      # still deserved -- and breaks the build the moment one is not.
+      #
+      # It never fails for being unable to answer: a rate-limited API or a
+      # network blip says "not judging" and passes. The only red it produces is
+      # the one worth acting on.
+      - name: The ignored HACS checks are still necessary
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          stale=0
+          domain=$(jq -r .domain custom_components/*/manifest.json)
+
+          topics=$(curl -sS --max-time 20 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY" \
+            | jq -r '(.topics // []) | length')
+          case "$topics" in
+            ''|*[!0-9]*)
+              echo "::notice::could not read the repository topics; not judging"
+              ;;
+            0)
+              echo "topics: still none, so ignoring the check is still right"
+              ;;
+            *)
+              echo "::error::This repository now has $topics topic(s), so the"
+              echo "::error::HACS 'topics' check would pass. Remove 'topics'"
+              echo "::error::from the ignore: list in this workflow."
+              stale=1
+              ;;
+          esac
+
+          brands="https://raw.githubusercontent.com/home-assistant/brands"
+          code=$(curl -sS --max-time 20 -o /dev/null -w '%{http_code}' \
+            "$brands/master/custom_integrations/$domain/icon.png" || echo "000")
+          case "$code" in
+            404)
+              echo "brands: $domain is still not registered, so the ignore stands"
+              ;;
+            200)
+              echo "::error::$domain is now in home-assistant/brands, so the"
+              echo "::error::HACS 'brands' check would pass. Remove 'brands'"
+              echo "::error::from the ignore: list in this workflow."
+              stale=1
+              ;;
+            *)
+              echo "::notice::brands answered $code; not judging"
+              ;;
+          esac
+
+          exit $stale
 
   javascript:
     name: Espruino module (lint + tests)

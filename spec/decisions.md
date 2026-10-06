@@ -4499,3 +4499,61 @@ guards that do not exist are for prose that describes behaviour, and that is
 still most of `docs/`. Three audits have each found a documentation fault the
 previous two missed; the only durable answer is fewer unverifiable claims,
 which is why the test counts were deleted rather than fixed.
+
+## D-085 -- the two HACS checks this repository cannot pass yet  [DECISION, ruled]
+
+**Status:** 2026-10-06. The validation job added in D-081 went red on its
+first run and stayed red, which is what it was for. `hassfest` passed --
+including the manifest key order it had just been given -- and the HACS action
+reported two things, neither of them in the code:
+
+- **`brands`**: the domain is not registered in `home-assistant/brands`.
+  Nothing inside this repository can satisfy that; it is a pull request there,
+  task T4.3.
+- **`topics`**: the GitHub repository has no topics. A settings field, not a
+  file.
+
+Both are release work rather than defects. The owner's ruling: ignore both for
+now -- *"ignore la en attendant, mais assure-toi qu'on ne va pas l'oublier sur
+le long terme"*.
+
+### Why an ignore needed more than a comment
+
+A permanently red tick teaches people to stop reading ticks, so leaving it was
+worse than ignoring it. But an ignore with a comment beside it is exactly the
+shape of thing this project keeps finding rotted: D-084 found five `[DECISION]`
+markers outliving their rulings, a `SHOULD` outliving the decision that
+reversed it, and four test counts nobody rechecked. A note that says *"remove
+this when the brands PR lands"* is a note that will be read once, by whoever
+wrote it.
+
+### So the exemption checks whether it is still deserved
+
+A step in the same job asks, on every run, whether either ignored check could
+now pass, and **fails the build when one could**, naming the word to delete:
+
+- the repository's topics, from the GitHub API with the run's own token;
+- `custom_integrations/<domain>/icon.png` in `home-assistant/brands`, with the
+  domain read out of `manifest.json` so it cannot drift from the thing being
+  registered.
+
+It never fails for being unable to answer -- a rate-limited API or a network
+blip prints a notice and passes. The only red it can produce is the one worth
+acting on, which is the test every guard in this project has to meet: a guard
+that cries wolf gets disabled, and a guard nobody can act on is noise.
+
+Verified before pushing, by running each branch of the shell against fabricated
+answers: `topics=0, brands=404` (today) exits 0; any state where an exemption
+has become unnecessary exits 1; an unreadable answer exits 0.
+
+The same two items are now in the dossier's pre-submission list, because a
+mechanism that lives only in CI is invisible to whoever is deciding whether to
+submit.
+
+### And a claim corrected in passing
+
+The comment above that job said the HACS action was pinned. It is not: the tag
+selects a wrapper that runs a Docker image tagged `main`, and `hassfest`
+publishes only `master`. Both deliberately track what the receiving end
+currently requires -- which is the point of running them, and also means either
+can go red without this repository having changed.

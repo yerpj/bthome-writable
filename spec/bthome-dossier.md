@@ -164,6 +164,13 @@ Claims to avoid, because they were wrong once in public:
   write drove the LED — 114 → 601 → 111 lux, read back out of a sealed packet
   (D-063, D-064). It also found a release blocker there, and fixed it.
 - Re-run the prior-art search; update §1 with anything new.
+- **Register `bthome_writable` in `home-assistant/brands`** (a pull request
+  there) and **give the GitHub repository topics** (a settings field). HACS
+  checks both and this repository passes neither, so both are currently
+  `ignore`d in `.github/workflows/ci.yml`. Neither is a defect; both are release
+  work. The workflow fails as soon as either *could* pass, naming the word to
+  delete -- so the exemptions remove themselves rather than relying on anyone
+  remembering (D-085).
 - ~~Measure what the mechanism costs a coin cell~~ — **out of scope** (D-081,
   2026-10-03). The advertising interval belongs to the device's application, as
   it does for any BTHome sensor; the only thing this extension adds to it is a
