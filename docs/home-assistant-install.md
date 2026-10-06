@@ -38,10 +38,21 @@ key, which is why the question comes before the list of entities.
 
 ## What you get
 
-The new entities land on the **same device card** as the sensors the core BTHome
-integration already created, because both identify the device by its Bluetooth
-address. One card, sensors and controls together — not a second device with half
-the story.
+**This integration adds controls only. Your sensors keep coming from the core
+BTHome integration**, and you want both set up on the same device — that is the
+design, not something that failed. Battery, temperature, illuminance and the
+rest are ordinary BTHome objects that core BTHome already parses, and
+reimplementing them here would be a second answer to a question Home Assistant
+has already answered.
+
+The new entities land on the **same device card** as those sensors, because
+both integrations identify the device by its Bluetooth address. One card,
+sensors and controls together — not a second device with half the story.
+
+The seam shows in one place: an encrypted device needs its bindkey typed into
+both integrations, with nothing linking them. That is inherent to being a
+separate integration and is one of the arguments for merging this into core
+BTHome rather than keeping it beside it.
 
 Which entity you get depends on the BTHome object:
 

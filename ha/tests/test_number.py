@@ -121,6 +121,48 @@ async def test_the_same_settings_revision_does_not_read_again(
     assert len(gatt.reads) == reads_before
 
 
+async def test_advertising_during_a_read_does_not_cause_another_connection(
+    hass: HomeAssistant, radio, gatt
+) -> None:
+    """D-087, reported by a user at their own site.
+
+    After `changed()` the device kept advertising, as devices do, and Home
+    Assistant connected two or three times for one revision -- getting the
+    reading on the first attempt and connecting again anyway. The re-read loop
+    continued on a flag set by *any* advertisement arriving during the read,
+    rather than on the revision having moved past what was just read. A device
+    advertises every second or so and a read takes a connection, so an ordinary
+    read almost always had an advertisement land inside it.
+
+    Invisible here because `test_the_same_settings_revision_does_not_read_again`
+    pushes its advertisement *after* the read has settled.
+    """
+    gatt.declare(2, readable={1: bytes.fromhex("1001"), 2: bytes.fromhex("5714")})
+    await setup_device(hass, radio, "thermostat")
+    await settle(hass)
+
+    payload = bytearray(bytes.fromhex("40000902c4096503ff021057"))
+    payload[7] = 0x04  # changed(): revision 3 -> 4
+    connections_before = gatt.connections
+
+    # The device goes on advertising while the receiver is reading it, which is
+    # what a device does. Pushed from inside the read, so the timing is the
+    # real one rather than one the test arranged afterwards.
+    reading = gatt.read_gatt_char
+
+    async def advertise_then_read(characteristic):
+        radio.push(service_info("thermostat", service_data=bytes(payload)))
+        return await reading(characteristic)
+
+    gatt.read_gatt_char = advertise_then_read
+    radio.push(service_info("thermostat", service_data=bytes(payload)))
+    await settle(hass)
+
+    assert gatt.connections - connections_before == 1, (
+        "one revision, one connection -- the device serves one central at a time"
+    )
+
+
 async def test_a_read_of_the_wrong_type_is_not_shown_as_state(
     hass: HomeAssistant, radio, gatt
 ) -> None:

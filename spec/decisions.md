@@ -4625,3 +4625,85 @@ ATT error code or a convention is for when the firmware exists.
 D-080 and two of D-083's three faults: every disagreement in this protocol is
 currently silent, so each one had to be found by a bench rather than reported by
 a device. This closes the class, not an instance.
+
+## D-087 -- the first outside tester, and the bug only they could see  [HW]
+
+**Status:** 2026-10-06. @enaon ran it on their own installation and posted
+what happened. This is the second site the dossier has been asking for since
+D-055, and it took one afternoon to find something three independent reviews,
+648 tests and a month of bench work had not.
+
+Their setup, and none of it is ours: an RPi4b running OpenWrt, Home Assistant
+in podman, **six ESPHome proxies** and the local BlueZ adapter. It worked --
+*"seems to be working fine, both using local BT and the proxies"* -- with two
+observations.
+
+### What they saw
+
+> every so often, I can see that once I call changed(), the HA connects more
+> than once, 2 or 3 times, it gets the reading on the first try, but connects
+> again
+
+Exactly right, and two separate faults underneath it.
+
+**One: the re-read loop continued on the wrong condition.** `_read_loop`
+looped while a `_read_again` flag was set, and *any* advertisement arriving
+during the read set it. A device advertises every second or so and a read
+takes a connection, so an ordinary read almost always had an advertisement
+land inside it. The condition that actually means "there is newer state to
+fetch" is the settings revision having moved past the one just read, and that
+is what the loop tests now.
+
+**Two, and the one that explains "2 or 3": the guard was re-entrant.**
+
+```python
+if self._read_task is not None and not self._read_task.done():
+    return
+self._read_task = self.hass.async_create_task(self._read_loop())
+```
+
+`async_create_task` starts the coroutine **eagerly**, so `_read_loop` is
+already running while `self._read_task` still refers to the previous,
+finished task. An advertisement handled in that window -- and these arrive
+from a callback, synchronously -- found no read in progress and started
+another one. Instrumented rather than reasoned about: three consecutive
+`running=False` with the revision already advertised and not yet read.
+
+The guard is now a plain flag set *before* the task is created, cleared in a
+`finally`. Six proxies make the symptom worse because they make
+advertisements arrive more often, which is why this site saw it and ours did
+not.
+
+### Why no test caught it
+
+`test_the_same_settings_revision_does_not_read_again` pushes its
+advertisement **after** the read has settled. The whole fault lives in the
+window *during* the read, and nothing exercised that window. The new test
+pushes from inside `read_gatt_char`, so the timing is the device's rather than
+one the test arranged, and asserts one connection per revision.
+
+### The other observation, which is the design
+
+> The BTH writable extension does not get the battery advertized, I have to
+> use the normal BTH extension to get it
+
+Working as intended, and a documentation failure rather than a protocol one.
+This integration adds **controls only**; sensors keep coming from core
+`bthome`, and both are meant to be set up on the same device. Reimplementing
+the sensor side here would be a second answer to a question Home Assistant has
+already answered (rule 3).
+
+`docs/home-assistant-install.md` said the entities *land on the same card as
+the sensors core BTHome created*, which assumes the reader already knows both
+are needed. It now says so first, in a sentence -- together with the seam that
+follows from it: an encrypted device needs its bindkey typed into both
+integrations, with nothing linking them (D-082), which is an argument for
+merging rather than a defect to fix from outside.
+
+### What this says about the method
+
+Both faults are timing, and timing is what a second site buys. The bench here
+has one adapter and one proxy; theirs has seven radios hearing the same device,
+so the window between creating a read task and assigning it gets hit instead of
+being missed. Everything else in this file was found by measuring harder on the
+same bench. This was found by someone else plugging it in.

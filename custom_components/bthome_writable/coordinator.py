@@ -169,7 +169,7 @@ class BTHomeWritableCoordinator:
         reading is what made this stale anyway (D-083)."""
         self._read_failed_at: float | None = None
         self._read_task: asyncio.Task[None] | None = None
-        self._read_again = False
+        self._reading = False
 
         self._listeners: list[Callable[[], None]] = []
         self._write_listeners: list[WriteListener] = []
@@ -262,30 +262,52 @@ class BTHomeWritableCoordinator:
 
     @callback
     def async_request_read(self) -> None:
-        """Read every readable entry, once, soon. Coalesces overlapping asks."""
-        if self._read_task is not None and not self._read_task.done():
-            self._read_again = True
+        """Read every readable entry, once, soon. Coalesces overlapping asks.
+
+        The guard is a plain flag set *before* the task is created, not the
+        task's own state. `async_create_task` starts the coroutine eagerly, so
+        `self._read_task` still refers to the previous, finished task while the
+        new one is already running -- and an advertisement handled in that
+        window saw no read in progress and started a second (D-087).
+        """
+        if self._reading:
             return
+        self._reading = True
         self._read_task = self.hass.async_create_task(self._read_loop())
 
     async def _read_loop(self) -> None:
-        while True:
-            self._read_again = False
-            target = self._revision_advertised
-            try:
-                done = await self.async_read_all()
-            except Exception as error:  # best effort: state stays as last known
-                _LOGGER.debug("%s: reading state failed: %s", self.address, error)
-                done = False
-            if done:
+        """Read until the revision we have read is the one being advertised.
+
+        The loop exists for a device whose state moves *again* while we are
+        reading it -- a knob turned twice. It used to continue on a flag set by
+        any advertisement arriving during the read, which is not the same thing
+        at all: a device advertises every second or so, and a read takes a
+        connection, so an ordinary read was followed by a second and often a
+        third, each one a connection to a device that serves one central at a
+        time.
+
+        Reported by a user at their own site, on hardware this project has
+        never touched, and invisible here because the test pushed its
+        advertisement *after* the read had settled (D-087).
+        """
+        try:
+            while True:
+                target = self._revision_advertised
+                try:
+                    done = await self.async_read_all()
+                except Exception as error:  # best effort: state stays as known
+                    _LOGGER.debug("%s: reading state failed: %s", self.address, error)
+                    done = False
+                if not done:
+                    # Retried on a later advertisement, after READ_RETRY.
+                    self._read_failed_at = time.monotonic()
+                    return
                 self._revision_read = target
                 self._read_failed_at = None
-            else:
-                # Retried on a later advertisement, once READ_RETRY has passed.
-                self._read_failed_at = time.monotonic()
-                return
-            if not self._read_again:
-                return
+                if self._revision_advertised == self._revision_read:
+                    return
+        finally:
+            self._reading = False
 
     def _plaintext(self, payload: bytes) -> bytes | None:
         """The object stream, decrypting first if the device is encrypted.

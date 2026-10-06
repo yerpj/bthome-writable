@@ -156,8 +156,12 @@ Claims to avoid, because they were wrong once in public:
   result (D-048), implemented and verified on hardware (D-049).
 - ~~A test through an ESPHome Bluetooth proxy~~ — done 2026-09-17 through
   `esp32-bluetooth-proxy-1f1020`.
-- At least one tester outside this bench (`docs/walkthrough.md`,
-  `docs/try-it.md`). **The remaining gap.**
+- ~~At least one tester outside this bench~~ — **done 2026-10-06**. @enaon ran
+  it on an RPi4b with OpenWrt, Home Assistant in podman, six ESPHome proxies and
+  the local BlueZ adapter; it worked over both paths, and their report found a
+  re-entrancy fault in the read loop that this bench could not produce (D-087).
+  One site is not a population, so more are still worth having — but the
+  objection *"it only works on one bench"* no longer stands unanswered.
 - ~~An encrypted device on version 2, on hardware~~ — done 2026-09-21. A
   Puck.js running `encrypted-light.js`: Home Assistant raised the bindkey step
   by itself, read the declaration out of the decrypted advertising, and a sealed
