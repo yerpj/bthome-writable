@@ -20,6 +20,11 @@ chrome --headless --disable-gpu --hide-scrollbars \
        file:///path/to/round-trip.html
 ```
 
+**`--window-size` is the figure's own height and differs per file**:
+`round-trip` 560, `try-it` 618. Too short crops the bottom silently, so look
+at the PNG after rendering rather than assuming -- that is how the three-light
+declaration was caught being drawn at the wrong size (D-084).
+
 The byte strings in `round-trip.png` are copied from the bench, not composed:
 `40 00 f0 01 64 ff 03 1e 1e 1e` is a Puck.js running `three-lights.js`, where
 `ff 03 1e 1e 1e` is the declaration -- three `light` entries, served on
