@@ -8,6 +8,8 @@ GATT characteristic, and disconnects. **The write response is the
 acknowledgement**; there is no ack protocol, and writable values are not
 advertised.
 
+![What it needs, and what then happens on the air](https://raw.githubusercontent.com/yerpj/bthome-writable/main/docs/figures/try-it.png)
+
 Repo: <https://github.com/yerpj/bthome-writable> · protocol in
 [`spec/PROTOCOL.md`](https://github.com/yerpj/bthome-writable/blob/main/spec/PROTOCOL.md) · every resolved question, with the
 measurement that resolved it, in [`spec/decisions.md`](https://github.com/yerpj/bthome-writable/blob/main/spec/decisions.md).
@@ -20,13 +22,13 @@ brighter**, and that reading goes back out as illuminance in the same packet.
 
 So the loop is closed by a measurement, not by an echo: a receiver sees that the
 write had a *physical effect*, not merely that the device repeated the value
-back. That distinction is the point of version 2, where a written value is never
-advertised at all. `Puck.light()` reads through the red LED, so the green one
+back. That distinction is the point: a written value is never advertised at
+all. `Puck.light()` reads through the red LED, so the green one
 actuates and the two never fight over the same part.
 
-Measured on the bench: **~103 lux → ~595 lux and back**, the write itself
-acknowledged 16 ms after the link is up, the link taking 1.7 s to establish from
-a Windows host.
+Measured on the bench, through Home Assistant: **~103 lux → ~595 lux and
+back**, about 1.7 s from the service call to the LED at a one-second
+advertising interval, of which the write itself is 36 ms.
 
 **Put the Puck in the dark.** Cover it, or shut it in an opaque box — a mug
 upside down on a desk will do. The sensor has no idea which light it is looking
@@ -55,7 +57,7 @@ Restart Home Assistant. (Or add the repo to HACS instead.)
 split is deliberate: an advertising payload the radio refuses throws inside
 `setup()`, and a device that is not advertising cannot be connected to, so it
 cannot be fixed over the air. Running from RAM means a power cut undoes whatever
-you just broke (`decisions.md` D-029). Save it to flash once you are happy with
+you just broke. Save it to flash once you are happy with
 it, not before.
 
 **A — with the tool in this repo.** Needs Python and `bleak`. On its first run
@@ -99,51 +101,35 @@ Without HA, the same loop from a terminal — exit status 0 only if the measured
 illuminance actually moved with the commanded state:
 `python -m tools.closed_loop --address <mac>` (Python and `bleak` again).
 
-## What version 2 settled
+## What you are looking at
 
-Version 1 was a positional bitmask and a write-all payload: every write carried
-every writable object, addressed by where it sat in the packet. Three of the four
-questions that raised are gone with it, and the fourth has been ruled on.
-
-- **One characteristic per entry.** Entry *k* is served at `2FAAkkkk-…`, and a
-  write touches nothing else. Events are writable now: `0x3B command` has no
-  no-op, which write-all made unusable.
-- **The declaration lists object IDs**, not positions, so a sensor added to the
-  packet no longer re-points every entity.
-- **Writable values are not advertised.** A device whose values change by
-  themselves — a knob, a button, a schedule — makes its characteristics readable
-  and bumps BTHome's settings revision (`0x65`); a receiver reads them again when
-  it changes, and on first sight. Everything else is shown as assumed state.
-
-Settled, and worth knowing before you design around it:
-
-1. **A write is capped at `ATT_MTU − 3` bytes**, and fragmentation is out of
-   scope: 48 characters of text at MTU 53, 18 at BLE's guaranteed 23. Decided
-   rather than left open (§4.4) — splitting a value across writes would need
-   sequence numbers and an assembly rule, which is a data format, which this
-   extension exists not to invent.
-2. **A write-only value has nothing to read back.** That is by design — the
-   device is the authority on whether it applied a write — but it means a lost
-   write on a text display is invisible to the receiver.
-3. **BTHome is asked for exactly one object ID**, `0xFF`. Everything else reuses
-   BTHome's own object table, encodings and encryption.
+- **One characteristic per entry.** Entry *k* is served at `2FAAkkkk-…`, so a
+  write touches that entry and nothing else on the device.
+- **The declaration lists object IDs**, so adding a sensor to the packet does
+  not disturb the writable entries.
+- **Writable values are not advertised.** A device whose values can also change
+  by themselves — a knob, a button — makes its characteristics readable and
+  bumps BTHome's settings revision (`0x65`), and the receiver reads them again
+  when that moves. Everything else is shown as assumed state.
+- **BTHome is asked for exactly one object ID**, `0xFF`. Everything else reuses
+  BTHome's own object table, encodings and encryption.
 
 ## Two things that will look like faults but are not
 
 - After any disconnection the device advertises at 100 ms for 30 s before
   falling back to its idle interval. That is `fastTimeout`, not a setting that
   failed to apply.
-- The idle interval does **not** tax command latency — the device is in that
-  fast mode during and after the connection. It sets the idle refresh rate and
-  the cost of the *first* interaction after a quiet period. Measured at a
-  deliberately slow 5 s interval, commands still landed in 1.7 s
-  ([D-024](https://github.com/yerpj/bthome-writable/blob/main/spec/decisions.md)).
+- The idle interval costs you the *first* command after a quiet period, and
+  nothing after it. At a deliberately slow 5 s interval that first one takes
+  several seconds, because the receiver has to catch an advertisement before it
+  can connect; once it has, the device is in fast mode and the commands that
+  follow land in about a third of a second. So a slow interval looks broken for
+  one press and then does not.
 
-Status: draft. Nothing is frozen; UUIDs and wire formats freeze at first
-release. All three test suites are green and the protocol has a shared
-test-vector contract, including AES-CCM vectors that pass on-device. But it has
-run on two boards, one Home Assistant install, one Bluetooth adapter and one
-ESP32 proxy, all on the same bench — which is the reason for this post.
+Status: draft — UUIDs and wire formats freeze at the first release, and
+nothing is frozen yet. It has run on two boards, one Home Assistant install,
+one Bluetooth adapter and one ESP32 proxy, **all on the same bench**, which is
+the reason for this post: a second pair of hands is the thing it most needs.
 
 To make your own device writable rather than replicate this one, start at
 [`docs/espruino-quickstart.md`](https://github.com/yerpj/bthome-writable/blob/main/docs/espruino-quickstart.md),
