@@ -37,6 +37,13 @@ as in RFC 2119.
 | **Writable characteristic** | The GATT characteristic of an entry (§4). |
 | **Write** | One GATT write to one writable characteristic, carrying one object. |
 
+**"Receiver" always means the central**, even though this specification is
+about writing and the device is what receives a write. The word is kept because
+it is BTHome's own for whatever consumes the advertising, and renaming it here
+would make this document disagree with the one it extends. Where the direction
+matters the text says so: a receiver *issues* a write, a device *accepts or
+rejects* it.
+
 This specification targets **BTHome v2** and its 16-bit service data UUID
 `0xFCD2`. BTHome v1 is out of scope.
 
