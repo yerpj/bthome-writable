@@ -8,7 +8,7 @@ mechanism rather than describe it.
 | --- | --- |
 | `round-trip.png` | The four steps, with real bench bytes: advertising carrying the `0xFF` declaration, discovery, the write to one entry's characteristic, the acknowledgement. |
 | `latency.png` | Click → action → confirmation, measured on one Raspberry Pi with no ESPHome proxy: 10.7 s baseline down to 1.7 s. |
-| `try-it.png` | What the ten-minute replication needs, and the four exchanges it produces. For anyone deciding whether to bother — `docs/try-it.md` is the long form. |
+| `try-it.png` | What the ten-minute replication needs, and the exchange it produces, as a sequence diagram. Narrow on purpose: it is meant to be read in a discussion thread. `docs/try-it.md` is the long form. |
 
 Each `.png` is rendered from the `.html` beside it, so the numbers stay
 editable and the figure stays reproducible:
@@ -21,7 +21,7 @@ chrome --headless --disable-gpu --hide-scrollbars \
 ```
 
 **`--window-size` is the figure's own height and differs per file**:
-`round-trip` 560, `try-it` 618. Too short crops the bottom silently, so look
+`round-trip` 1080×560, `try-it` 540×620. Too short crops the bottom silently, so look
 at the PNG after rendering rather than assuming -- that is how the three-light
 declaration was caught being drawn at the wrong size (D-084).
 
