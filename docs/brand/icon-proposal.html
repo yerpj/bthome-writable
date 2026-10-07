@@ -1,0 +1,81 @@
+<!doctype html>
+<meta charset="utf-8">
+<style>
+  :root {
+    --ink: #1a1d21;
+    --muted: #5b6570;
+    --line: #d5dbe1;
+    --wash: #f6f8fa;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: #fff; color: var(--ink);
+    font: 14px/1.5 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    width: 640px; padding: 26px 28px 22px;
+  }
+  h1 { font-size: 17px; margin: 0 0 3px; letter-spacing: -0.01em; }
+  .sub { color: var(--muted); font-size: 12.5px; margin: 0 0 20px; }
+  .sub b { color: var(--ink); font-weight: 600; }
+
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .card { border: 1px solid var(--line); border-radius: 10px; padding: 14px;
+          text-align: center; background: #fff; }
+  .card img { display: block; margin: 0 auto 10px; }
+  .who { font-size: 12px; font-weight: 600; }
+  .note { color: var(--muted); font-size: 11.5px; margin-top: 3px; }
+
+  .sizes { margin-top: 18px; background: var(--wash); border: 1px solid var(--line);
+           border-radius: 10px; padding: 14px 16px 12px; }
+  .panel { font-size: 11px; letter-spacing: .08em; text-transform: uppercase;
+           font-weight: 700; color: var(--muted); margin: 0 0 10px; }
+  table { border-collapse: collapse; width: 100%; }
+  td { padding: 5px 0; vertical-align: middle; }
+  td.lab { width: 112px; font-size: 11.5px; color: var(--muted); }
+  td.row img { vertical-align: middle; margin-right: 22px; }
+  .px { font-size: 10.5px; color: var(--muted); }
+</style>
+
+<h1>An icon for bthome-writable &mdash; a proposal, not a decision</h1>
+<p class="sub">BTHome's own arcs kept as they are, and a smaller set facing back:
+<b>the advertising stays the essential thing</b>, and writing is what this adds.
+The largest arc is dropped from the returning set, so the two can never be
+mistaken for each other.</p>
+
+<div class="pair">
+  <div class="card">
+    <img src="bthome-icon-reference.png" width="128" height="128" alt="BTHome">
+    <div class="who">BTHome</div>
+    <div class="note">the existing mark</div>
+  </div>
+  <div class="card">
+    <img src="bthome-writable-icon2.svg" width="128" height="128" alt="bthome-writable">
+    <div class="who">bthome-writable</div>
+    <div class="note">proposed</div>
+  </div>
+</div>
+
+<div class="sizes">
+  <p class="panel">at the sizes Home Assistant actually draws them</p>
+  <table>
+    <tr>
+      <td class="lab">BTHome</td>
+      <td class="row">
+        <img src="bthome-icon-reference.png" width="24" height="24" alt="">
+        <img src="bthome-icon-reference.png" width="32" height="32" alt="">
+        <img src="bthome-icon-reference.png" width="48" height="48" alt="">
+      </td>
+    </tr>
+    <tr>
+      <td class="lab">bthome-writable</td>
+      <td class="row">
+        <img src="bthome-writable-icon2.svg" width="24" height="24" alt="">
+        <img src="bthome-writable-icon2.svg" width="32" height="32" alt="">
+        <img src="bthome-writable-icon2.svg" width="48" height="48" alt="">
+      </td>
+    </tr>
+    <tr>
+      <td class="lab"></td>
+      <td class="px">24 px &nbsp;&nbsp;&nbsp; 32 px &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 48 px</td>
+    </tr>
+  </table>
+</div>

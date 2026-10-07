@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- Recovered from bthome-writable-icon2.png as geometry, not traced: every
+       stroke here is a circular arc with round caps, so radius, span, weight
+       and spacing are all editable numbers. 91.8% pixel overlap with the
+       original; what differs is a one-pixel fringe of antialiasing.
+
+       Four arcs opening right: BTHome's own mark, the advertising, unchanged.
+       Three opening left, the largest dropped: the writes this extension adds,
+       deliberately the lesser of the two. -->
+  <g fill="none" stroke="#4371c3" stroke-linecap="round">
+  <path d="M 97.76 21.61 A 95.03 95.03 0 0 1 104.15 163.97" stroke-width="13.09"/>
+  <path d="M 66.66 39.23 A 66.70 66.70 0 0 1 72.54 151.35" stroke-width="12.99"/>
+  <path d="M 186.35 224.76 A 66.68 66.68 0 0 1 180.47 112.66" stroke-width="12.99"/>
+  <path d="M 36.01 55.33 A 43.50 43.50 0 0 1 39.60 134.61" stroke-width="12.82"/>
+  <path d="M 216.99 208.63 A 43.39 43.39 0 0 1 213.42 129.45" stroke-width="12.82"/>
+  <path d="M 10.27 75.11 A 23.39 23.39 0 0 1 12.07 118.33" stroke-width="12.68"/>
+  <path d="M 242.73 188.89 A 23.39 23.39 0 0 1 240.93 145.67" stroke-width="12.68"/>
+  </g>
+</svg>
