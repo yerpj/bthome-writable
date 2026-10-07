@@ -4338,8 +4338,8 @@ Kept so none of it is lost. Nothing below was in the owner's list.
 | 10 | Numbers carry a unit and no `device_class`, so no conversion for a Fahrenheit user; entity names are hardcoded English with no `entity:` section in `strings.json` | Core review would block on this |
 | 11 | `async_sync_write_counter` sets `self._counter = reported + 1` unconditionally. A command issued during the setup window is sealed with the clock seed (~1.76e9); the sync then drops the counter to ~1 and every later write is behind what the device just accepted. `max(self._counter, reported + 1)` closes it | **Fixed 2026-10-06**: the adoption is skipped when `reported + 1` is not ahead of the counter we hold, which is the only direction §5.3 allows. In the case it exists for -- a receiver behind a device that restarted ahead -- `reported + 1` is larger and wins, so the guard costs nothing where it is needed. Guarded by `test_asking_never_moves_the_counter_backwards` |
 | 12 | Clock seeding leaves the device's acceptance window after 2038-01-19: once `time.time() > 2**31` a seeded receiver is *behind* in circular terms and every write is refused, with the resync button unable to help | Suspected |
-| 13 | The Espruino advertising fallback publishes `[info, 0x00, pid]` -- for a keyed device `info` is `0x41`, "encrypted", over an unsealed body | Suspected |
-| 14 | The connect and disconnect handlers are registered on every `setup()` with no removal; `goFast()` is the connect handler and can throw `advertising_rejected` into it unguarded, where `handleWrite` guards the same case | Suspected |
+| 13 | The Espruino advertising fallback publishes `[info, 0x00, pid]` -- for a keyed device `info` is `0x41`, "encrypted", over an unsealed body | **Fixed 2026-10-07** (D-088): sealed when a key is set, and the harness can now refuse a packet so the fallback is actually executed |
+| 14 | The connect and disconnect handlers are registered on every `setup()` with no removal; `goFast()` is the connect handler and can throw `advertising_rejected` into it unguarded, where `handleWrite` guards the same case | **Fixed 2026-10-07** (D-088): subscribed once per module load, both handlers guarded, and the harness now counts subscriptions |
 | 15 | The receiver never checks the BTHome version bits (5-7); `bthome-ble` refuses anything that is not version 2, so a future-version packet is parsed here and dropped there. And `0x50` (timestamp) classifies as numeric, so it would be offered as a 0-4294967295 number box | Suspected |
 
 ### On consistency with BTHome, which was the other half of the question
@@ -4707,3 +4707,77 @@ has one adapter and one proxy; theirs has seven radios hearing the same device,
 so the window between creating a read task and assigning it gets hit instead of
 being missed. Everything else in this file was found by measuring harder on the
 same bench. This was found by someone else plugging it in.
+
+## D-088 -- two faults worth fixing before the module is published  [DECISION, ruled]
+
+**Status:** 2026-10-07. Gordon tested `bthome-writable` on his own Puck.js --
+*"works great"*, connections brief, no missed writes, unencrypted -- and asked
+for the standalone modules in EspruinoDocs *"as soon as you're happy"*. That
+is the third site, and the first from the person who would host the module.
+
+The owner's ruling: fix these two first. They are both in the file he would
+host, both harmless on a bench where `setup()` runs once and the radio accepts
+the packet, and both stop being harmless the moment the module is copied,
+edited and re-run by people whose board and object count nobody knows.
+
+### The safety net told receivers a lie
+
+`refreshAdvertising` checks nothing it can avoid checking, but a radio can
+still refuse a packet. When it does, the module publishes a minimal one
+instead -- because a device that is not advertising cannot be connected to,
+and so cannot be repaired over the air (D-022, D-029). Better a poor packet
+than a silent device.
+
+That packet kept the device-information byte, including its **encrypted**
+bit, while carrying plaintext. Every receiver therefore tried to decrypt
+something that had never been encrypted, failed, and concluded the key was
+wrong. Since D-082 a receiver reacts to repeated failures by asking the user
+to re-enter a key that was never at fault -- so a packet published to keep the
+device reachable produced an accusation against its owner.
+
+Now sealed when a key is set. Eleven bytes, and the fallback already turns the
+local name off, so it fits anywhere the unsealed three did.
+
+### Subscriptions to the Bluetooth stack accumulated
+
+The module asks the stack to tell it about connections, so it can advertise
+faster while a receiver is about. It asked again on **every** `setup()` and
+never cancelled the previous ask, so a second run reacted twice to every
+connection and a third three times. The flag preventing that cannot live in
+`st`, which `setup()` rebuilds wholesale; it is module-level now.
+
+Mostly wasted work -- except that each reaction rebuilds the advertising, and
+that can throw. The throw landed inside the stack's own callback, where
+nothing is prepared to catch it, while `handleWrite` has guarded the same case
+since D-078. Both handlers are wrapped now, and a failure goes to the
+device's `onError`, which is where its own code can hear it.
+
+A device being developed on is a device whose `setup()` runs again and again,
+which is exactly the population EspruinoDocs would hand it to.
+
+### The test harness could not see either one
+
+Both faults were listed as *suspected* in D-083 and stayed suspected because
+nothing could exercise them. The fake `NRF.on` kept only the latest handler,
+so a module stacking a second looked identical to one that did not, and the
+fake `setAdvertising` never refused anything, so the fallback had never once
+been executed. The harness now counts subscriptions and can be told to refuse
+a packet by size.
+
+Four tests followed, and the fourth caught a mistake of mine: refusing *every*
+packet makes the fallback fail too, and what reaches `onError` is then the
+radio's own error rather than ours. The case the net exists for is a large
+packet refused and a small one accepted, which is what the test does now.
+
+### On publishing
+
+Recommended, and soon. Publishing makes `require("BTHomeWritable")` resolve
+from espruino.com, which removes the standalone-bundle workaround from the
+quickstart, the `AESCCM` caveat beside it, and most of the reason
+`tools/build_espruino_bundle.py` exists.
+
+Two things stay true and are worth saying rather than hiding. Gordon and
+@enaon both tested **unencrypted**, so the sealed path still has one bench.
+And D-086 will change this module again once Espruino can refuse a write --
+which is an argument for publishing now rather than waiting, since EspruinoDocs
+updates by pull request and the module is useful today.

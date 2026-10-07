@@ -85,6 +85,12 @@ function run(source, storedFiles) {
   const timers = [];
   const timeouts = [];
   const handlers = {};
+  // How many times each event was subscribed to. The fake used to keep only
+  // the latest handler, so a module stacking a second one looked identical
+  // to one that did not (D-088).
+  const subscriptions = {};
+  // Set by a test to make the radio refuse a packet of a given size.
+  let refuseAdvertising = null;
   const pins = {};
   let characteristics = null;
   let serviceUuid = null;
@@ -109,9 +115,14 @@ function run(source, storedFiles) {
     NRF: {
       on(event, fn) {
         handlers[event] = fn;
+        subscriptions[event] = (subscriptions[event] || 0) + 1;
       },
       setAdvertising(data, opts) {
-        advertised.push(data[0xfcd2].slice());
+        const payload = data[0xfcd2];
+        if (refuseAdvertising && refuseAdvertising(payload)) {
+          throw new Error(`advertising data too long (${payload.length})`);
+        }
+        advertised.push(payload.slice());
         options.push(opts);
       },
       setServices(services) {
@@ -157,6 +168,10 @@ function run(source, storedFiles) {
     timers,
     timeouts,
     handlers,
+    subscriptions,
+    refuse(predicate) {
+      refuseAdvertising = predicate;
+    },
     pins,
     get characteristics() {
       return characteristics;
@@ -508,3 +523,75 @@ test("turning the counter report on adds a characteristic past every entry", () 
   );
 });
 
+
+/* --- the safety net, and the stack we subscribe to (D-088) ----------------- */
+
+test("the fallback packet is sealed when the device has a key", () => {
+  /* When the radio refuses the real packet the module publishes a tiny one
+   * instead, because a device that is not advertising cannot be connected to
+   * and so cannot be fixed over the air. That packet kept the "encrypted" bit
+   * of the device-information byte while carrying plaintext, so every receiver
+   * failed to authenticate it and concluded the key was wrong -- and Home
+   * Assistant now asks the user to re-enter a key that was never at fault. */
+  const result = run(load("encrypted-light-standalone.js"));
+  const before = result.advertised.length;
+
+  // Refuse anything but a short packet, which is the situation the net is for.
+  result.refuse((payload) => payload.length > 14);
+  // It publishes the fallback and then re-throws, so the caller learns its
+  // real packet did not fit.
+  assert.throws(() => result.context.bw.update(), { code: "advertising_rejected" });
+
+  const published = result.advertised[result.advertised.length - 1];
+  assert.ok(result.advertised.length > before, "something was still published");
+  assert.ok(published.length > 3, `sealed, got ${published.length} bytes`);
+  assert.equal(published[0] & 1, 1, "and still says it is encrypted");
+});
+
+test("a plain device's fallback packet stays plain", () => {
+  const result = run(load("single-light-standalone.js"));
+  const before = result.advertised.length;
+
+  result.refuse((payload) => payload.length > 6);
+  assert.throws(() => result.context.bw.update(), { code: "advertising_rejected" });
+
+  const published = result.advertised[result.advertised.length - 1];
+  assert.ok(result.advertised.length > before);
+  assert.equal(published.length, 3, "device info, packet id, and nothing else");
+  assert.equal(published[0] & 1, 0);
+});
+
+test("setup() twice subscribes to the radio once", () => {
+  /* A device being developed on is a device whose setup() runs again and
+   * again. Each run used to stack another reaction onto every connection. */
+  const result = run(load("single-light-standalone.js"));
+  assert.equal(result.subscriptions.connect, 1);
+
+  result.context.bw.setup({
+    advertise: [{ type: "light", set: () => {} }],
+    interval: 1000,
+  });
+
+  assert.equal(result.subscriptions.connect, 1, "not two");
+  assert.equal(result.subscriptions.disconnect, 1);
+});
+
+test("a connection whose advertising is refused does not throw into the stack", () => {
+  /* goFast() rebuilds the advertising, and that can fail. The failure used to
+   * land inside the Bluetooth stack's own callback, where nothing is prepared
+   * to catch it; it belongs in the device's own onError. */
+  const seen = [];
+  const result = run(load("single-light-standalone.js"));
+  result.context.bw.setup({
+    advertise: [{ type: "light", set: () => {} }],
+    interval: 1000,
+    onError: (e) => seen.push(e.code),
+  });
+
+  // Refuse the real packet but not the fallback, which is the case the net is
+  // for -- refusing both leaves the module nothing to report but the radio's
+  // own error.
+  result.refuse((payload) => payload.length > 4);
+  assert.doesNotThrow(() => result.handlers.connect("aa:bb:cc:dd:ee:ff"));
+  assert.deepEqual(seen, ["advertising_rejected"]);
+});

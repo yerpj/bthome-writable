@@ -340,6 +340,7 @@ function renderServiceData(p, pid, enc, entries, now, revision) {
 /* ===== DIVIDER: everything below owns the radio ========================== */
 
 let st = null;
+let listening = false; // whether NRF connect/disconnect handlers are attached
 
 const CTR_FILE = ".bwctr"; // the persisted counter high-water marks
 const CTR_STRIDE = 64; // persist every this many accepted writes, not each one
@@ -563,8 +564,15 @@ function refreshAdvertising() {
     // means it cannot be fixed without the button (D-022, D-029). Fall back to
     // the smallest valid BTHome packet, without the name, which can be most of
     // the 31 bytes (D-046): being findable matters more than being named.
-    const minimal = { 0xFCD2:[st.plan.info, PKT_ID, st.packetId & 255] };
-    NRF.setAdvertising(minimal, Object.assign({}, opts, { showName:false }));
+    let small = [st.plan.info, PKT_ID, st.packetId & 255];
+    // Seal it too when there is a key. The device-information byte says
+    // "encrypted" either way, so publishing this in clear made every receiver
+    // fail to authenticate and conclude the key was wrong -- Home Assistant
+    // now asks the user to re-enter a key that was never at fault (D-088).
+    // Eleven bytes sealed, and showName is off below, so it fits wherever the
+    // unsealed three did.
+    if (st.key) small = sealAdvertising(small);
+    NRF.setAdvertising({ 0xFCD2:small }, Object.assign({}, opts, { showName:false }));
     throw err("advertising_rejected", `the radio refused ${sd.length} bytes of service data: ${e.message}`);
   }
 }
@@ -594,6 +602,14 @@ function publishRead(w) {
    would otherwise wait for the next scheduled rebuild, which runs at the idle
    interval. Measured before this: at a 10 s interval, effects took 18 s to show
    in Home Assistant while the write itself had landed in one (D-050). */
+/* Run a reaction to a connection without letting it throw into the Bluetooth
+   stack's own callback. Rebuilding the advertising can fail -- the radio may
+   refuse the packet -- and there is nothing up there prepared to catch it;
+   `onError` is where a device's own code hears about it. */
+function guarded(fn) {
+  try { fn(); } catch (e) { if (st && st.onError) st.onError(e); }
+}
+
 function goFast() {
   if (st.fastTimer !== undefined) { clearTimeout(st.fastTimer); st.fastTimer = undefined; }
   st.advInterval = st.fastInterval;
@@ -721,8 +737,15 @@ function setup(opts) {
   // at boot and the packet id never moves.
   if (st.timer !== undefined) clearInterval(st.timer);
   st.timer = setInterval(refreshAdvertising, st.interval);
-  NRF.on("connect", goFast);
-  NRF.on("disconnect", goIdleAfterTimeout);
+  // Once per module load, not once per setup(). `st` is rebuilt by every
+  // setup() call, so this flag cannot live in it -- and a device being
+  // developed on is a device whose setup() runs again and again, each run
+  // stacking another reaction onto every connection (D-088).
+  if (!listening) {
+    NRF.on("connect", () => guarded(goFast));
+    NRF.on("disconnect", () => guarded(goIdleAfterTimeout));
+    listening = true;
+  }
   return exports;
 }
 
