@@ -168,8 +168,11 @@ Claims to avoid, because they were wrong once in public:
   write drove the LED — 114 → 601 → 111 lux, read back out of a sealed packet
   (D-063, D-064). It also found a release blocker there, and fixed it.
 - Re-run the prior-art search; update §1 with anything new.
-- **Register `bthome_writable` in `home-assistant/brands`** (a pull request
-  there) and **give the GitHub repository topics** (a settings field). HACS
+- **Draw an icon**, then **register `bthome_writable` in
+  `home-assistant/brands`** (a pull request there) and **give the GitHub
+  repository topics** (a settings field). `docs/brand/` holds the reference and
+  the specification; HACS also reads
+  `custom_components/bthome_writable/brand/icon.png`, which is the cheaper half. HACS
   checks both and this repository passes neither, so both are currently
   `ignore`d in `.github/workflows/ci.yml`. Neither is a defect; both are release
   work. The workflow fails as soon as either *could* pass, naming the word to
