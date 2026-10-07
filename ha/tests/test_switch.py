@@ -324,6 +324,41 @@ async def test_an_entry_that_changes_type_does_not_collide(
     assert light.unique_id != other.unique_id
 
 
+async def test_the_device_name_is_not_fought_over(
+    hass: HomeAssistant, radio, gatt
+) -> None:
+    """D-089, reported by Gordon: the card's title flickered.
+
+    Both integrations contribute to the same device, so asserting a name means
+    whichever writes last wins -- core BTHome calls it "Puck.js c1c3 C1C3" and
+    this called it "Puck.js c1c3". `default_name` applies only when the device
+    has no name yet, so core BTHome's survives and ours still covers a device
+    that declares writable entries and advertises no sensors at all.
+    """
+    from homeassistant.helpers import device_registry as dr
+
+    registry = dr.async_get(hass)
+    entry = await setup_device(hass, radio, "single-light")
+
+    device = registry.async_get_device(
+        connections={(dr.CONNECTION_BLUETOOTH, DEFAULT_ADDRESS)}
+    )
+    assert device is not None
+    assert device.name == "Espruino Light", "named when nothing else named it"
+
+    # Now something else does name it, as core BTHome would.
+    registry.async_update_device(device.id, name="Espruino Light 1F2B")
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert (
+        registry.async_get_device(
+            connections={(dr.CONNECTION_BLUETOOTH, DEFAULT_ADDRESS)}
+        ).name
+        == "Espruino Light 1F2B"
+    ), "and does not take it back"
+
+
 async def test_a_control_whose_entry_changed_type_refuses_to_write(
     hass: HomeAssistant, radio, gatt
 ) -> None:

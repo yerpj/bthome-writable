@@ -27,17 +27,19 @@ var lamp = { on: false };
 // The whole experiment: the state is kept, the pin is not driven.
 function apply() {}
 
+/* Puck.light() returns 0..1 and is not calibrated in lux, so this scale is
+ * arbitrary. What matters is that the number moves when the green LED does.
+ * The upstream BTHome module encodes `illuminance` itself -- object 0x05,
+ * 24-bit, 0.01 lux per step -- so this returns lux and nothing here packs
+ * bytes. */
 function illuminance() {
-  var value = Math.round(Puck.light() * 1000 * 100);
-  if (value < 0) value = 0;
-  if (value > 0xffffff) value = 0xffffff;
-  return [0x05, value & 255, (value >> 8) & 255, (value >> 16) & 255];
+  return Puck.light() * 1000;
 }
 
 bw.setup({
   advertise: [
     { type: "battery", interval: 300000, get: function () { return E.getBattery(); } },
-    { type: "raw", interval: 0, get: illuminance },
+    { type: "illuminance", interval: 0, get: illuminance },
     {
       type: "light",
       set: function (v) {

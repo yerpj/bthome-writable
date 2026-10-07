@@ -121,7 +121,17 @@ class BTHomeWritableResyncButton(ButtonEntity):
         self._attr_unique_id = f"{coordinator.address}-resync-write-counter"
         self._attr_device_info = DeviceInfo(
             connections={(CONNECTION_BLUETOOTH, coordinator.address)},
-            name=coordinator.name,
+            # `default_name`, not `name`: both integrations contribute to the
+            # same device, and asserting a name means the last one to write
+            # wins. Core BTHome calls this device "Puck.js c1c3 C1C3" and we
+            # called it "Puck.js c1c3", so the card's title flickered between
+            # them depending on load order -- reported by Gordon (D-089).
+            #
+            # `default_name` is used only when the device has no name yet,
+            # which leaves core BTHome's in place and still covers the one
+            # case it cannot: a device that declares writable entries and
+            # advertises no sensors at all, so core BTHome never names it.
+            default_name=coordinator.name,
         )
 
     @property

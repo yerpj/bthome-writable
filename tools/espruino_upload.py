@@ -29,6 +29,7 @@ import json
 from pathlib import Path
 import re
 import sys
+import time
 import urllib.request
 
 from bleak import BleakClient, BleakScanner
@@ -106,11 +107,26 @@ class Board:
         return self.output.decode("utf-8", errors="replace")
 
 
+CACHE_STALE_DAYS = 30
+"""How old a cached upstream module may get before the tool says so.
+
+It never refetches on its own -- a deployment should not depend on the network
+being up. But a cache that silently freezes upstream is how this project came to
+ship examples whose comments said the `BTHome` module had no `illuminance` type
+months after it gained one (D-089). Saying the age out loud costs nothing."""
+
+
 def fetch_module(name: str) -> str:
     """The module source, from espruino.com, cached on disk."""
     MODULE_CACHE.mkdir(exist_ok=True)
     cached = MODULE_CACHE / f"{name}.js"
     if cached.exists():
+        age = (time.time() - cached.stat().st_mtime) / 86400
+        if age > CACHE_STALE_DAYS:
+            print(
+                f"  note: {name} was cached {age:.0f} days ago; delete "
+                f".module-cache/{name}.js to pick up any upstream changes"
+            )
         return cached.read_text(encoding="utf-8")
 
     with urllib.request.urlopen(MODULE_URL.format(name=name), timeout=30) as response:

@@ -151,7 +151,12 @@ function run(source, storedFiles) {
           let object;
           if (device.type === "battery") object = [0x01, Math.round(device.v)];
           else if (device.type === "raw") object = device.v;
-          else object = [0x1e, device.v ? 1 : 0];
+          else if (device.type === "illuminance") {
+            // Upstream encodes this as b24(5, e, 100): object 0x05, 24-bit
+            // little endian, hundredths of a lux.
+            const u = Math.round(device.v * 100);
+            object = [0x05, u & 255, (u >> 8) & 255, (u >> 16) & 255];
+          } else object = [0x1e, device.v ? 1 : 0];
           return { 0xfcd2: [0x40, 0x00, 0x01].concat(object) };
         },
       };
@@ -311,13 +316,16 @@ test("light-loop puts the sensor and the actuator on different LEDs", () => {
   assert.doesNotMatch(source, /digitalWrite\(LED1/);
 });
 
-test("light-loop reaches the illuminance object through the raw escape hatch", () => {
-  /* The upstream BTHome module has no illuminance type. Its `raw` type emits
-   * bytes verbatim -- object ID included, and with no length byte, which is
-   * why `raw` must not be treated as length-prefixed. */
+test("light-loop lets the upstream module encode the illuminance", () => {
+  /* It used to pack object 0x05 by hand and pass it through the `raw` escape
+   * hatch, because upstream had no illuminance type. It has one now, and the
+   * examples said otherwise in a comment -- which nobody noticed because this
+   * repository's own module cache had frozen the older copy (D-089). Same
+   * bytes on the air, one fewer thing for a reader to copy. */
   const result = run(load("light-loop-standalone.js"));
   const packet = hex(result.advertised[0]);
   assert.match(packet, /05a86100/, "illuminance object 0x05, 25000 hundredths");
+  assert.doesNotMatch(load("light-loop-standalone.js"), /type: "raw"/);
 });
 
 test("advertising continues while a receiver is connected", () => {

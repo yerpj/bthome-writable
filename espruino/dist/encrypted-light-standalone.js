@@ -851,21 +851,20 @@ function apply() {
   digitalWrite(LED2, lamp.on); // green; LED1 (red) is the sensor
 }
 
-/* BTHome illuminance, object 0x05: unsigned 24-bit, 0.01 lux per step, through
- * the upstream module's `raw` escape hatch until its illuminance type is
- * published. */
+/* Puck.light() returns 0..1 and is not calibrated in lux, so this scale is
+ * arbitrary. What matters is that the number moves when the green LED does.
+ * The upstream BTHome module encodes `illuminance` itself -- object 0x05,
+ * 24-bit, 0.01 lux per step -- so this returns lux and nothing here packs
+ * bytes. */
 function illuminance() {
-  var value = Math.round(Puck.light() * 1000 * 100);
-  if (value < 0) value = 0;
-  if (value > 0xffffff) value = 0xffffff;
-  return [0x05, value & 255, (value >> 8) & 255, (value >> 16) & 255];
+  return Puck.light() * 1000;
 }
 
 bw.setup({
   advertise: [
     // packet id (2) + illuminance (4) + declaration (2) = 8, inside the 12 an
     // encrypted packet has on this board.
-    { type: "raw", interval: 0, get: illuminance },
+    { type: "illuminance", interval: 0, get: illuminance },
     {
       type: "light",
       set: function (v) {

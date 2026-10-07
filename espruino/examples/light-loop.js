@@ -23,19 +23,13 @@ function apply() {
   digitalWrite(LED2, lamp.on);
 }
 
-/* BTHome illuminance, object 0x05: unsigned 24-bit, 0.01 lux per step.
- *
- * The published BTHome module has no `illuminance` type yet (it is in
- * EspruinoDocs master), so this goes through its `raw` escape hatch, which
- * emits the bytes it is given verbatim -- object ID included.
- *
- * Puck.light() returns 0..1 and is not calibrated in lux, so the scale below
- * is arbitrary. What matters is that the number moves when the green LED does. */
+/* Puck.light() returns 0..1 and is not calibrated in lux, so this scale is
+ * arbitrary. What matters is that the number moves when the green LED does.
+ * The upstream BTHome module encodes `illuminance` itself -- object 0x05,
+ * 24-bit, 0.01 lux per step -- so this returns lux and nothing here packs
+ * bytes. */
 function illuminance() {
-  var value = Math.round(Puck.light() * 1000 * 100);
-  if (value < 0) value = 0;
-  if (value > 0xffffff) value = 0xffffff;
-  return [0x05, value & 255, (value >> 8) & 255, (value >> 16) & 255];
+  return Puck.light() * 1000;
 }
 
 bw.setup({
@@ -44,7 +38,7 @@ bw.setup({
     { type: "battery", interval: 300000, get: function () { return E.getBattery(); } },
     // interval 0 -- read on every packet, so the effect of a write shows up in
     // the next advertisement rather than one read-interval later.
-    { type: "raw", interval: 0, get: illuminance },
+    { type: "illuminance", interval: 0, get: illuminance },
     {
       type: "light",
       set: function (v) {

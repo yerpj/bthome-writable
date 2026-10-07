@@ -4781,3 +4781,72 @@ Two things stay true and are worth saying rather than hiding. Gordon and
 And D-086 will change this module again once Espruino can refuse a write --
 which is an argument for publishing now rather than waiting, since EspruinoDocs
 updates by pull request and the module is useful today.
+
+## D-089 -- four things Gordon noticed while testing  [DECISION, ruled]
+
+**Status:** 2026-10-07. Two fixed here, one is a task already tracked, one is
+his to decide.
+
+### The examples encoded illuminance by hand, and said why in a comment that
+### was no longer true
+
+> The examples hard-code `illuminance` but the BTHome module now supports it
+
+Correct. Upstream has `illuminance : e => b24(5, e, 100)` -- object `0x05`,
+24-bit, hundredths of a lux, which is exactly what three of our examples were
+packing themselves and pushing through the `raw` escape hatch.
+
+**The comment beside it is the real finding.** It said *"The published BTHome
+module has no `illuminance` type yet"*. False, and nobody here could see it:
+`.module-cache/BTHome.js` had frozen a 90-line copy from before the type
+existed, so every local build, every test and every reading of the code
+agreed with the stale comment. A cache made the documentation lie.
+
+`fetch_module` now prints the cache's age when it passes thirty days. It does
+not refetch on its own -- a deployment should not need the network up -- but
+a number on screen costs nothing and is what was missing.
+
+The bytes on the air are unchanged (`05 a8 61 00`); only who packs them is.
+The test that pinned the escape hatch now pins the opposite, and the fake
+`BTHome` in the harness -- which had the same gap for the same reason -- was
+taught the type.
+
+### Both integrations were fighting over the device's name
+
+> BTHome adds the MAC digits to the name ... bthome-writable doesn't
+
+Real. Both contribute to one device, and both asserted `name`, so the card's
+title was whichever integration wrote last: *"Puck.js c1c3 C1C3"* from core
+BTHome, *"Puck.js c1c3"* from us.
+
+Fixed with `default_name` instead of `name`, which Home Assistant applies
+only when the device has no name yet. Core BTHome's name survives, and ours
+still covers the one case core BTHome cannot name: a device that declares
+writable entries and advertises no sensors at all. Matching their string
+ourselves would have been the other option and is worse -- it is a copy of a
+convention we do not own, and D-081 is a whole entry about what copies do.
+
+### The icon is the brands submission
+
+> does bthome-writable have an icon?
+
+No, and that is `home-assistant/brands`: a pull request there, already
+tracked as the reason the HACS `brands` check is ignored (D-085). His question
+is the answer to ours -- it is worth filing.
+
+### The module's name: recommend keeping it
+
+He asked for *"a recommendation for a great(er) module name"*. The
+recommendation is to keep `BTHomeWritable`, and the reason is not taste.
+
+The name is load-bearing in places a rename would have to follow: the Home
+Assistant domain `bthome_writable`, which is also what would be registered in
+`home-assistant/brands` and what every existing config entry stores; the
+repository and its published URLs; the specification; the dossier; the
+discussion title; and two testers' running installations. Renaming is
+cross-cutting rather than cosmetic, and the cost belongs in his hands rather
+than being hidden from him.
+
+If the length is what bothers him, `BTHomeWrite` costs least -- it keeps the
+prefix that makes it sort beside `BTHome` in the module list, which is
+probably the property that matters most for discovery.
