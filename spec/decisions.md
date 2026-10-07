@@ -4850,3 +4850,76 @@ than being hidden from him.
 If the length is what bothers him, `BTHomeWrite` costs least -- it keeps the
 prefix that makes it sort beside `BTHome` in the module list, which is
 probably the property that matters most for discovery.
+
+## D-090 -- plaintext from a keyed device: examined, left to BTHome  [DECISION, ruled]
+
+**Status:** 2026-10-07. @enaon, running twenty encrypted writable lights,
+asked whether BTHome's own warning about encryption applies to this extension
+too. The warning is that a receiver sees encrypted and unencrypted messages
+alike, so full safety depends on the receiver checking what it is given --
+counters against replay, and the mix itself.
+
+A fair question, and the answer is **half yes**.
+
+### What this receiver already does
+
+The counter half is covered (D-082). A sealed advertisement whose counter has
+not increased is skipped, with `bthome-ble`'s own thresholds including the
+exemption below 100 for a device that has just restarted. That is the check
+the warning asks for, borrowed rather than invented.
+
+### What it does not do
+
+`_plaintext` reads the device-information byte, and when the encrypted bit is
+clear it parses the packet in the clear **even when a bindkey is configured**.
+So an unencrypted packet spoofing the device's address is accepted.
+
+What that buys an attacker, honestly:
+
+- `advertises_encrypted` flips to false, and D-042 then refuses every write
+  loudly -- one packet disables the device's controls until a real one
+  arrives;
+- the declaration is replaced, so entities change or vanish, and it is
+  persisted;
+- the settings revision can be moved at will, which makes this receiver open
+  connections: link occupancy and battery.
+
+What it does not buy: **a forged command.** The write path is sealed and
+counter-protected independently of any of this, and that is the property an
+actuator protocol exists to defend. Everything above is denial of service,
+and radio proximity already offers cheaper ones -- jamming, or holding the
+single connection slot these devices serve (D-043).
+
+### Why it is not fixed here
+
+The fix is three lines: with a key configured, ignore unencrypted advertising
+from that device. It was written out and then not taken, for two reasons.
+
+**It is not this layer's.** Core `bthome` behaves identically -- a plaintext
+packet never reaches `_check_bind_key`, because that lives in the decrypt
+path. The behaviour belongs in `bthome-ble`, where every BTHome device gains
+it, rather than bolted onto one extension. Doing it here would also mean this
+receiver rejecting packets a BTHome receiver accepts, in a project whose
+argument is that it does what BTHome does (D-082 is an entry about aligning,
+not diverging).
+
+**And it has a cost.** A device whose key is legitimately removed would go
+quiet with no explanation. That is answerable -- `async_step_reconfigure`
+already clears a key and already refuses to while the device still advertises
+encrypted, so the escape hatch exists -- but it needs the condition surfaced,
+which means a repair issue rather than a log line if it is not to become the
+silent failure this session has spent itself removing.
+
+A toggle entity was considered and rejected outright: it would put the
+defence behind a control any automation can flip, next to the lamp it
+protects. An encryption key is configuration, not state.
+
+### What is owed instead
+
+Saying so. The dossier now carries it as a known limitation with its
+reasoning, and @enaon has the same answer in the discussion. The distinction
+worth preserving is between *examined and left upstream* and *nobody thought
+of it* -- they look identical in code and are not the same thing.
+
+If BTHome adopts the check, this receiver inherits it for free, because the
+object table and the parsing it depends on already come from there.
