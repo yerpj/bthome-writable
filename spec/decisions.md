@@ -4923,3 +4923,81 @@ of it* -- they look identical in code and are not the same thing.
 
 If BTHome adopts the check, this receiver inherits it for free, because the
 object table and the parsing it depends on already come from there.
+
+## D-091 -- the prior art has not moved, and the submission cannot be written by an agent  [DECISION, ruled]
+
+**Status:** 2026-10-07. The dossier's prior-art section was stamped
+2026-09-17 and "re-run the search" was on the pre-submission list. Re-run
+across `bthome-ble`, `home-assistant/bthome.io`, `home-assistant/core`,
+`esphome`, GitHub-wide issue and repository search, the live format page and
+the community forums.
+
+### The answer is still no, and that is the useful part
+
+**Nobody has proposed a downlink.** Everything new since September is
+uplink or housekeeping: four requested sensor types (`bthome.io` #80), an
+ESPHome button codec, a Renovate config, dependabot. `0xFF` is still
+unassigned -- the highest assigned object ID anywhere is `0xF2`, and
+`src/format.html` has not changed since 2026-04-30.
+
+The two standing requests have not moved either: `bthome-ble` #146 (two-way
+communication) last had a comment in March 2025, #287 (Shelly BLU control)
+in October 2025. Ernst79's *"we will welcome contributions from others if
+they want to add this somehow"* is still the last word.
+
+One uncovered surface, stated rather than glossed: GitHub **code** search
+needs authentication and could not be run. An implementation living only in
+code, with nothing in any issue or repository description, would not have
+been seen.
+
+### A request we should have been citing
+
+`bthome-ble` [#257](https://github.com/Bluetooth-Devices/bthome-ble/issues/257),
+*"BTHome should define an Object Id for supported events"* (axa88,
+2025-08-13, open, no comments): a device should be able to declare which
+events it supports, rather than every receiver assuming all of them.
+
+That is **our declaration, asked for independently and a year earlier**, for
+a narrower case. It belongs in the dossier: it turns the proposal from *here
+is a concept we invented* into *here is a general answer to something you
+have already been asked for*. Added to section 1.
+
+### The finding that changes how we submit
+
+The Open Home Foundation **AI policy** has been in the specification
+repository since 2026-07-20 and is nowhere in this project. Verbatim:
+
+> We do not allow autonomous agents to be used for contributing to our
+> projects. We will close any pull requests or issues that we believe were
+> created autonomously, and may mark automated comments as spam.
+
+> Do not use AI to generate answers to questions from maintainers. You
+> should understand and be able to explain your own work.
+
+Pull requests that look like unreviewed AI output are closed without review;
+AI-derived context must be quoted, labelled and accompanied by the
+contributor's own explanation, and long snippets are not welcome.
+
+**It governs everything this project is aiming at on that side**: the `0xFF`
+issue on `bthome.io`, the `home-assistant/brands` pull request, and any
+eventual merge into core `bthome`. It does not govern the Espruino
+discussion, which is Gordon's project under its own rules.
+
+So the division of labour changes, and the honest version is worth stating:
+**the owner writes the submission and answers the maintainers, in his own
+words.** An agent can measure, verify a claim, find a contradiction and
+prepare material to be read and understood -- it must not draft the issue,
+the pull request, or the replies. Pasting long extracts of this file into a
+submission is a closure risk by their own wording, and the dossier was
+already *"not the submission itself"* for different reasons; now it is that
+for this one too.
+
+Recorded in `CLAUDE.md` as a rule rather than only here, because it binds
+every future session and a decision entry is not read before acting.
+
+### And a note on pace
+
+`bthome.io` #80 has sat with no maintainer comment for over two weeks, and
+#72 since March. An ID assignment is unlikely to be quick, which is an
+argument for filing early rather than for waiting until everything else is
+perfect.

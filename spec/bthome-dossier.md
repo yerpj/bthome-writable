@@ -7,7 +7,7 @@ when the item was checked.
 
 ---
 
-## 1. Prior art: has anyone proposed a downlink? (checked 2026-09-17)
+## 1. Prior art: has anyone proposed a downlink? (checked 2026-10-07)
 
 Searched `Bluetooth-Devices/bthome-ble` and `home-assistant/bthome.io` (the
 specification repository) for issues and PRs mentioning write, writable,
@@ -18,8 +18,24 @@ actuator.
 **No downlink mechanism has been proposed.** There are requests, and there are
 adjacent building blocks already accepted.
 
+**Re-checked 2026-10-07 and unchanged.** Nothing new about a downlink,
+writable objects or GATT writes anywhere; what has appeared since is uplink
+(four requested sensor types, an ESPHome button codec) or housekeeping. `0xFF`
+is still unassigned -- the highest assigned object ID is `0xF2`, and the format
+page has not changed since 2026-04-30. One surface was not covered: GitHub
+*code* search needs authentication, so an implementation living only in code
+would not have been seen (D-091).
+
 ### Requests, still open
 
+- **[bthome-ble #257](https://github.com/Bluetooth-Devices/bthome-ble/issues/257)**
+  — *BTHome should define an Object Id for supported events* (axa88,
+  2025-08-13, open, no comments). A device should be able to declare which
+  events it supports instead of every receiver assuming all of them.
+  - **This is the same move as `0xFF`, asked for independently and a year
+    earlier**, for a narrower case. Worth leading with: the proposal is a
+    general answer to a question the project has already been asked, not a
+    concept invented here.
 - **[bthome-ble #146](https://github.com/Bluetooth-Devices/bthome-ble/issues/146)**
   — *Add 2-way communication for acknowledgement and control?* (EternityForest,
   2024-09-04). Asks for a way to control relays and acknowledge remote presses.
@@ -168,7 +184,15 @@ Claims to avoid, because they were wrong once in public:
   by itself, read the declaration out of the decrypted advertising, and a sealed
   write drove the LED — 114 → 601 → 111 lux, read back out of a sealed packet
   (D-063, D-064). It also found a release blocker there, and fixed it.
-- Re-run the prior-art search; update §1 with anything new.
+- ~~Re-run the prior-art search~~ — done 2026-10-07 (D-091). Nothing has
+  moved: no downlink proposed anywhere, `0xFF` still unassigned, both standing
+  requests untouched since 2025. GitHub *code* search needs authentication and
+  was the one surface not covered.
+- **Write the submission personally.** The Open Home Foundation
+  [AI policy](https://developers.home-assistant.io/docs/ai_policy) closes
+  issues and pull requests believed to be agent-written, and asks that answers
+  to maintainers be the contributor's own. This dossier is material to read and
+  internalise, never text to paste (D-091).
 - **Draw an icon**, then **register `bthome_writable` in
   `home-assistant/brands`** (a pull request there) and **give the GitHub
   repository topics** (a settings field). `docs/brand/` holds the reference and
