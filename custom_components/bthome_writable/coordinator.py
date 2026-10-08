@@ -263,23 +263,24 @@ class BTHomeWritableCoordinator:
             return
         previous = self._revision_advertised
         self._revision_advertised = revision
-        if previous is not None and revision != previous:
-            # The revision moved while we were watching, which a restart does:
-            # `setup()` picks a random one precisely so that a device whose
-            # values went back to their defaults is re-read. A restart also
-            # resumes the write counter ahead of ours, in silence, so take the
-            # same signal for both (D-092).
-            #
-            # `changed()` moves it too, and that arms a resynchronisation
-            # nothing needed. It costs one connection before the next command,
-            # and the adoption refuses to move the counter backwards (D-083
-            # item 11), so a needless one changes nothing.
-            if (
-                ALLOW_COUNTER_SYNC
-                and self.bindkey is not None
-                and self._offers_counter_report is not False
-            ):
-                self._resync_counter = True
+        # A revision that moves while we are watching is what a restart looks
+        # like: `setup()` picks a random one precisely so that a device whose
+        # values went back to their defaults is re-read. A restart also resumes
+        # the write counter ahead of ours, in silence, so take the same signal
+        # for both (D-092).
+        #
+        # `changed()` moves it too, and that arms a resynchronisation nothing
+        # needed. It costs one connection before the next command, and the
+        # adoption refuses to move the counter backwards (D-083 item 11), so a
+        # needless one changes nothing.
+        if (
+            previous is not None
+            and revision != previous
+            and ALLOW_COUNTER_SYNC
+            and self.bindkey is not None
+            and self._offers_counter_report is not False
+        ):
+            self._resync_counter = True
         if revision == self._revision_read:
             return
         if (
@@ -708,7 +709,7 @@ class BTHomeWritableCoordinator:
             # item 11 is the same mistake in the other direction).
             try:
                 await self.async_sync_write_counter()
-            except Exception:  # noqa: BLE001 -- whatever a connection can raise
+            except Exception:  # whatever a connection is entitled to raise
                 # Left armed, and the write goes out on the counter we hold. A
                 # device that could not be reached for the question will fail
                 # the write too, visibly; one that could be reached but
