@@ -29,18 +29,27 @@ BROWSERS = (
 )
 
 COMPACT = """
-/* For a one-pager: a briefing meant to be held in the hand, not a document to
-   be read in sequence. Only spacing and scale change -- the type, the tables
-   and the monospaced blocks stay as they are, so a compact page still looks
-   like the rest of what this repository produces. */
-@page { margin: 11mm 12mm; }
-html { font-size: 9pt; }
-body { line-height: 1.38; }
+/* For a briefing: something held in the hand and spoken from, not a document
+   read in sequence. Only spacing and scale change -- the type, the tables and
+   the monospaced blocks stay as they are, so it still looks like the rest of
+   what this repository produces.
+
+   Set no tighter than it needs to be. Shrinking the type to save a page is how
+   a briefing stops being readable at the moment someone is reading it aloud;
+   where it does not fit, cut words. */
+@page { margin: 15mm 16mm; }
+html { font-size: 10pt; }
+body { line-height: 1.45; }
 h1 { font-size: 1.55rem; }
 h2 { font-size: 1.08rem; margin: 0.95rem 0 0.3rem; }
 h3 { margin: 0.7rem 0 0.25rem; }
 p, ul, ol, table, pre { margin: 0.45rem 0; }
 li { margin: 0.1rem 0; }
+
+/* Nothing orphaned across the fold: a heading stays with what it introduces,
+   and a table or a byte example is not cut in half. */
+h1, h2, h3 { break-after: avoid; }
+table, pre, blockquote { break-inside: avoid; }
 """
 
 STYLE = """

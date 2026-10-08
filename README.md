@@ -57,8 +57,8 @@ standardisation dossier for the BTHome maintainers.
   ruling that resolved it.
 - `spec/bthome-dossier.md` — material for the eventual submission to the
   BTHome maintainers: prior art, the actuator proposal, objections and evidence.
-  [`spec/bthome-brief.md`](spec/bthome-brief.md) is the one page to speak from,
-  also as a [PDF](spec/bthome-brief.pdf), regenerated with
+  [`spec/bthome-brief.md`](spec/bthome-brief.md) is the two pages to speak
+  from, also as a [PDF](spec/bthome-brief.pdf), regenerated with
   `python -m tools.md_to_pdf --compact spec/bthome-brief.md`.
 - `SPEC-WORKING-DOCUMENT.md` — the original design rationale and task
   breakdown. Superseded by `spec/PROTOCOL.md` wherever the two differ.

@@ -1,4 +1,4 @@
-# bthome-writable — one page for the BTHome maintainers
+# bthome-writable — a briefing for the BTHome maintainers
 
 **A briefing, not a draft**: facts and links to speak from. The submission is
 the owner's own words — the Open Home Foundation
@@ -20,8 +20,10 @@ Gordon Williams (Espruino), its co-designer:
 > Home Assistant really does that at the moment. It adds that functionality for
 > those that want it but in a way that doesn't complicate BTHome.
 
-His list: clocks and alarms, lights, thermostat targets, movement thresholds,
-plant waterers, epaper displays.
+His list of what it unlocks: clocks — setting the time, setting alarms;
+wireless lights; thermostats — a target temperature; configuration on wireless
+sensors — a movement threshold, a polling interval; plant waterers — how much
+water; wireless epaper displays.
 
 ## What it does
 
@@ -55,7 +57,8 @@ Three benches, two of them other people's. Gordon Williams on a Puck.js:
 *"works great"*, connections brief, no missed writes. @enaon on an RPi4b with
 OpenWrt, twenty encrypted lights, six ESPHome proxies and local BlueZ: working
 over both paths. **Both outside reports found faults this bench could not
-produce**, each fixed with a test that fails without the fix.
+produce**, each fixed with a test that fails without the fix — which is an
+argument for reviewing this rather than for trusting it.
 
 | Measured through Home Assistant | |
 |---|---|
@@ -77,6 +80,55 @@ AES-CCM vectors, 689 automated tests across three suites.
 - **Writes are a security hole.** BTHome's own AES-CCM both directions, the
   direction bound into the nonce so no recording replays as another, and a
   monotonic counter. Without the key there is no write.
+
+## What adoption would mean, in steps
+
+Each step is worth something on its own, and none of them forces the next.
+
+1. **Reserve `0xFF`** for the declaration object. That is the whole of the hard
+   dependency: with the ID assigned, this stops occupying an unassigned value
+   and parsers can skip it knowingly rather than by accident.
+2. **Take the specification**, if the maintainers want it. The object table, the
+   encodings and the encryption are BTHome's throughout; what is new is one
+   object and a GATT profile.
+3. **Fold the receiver into core `bthome`**, eventually. Gordon Williams:
+   *"written as a standalone integration to make it easy to add the
+   functionality without modifying BTHome itself, but nothing would stop it
+   being built in to BTHome itself eventually."*
+
+Both reference implementations stay maintained either way.
+
+## What it costs an installation that does not want it
+
+Nothing measurable. The declaration is five bytes at the **end** of the service
+data, after everything a current parser understands — `bthome-ble` stops at the
+first object ID it does not know, which is exactly why the rule is that it goes
+last. A device that implements none of this is untouched, and so is a receiver
+that ignores `0xFF`.
+
+## The security model, briefly
+
+BTHome's own AES-CCM in both directions, with the **direction bound into the
+nonce** — `0x41` advertising, `0xFF` write, `0xFE` read — so nothing captured in
+one direction authenticates in another. A write carries a monotonic counter that
+the device checks *before* spending an AES on it, so a flood of replays costs it
+nothing. Advertising is filtered with `bthome-ble`'s own replay rule, borrowed
+rather than invented. Without the key there is no write, and a writable value is
+never advertised.
+
+## Known limitations, stated rather than waited for
+
+- **A silently refused write still looks delivered.** The device acknowledges a
+  write before validating it, because Espruino cannot yet fail one at the ATT
+  layer. The causes are being removed one at a time; the class closes when the
+  firmware can refuse. This is the single root of most faults this project has
+  had.
+- **A plaintext packet from a keyed device is accepted**, exactly as core
+  `bthome` accepts one. The check belongs in `bthome-ble`, where every BTHome
+  device would gain it, rather than bolted onto one extension (D-090).
+- **UUIDs are provisional**, and the counter report — the one thing a receiver
+  cannot work out for itself after a device restarts — is implemented on both
+  sides but not yet agreed.
 
 ## Links
 
