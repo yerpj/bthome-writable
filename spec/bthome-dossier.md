@@ -57,9 +57,15 @@ would not have been seen (D-091).
 - **[bthome.io #73](https://github.com/home-assistant/bthome.io/pull/73)** —
   **settings revision `0x65`**, merged 2026-04. A monotonic uint8 telling
   receivers the device's configuration changed, so they *"should re-read the
-  relevant data out-of-band (e.g. via a GATT connection)."* **The specification
-  already accepts a GATT channel alongside advertising.** Strongest single
-  precedent for this project.
+  relevant data out-of-band (e.g. via a GATT connection)."* **Strongest single
+  precedent for this project** — but quote it accurately, because the
+  difference matters in review: that sentence is **benmaximov's rationale in
+  the merged pull request**, not specification text. `src/format.html` says
+  neither *GATT* nor *out-of-band* anywhere; `0x65` is one row in the sensor
+  table (checked on the live page, 2026-10-08). What the precedent establishes
+  is that the maintainers **merged an object whose stated purpose is to send a
+  receiver to a GATT connection** — which is the useful claim, and a smaller
+  one than saying the specification blesses the channel.
 - **[bthome.io #74](https://github.com/home-assistant/bthome.io/pull/74) /
   [#75](https://github.com/home-assistant/bthome.io/pull/75)** — **command
   `0x3B`**, merged 2026-04. Variable length: length byte (low 5 bits), opcode
@@ -68,6 +74,13 @@ would not have been seen (D-091).
   receiving one. First placed at `0xE0`, moved next to button and dimmer at
   Ernst79's request. Its `toggle` and `step` are relative, which is exactly what a
   retried write cannot tolerate.
+**How both of those were filed**, since it is the only process evidence we
+have: a pull request touching `src/format.html` alone, a body of a dozen lines,
+and a link to a matching parser pull request in `bthome-ble` (#352 for `0x65`).
+Opened 2026-04-28, merged 2026-04-30 — two days, three comments, one of which
+moved the command object from `0xE0` to `0x3B`. No preceding issue. Issues that
+ask without proposing have not moved: #72 since March, #80 since September.
+
 - **[bthome.io #72](https://github.com/home-assistant/bthome.io/issues/72)** —
   *Add a generic quantity percentage type* (open, 2026-03). A typeless 0–100 %
   "level of something". A writable one would be the natural way to express a
@@ -114,7 +127,7 @@ one object, `ID + value`, in BTHome's own encoding. Writable values are not
 advertised, so a device that only receives commands publishes nothing extra. A
 device whose values can change by themselves advertises the **settings revision
 `0x65`** — BTHome's own, already merged — and serves readable characteristics,
-which is exactly the out-of-band re-read `0x65` was specified for.
+which is exactly the out-of-band re-read `0x65` was proposed and merged for.
 
 The full specification is `PROTOCOL.md`; the reasoning is D-048.
 
