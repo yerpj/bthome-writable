@@ -134,14 +134,15 @@ device. The likeliest causes, in order:
 
 - A stale GATT table after the device's code changed. It recovers by itself: the
   table is dropped and the next write rediscovers it.
-- **An encrypted device that has restarted since Home Assistant last set up.**
-  This one leaves *no* row in the logbook, because the device acknowledges the
-  write before checking the counter and then discards it. A device must resume
-  its counter strictly above anything it accepted, so a restart puts it ahead of
-  Home Assistant with no way to say so. Home Assistant asks the device where it
-  is when the device offers the counter report and Home Assistant is starting
-  up — but a device that restarts while Home Assistant keeps running is not
-  noticed. **Press *Resynchronise write counter* on the device, or reload it.**
+- **An encrypted device that has restarted.** This one leaves *no* row in the
+  logbook, because the device acknowledges the write before checking the counter
+  and then discards it. A device must resume its counter strictly above anything
+  it accepted, so a restart puts it ahead of Home Assistant with no way to say
+  so. Handled, where the device offers the counter report: a device that
+  restarts picks a fresh settings revision, and Home Assistant asks it where its
+  counter is before the next command. Nothing to do.
+  **A device that offers no counter report has to be told instead** — press
+  *Resynchronise write counter* on it, or reload it.
 - A device simply refusing the write, which it must do if the object ID or the
   length is not exactly what that entry expects.
 

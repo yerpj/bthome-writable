@@ -21,6 +21,7 @@ from homeassistant.components import bluetooth
 from homeassistant.core import HomeAssistant, callback
 
 from .const import (
+    ALLOW_COUNTER_SYNC,
     ALLOW_PLAINTEXT_DOWNGRADE,
     AUTHENTICATION_FAILURES_BEFORE_REAUTH,
     BTHOME_SERVICE_UUID,
@@ -171,6 +172,18 @@ class BTHomeWritableCoordinator:
         self._read_task: asyncio.Task[None] | None = None
         self._reading = False
 
+        self._resync_counter = False
+        """Whether to ask the device for its write counter before writing again.
+
+        Armed when the settings revision moves, because a device that restarted
+        resumes its write counter up to a stride ahead of us and nothing on the
+        air says so (D-078 fault 1, D-092). Spent on the next write rather than
+        at once: a resynchronisation is a connection, and a device whose
+        revision moves is not necessarily a device anyone is about to command."""
+        self._offers_counter_report: bool | None = None
+        """None until we have looked. False stops the arming above, so a device
+        without the characteristic is not reconnected to on every revision."""
+
         self._listeners: list[Callable[[], None]] = []
         self._write_listeners: list[WriteListener] = []
         self._pending: list[tuple[int, bytes, bool, float, asyncio.Future[None]]] = []
@@ -248,7 +261,25 @@ class BTHomeWritableCoordinator:
         """
         if revision is None:
             return
+        previous = self._revision_advertised
         self._revision_advertised = revision
+        if previous is not None and revision != previous:
+            # The revision moved while we were watching, which a restart does:
+            # `setup()` picks a random one precisely so that a device whose
+            # values went back to their defaults is re-read. A restart also
+            # resumes the write counter ahead of ours, in silence, so take the
+            # same signal for both (D-092).
+            #
+            # `changed()` moves it too, and that arms a resynchronisation
+            # nothing needed. It costs one connection before the next command,
+            # and the adoption refuses to move the counter backwards (D-083
+            # item 11), so a needless one changes nothing.
+            if (
+                ALLOW_COUNTER_SYNC
+                and self.bindkey is not None
+                and self._offers_counter_report is not False
+            ):
+                self._resync_counter = True
         if revision == self._revision_read:
             return
         if (
@@ -365,19 +396,28 @@ class BTHomeWritableCoordinator:
           nothing to compare against;
         * and only above `COUNTER_RESTART_CEILING`, because a counter that
           wrapped or a device whose battery was changed resumes near zero and
-          refusing those would make it unreadable until it caught up.
+          refusing those would make it unreadable until it caught up;
+        * and only when it *decreased* -- an equal counter is a duplicate, not
+          a replay, and the only device that can produce one is the one being
+          heard twice (D-092).
 
         See `bthome_ble.parser._check_encryption_counter`.
         """
         counter = advertising_counter(payload)
         if counter is None or self.bindkey_verified is not True:
             return True
-        if counter > self.encryption_counter or counter < COUNTER_RESTART_CEILING:
+        # Strictly below, not "not above": the library refuses a *decreasing*
+        # counter, and an equal one is the same packet arriving twice. Six
+        # ESPHome proxies deliver one advertisement six times, and this used to
+        # call each repeat compromised -- sixteen warnings in a day on a device
+        # doing nothing wrong, and a receiver stricter than the one whose
+        # behaviour this project's argument rests on (D-092, @enaon).
+        if counter >= self.encryption_counter or counter < COUNTER_RESTART_CEILING:
             return True
         _LOGGER.warning(
-            "%s: the new encryption counter (%i) is not larger than the "
-            "previous value (%i). The data might be compromised. BLE "
-            "advertisement will be skipped",
+            "%s: the new encryption counter (%i) is smaller than the previous "
+            "value (%i). The data might be compromised. BLE advertisement will "
+            "be skipped",
             self.address,
             counter,
             self.encryption_counter,
@@ -661,6 +701,29 @@ class BTHomeWritableCoordinator:
                 f"{self.address}: entry {number} is not in the declaration"
             )
 
+        if self._resync_counter:
+            # Before the counter is taken, not after: `next_write_counter()`
+            # hands out a value and the adoption replaces it, so a write that
+            # had already drawn one would go out behind the device (D-083
+            # item 11 is the same mistake in the other direction).
+            try:
+                await self.async_sync_write_counter()
+            except Exception:  # noqa: BLE001 -- whatever a connection can raise
+                # Left armed, and the write goes out on the counter we hold. A
+                # device that could not be reached for the question will fail
+                # the write too, visibly; one that could be reached but
+                # answered badly is the case §5.6 tells us to ignore. Turning
+                # either into an error from a different layer would hide which
+                # of the two happened.
+                _LOGGER.debug(
+                    "%s: could not ask for the write counter before this "
+                    "command; writing on the counter we hold",
+                    self.address,
+                    exc_info=True,
+                )
+            else:
+                self._resync_counter = False
+
         payload = encode_object(entry, value)
         if self.bindkey is not None:
             payload = seal_write(
@@ -807,7 +870,12 @@ class BTHomeWritableCoordinator:
                             "keeping the seeded counter",
                             self.address,
                         )
+                        # Remembered, so that a revision change does not arm a
+                        # resynchronisation this device cannot answer -- which
+                        # would be a connection per change, for ever (D-092).
+                        self._offers_counter_report = False
                         return None
+                    self._offers_counter_report = True
                     await client.write_gatt_char(COUNTER_UUID, challenge, response=True)
                     report = bytes(await client.read_gatt_char(COUNTER_UUID))
                     break

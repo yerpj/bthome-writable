@@ -621,7 +621,15 @@ function handleWrite(k, pl) {
   st.entries[w.entryIndex].set(decodeValue(value, w));
   // Keep the readable value current, but do not bump the revision: the
   // receiver that wrote it already knows (S3.2).
-  if (w.readable) publishRead(w);
+  //
+  // Deferred by one turn of the loop, for the reason counterCharacteristic()
+  // spells out: Espruino stores the bytes a central wrote into the
+  // characteristic's own value *after* onWrite returns, so a value published
+  // from here is destroyed. The characteristic was then left holding the write
+  // itself -- which on a sealed device is a write-direction ciphertext sitting
+  // where S4.3 promises the entry's current value, and on any device is the
+  // value the receiver asked for rather than the one the device kept (D-092).
+  if (w.readable) setTimeout(() => { guarded(() => publishRead(w)); }, 0);
   // A write means a receiver is plainly here, and its next command should not
   // wait out the idle interval -- even if the connect event was missed. This
   // also republishes at once, so anything the write changed that *is*

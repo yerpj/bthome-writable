@@ -715,6 +715,189 @@ async def test_the_report_is_looked_for_again_behind_a_stale_cache(
     assert gatt.connections == 2, "and the second connection is the useful one"
 
 
+async def test_a_device_that_restarted_is_asked_again_before_the_next_write(
+    hass: HomeAssistant, gatt
+) -> None:
+    """D-092, found by @enaon on twenty lights: after `E.reboot()`, Home
+    Assistant could not command the device again until its counter file had been
+    erased by hand.
+
+    §5.3 has a device resume strictly above anything it may have accepted, so a
+    restart puts it up to a stride ahead of the receiver and nothing on the air
+    says so; every write is then refused in silence, because §4.2 acknowledges
+    before validating. The cure already existed -- the counter report of §5.6 --
+    but it only ever ran while the config entry was being set up, which is never
+    the moment a device reboots.
+
+    The settings revision is the signal, and it is not a borrowed one: a device
+    picks a fresh random revision at startup precisely because its values may
+    have gone back to their defaults.
+    """
+    key, address = bytes(range(16)), "A4:C1:38:8E:1F:2B"
+    coordinator = BTHomeWritableCoordinator(
+        hass, address, bindkey=key, write_counter=10
+    )
+    gatt.declare(1)
+    gatt.offer_counter_report(
+        lambda: counter_report(900_000, gatt.writes[-1][1], key, address)
+    )
+
+    # The read a revision change also triggers is a different mechanism (§3.2);
+    # what this test is about is the counter that goes out with the write.
+    with patch.object(coordinator, "async_request_read"):
+        feed(coordinator, sealed_advertisement(5_000, key, address, 7), address)
+        await coordinator._write_now(1, b"")
+        assert write_counter_of(gatt.writes[-1][1]) < 900_000, "nothing to ask yet"
+
+        # The device restarts: a fresh revision, and a counter we cannot see.
+        feed(coordinator, sealed_advertisement(5_001, key, address, 93), address)
+        await coordinator._write_now(1, b"")
+
+    assert write_counter_of(gatt.writes[-1][1]) > 900_000, (
+        "the write went out behind the device, which refuses it without a word"
+    )
+
+
+async def test_a_revision_that_has_not_moved_asks_nothing(
+    hass: HomeAssistant, gatt
+) -> None:
+    """The arming has to be a *change*. First sight is covered by the
+    synchronisation at setup, and a device repeating its revision -- which it
+    does on every advertisement -- must not buy a connection per packet."""
+    key, address = bytes(range(16)), "A4:C1:38:8E:1F:2B"
+    coordinator = BTHomeWritableCoordinator(
+        hass, address, bindkey=key, write_counter=10
+    )
+    gatt.declare(1)
+    gatt.offer_counter_report(
+        lambda: counter_report(900_000, gatt.writes[-1][1], key, address)
+    )
+
+    with patch.object(coordinator, "async_request_read"):
+        for counter in (5_000, 5_001, 5_002):
+            feed(coordinator, sealed_advertisement(counter, key, address, 7), address)
+        await coordinator._write_now(1, b"")
+
+    assert write_counter_of(gatt.writes[-1][1]) < 900_000
+    assert gatt.connections == 1, "one connection, for the write itself"
+
+
+async def test_a_device_without_the_report_is_not_asked_twice(
+    hass: HomeAssistant, gatt
+) -> None:
+    """A device that does not offer §5.6 answers no resynchronisation, and
+    arming one on every revision change would spend two connections -- and clear
+    the GATT cache twice -- for every change, for ever."""
+    key, address = bytes(range(16)), "A4:C1:38:8E:1F:2B"
+    coordinator = BTHomeWritableCoordinator(
+        hass, address, bindkey=key, write_counter=10
+    )
+    gatt.declare(1)
+
+    with patch.object(coordinator, "async_request_read"):
+        feed(coordinator, sealed_advertisement(5_000, key, address, 7), address)
+        feed(coordinator, sealed_advertisement(5_001, key, address, 8), address)
+        await coordinator._write_now(1, b"")
+        asked = gatt.connections
+        feed(coordinator, sealed_advertisement(5_002, key, address, 9), address)
+        await coordinator._write_now(1, b"")
+
+    assert gatt.connections == asked + 1, "the second change asked again"
+
+
+async def test_the_counter_rule_is_never_stricter_than_the_librarys(
+    hass: HomeAssistant,
+) -> None:
+    """Pair by pair against `bthome-ble` itself, rather than a restatement of
+    our own condition.
+
+    The rule this check copies **moved upstream**: `bthome-ble` 3.22.1, which is
+    the version Home Assistant pins, refuses a counter that is `<=` the last
+    one; 3.24.0 refuses only one that is `<`. We follow the newer reading, and
+    the invariant worth holding whichever is installed is that **this receiver
+    never refuses a packet the library would have shown the user** -- being
+    stricter than core `bthome` is the one thing a BTHome-compatible receiver
+    cannot afford to be.
+
+    What that costs is nothing, and what it buys is @enaon's log: an equal
+    counter is one advertisement arriving twice, his six ESPHome proxies deliver
+    one packet six times, and every repeat used to be announced as possibly
+    compromised data (D-092).
+    """
+    from bthome_ble.parser import BTHomeBluetoothDeviceData
+
+    key, address = bytes(range(16)), "A4:C1:38:8E:1F:2B"
+    pairs = (
+        (5_000, 5_001),  # the ordinary case
+        (5_000, 5_000),  # the same packet twice: a duplicate, not a replay
+        (5_000, 4_999),  # backwards: the case the check exists for
+        (5_000, 7),  # a device that restarted, or a battery change
+        (5_000, 99),  # just inside the restart exemption
+        (5_000, 100),  # and just outside it
+        (0, 0),
+    )
+    for last, new in pairs:
+        library = BTHomeBluetoothDeviceData(bindkey=key)
+        library.encryption_counter = last
+        library.bindkey_verified = True
+        try:
+            library._check_encryption_counter(new)
+            library_accepts = True
+        except ValueError:
+            library_accepts = False
+
+        coordinator = BTHomeWritableCoordinator(hass, address, bindkey=key)
+        coordinator.encryption_counter = last
+        coordinator.bindkey_verified = True
+        ours = coordinator._counter_increased(sealed_advertisement(new, key, address))
+
+        if library_accepts:
+            assert ours is True, f"last={last} new={new}: stricter than the library"
+        elif new != last:
+            assert ours is False, (
+                f"last={last} new={new}: the library calls this a replay and we do not"
+            )
+        else:
+            # The one place the two readings differ, and only on the older
+            # library. A duplicate carries the same bytes, so accepting it
+            # changes no state and skipping it loses nothing -- what differs is
+            # whether the user is told his data might be compromised.
+            assert ours is True, "a duplicate is accepted, as 3.24.0 does"
+
+
+async def test_a_duplicate_advertisement_changes_nothing(
+    hass: HomeAssistant,
+) -> None:
+    """Accepting a duplicate is only safe because handling one twice is
+    idempotent: same declaration, same revision, so nothing moves and nothing is
+    read again. Asserted rather than assumed, because a duplicate used to be
+    dropped before it reached any of this.
+
+    The duplicates arrive after the first read has succeeded, which is the state
+    a device sits in between changes: `_revision_read` catches up with the air,
+    and §3.2 then has nothing to ask for.
+    """
+    key, address = bytes(range(16)), "A4:C1:38:8E:1F:2B"
+    coordinator = BTHomeWritableCoordinator(hass, address, bindkey=key)
+    packet = sealed_advertisement(5_000, key, address, 7)
+
+    with patch.object(coordinator, "async_request_read") as reads:
+        feed(coordinator, packet, address)
+        coordinator._revision_read = coordinator._revision_advertised  # it succeeded
+        layout, revision, reads_after_first = (
+            coordinator.declaration.layout,
+            coordinator._revision_advertised,
+            reads.call_count,
+        )
+        for _ in range(5):  # the same packet, through six proxies
+            feed(coordinator, packet, address)
+
+    assert coordinator.declaration.layout == layout
+    assert coordinator._revision_advertised == revision
+    assert reads.call_count == reads_after_first, "no connection per repeat"
+    assert coordinator._resync_counter is False, "and no resynchronisation armed"
+
+
 async def test_a_plain_device_is_never_asked(hass: HomeAssistant, gatt) -> None:
     """There is nothing to ask and no way to authenticate an answer."""
     coordinator = BTHomeWritableCoordinator(hass, "A4:C1:38:8E:1F:2B")
@@ -742,12 +925,27 @@ async def test_a_replayed_report_leaves_the_counter_alone(
 # --- the advertising replay check, borrowed from bthome-ble (D-082) ----------
 
 
-def sealed_advertisement(counter: int, key: bytes, address: str) -> bytes:
-    """One sealed packet carrying a declaration, at a chosen counter."""
-    objects = bytes.fromhex("000109ff011e")
+def sealed_advertisement(
+    counter: int, key: bytes, address: str, revision: int | None = None
+) -> bytes:
+    """One sealed packet carrying a declaration, at a chosen counter.
+
+    With `revision`, it also carries BTHome's settings revision (`0x65`), which
+    is what a device with a readable entry advertises -- and the only signal a
+    receiver gets that the device restarted (D-092).
+    """
+    objects = bytes.fromhex("0001")
+    if revision is not None:
+        objects += bytes([0x65, revision])
+    objects += bytes.fromhex("ff011e")
     return bytes([DEVICE_INFO_BYTE_ADVERTISING]) + seal(
         objects, key, address, DEVICE_INFO_BYTE_ADVERTISING, counter
     )
+
+
+def write_counter_of(payload: bytes) -> int:
+    """The counter a sealed write carries: ciphertext || counter u32 LE || MIC."""
+    return int.from_bytes(payload[-8:-4], "little")
 
 
 def feed(coordinator, payload: bytes, address: str) -> None:

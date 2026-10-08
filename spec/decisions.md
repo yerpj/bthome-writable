@@ -5001,3 +5001,147 @@ every future session and a decision entry is not read before acting.
 #72 since March. An ID assignment is unlikely to be quick, which is an
 argument for filing early rather than for waiting until everything else is
 perfect.
+
+## D-092 -- a second outside bench: a reboot kills the link, a proxy cries wolf, and a characteristic lies  [HW]
+
+**Status:** 2026-10-08. @enaon, twenty encrypted writable lights on an RPi4b
+with OpenWrt, Home Assistant in podman, six ESPHome proxies and local BlueZ.
+The first external report of the *sealed* path -- the gap named in
+espruino#8024 two days earlier, since every test until then had been
+unencrypted.
+
+Three faults, one of them already written down as a known limitation and
+left unfixed, which is the uncomfortable part.
+
+### Fault 1 -- the reboot that silences a device, and the cure that never ran
+
+Verbatim: *"I then do an E.reboot() on espruino and call setup. This
+results in a state where HA cannot connect anymore. I need to erase .bwctr
+after E.reboot() and then call setup, then HA will connect again."*
+
+This is **D-078 fault 1**, which §5.6 exists to answer. The arithmetic,
+unchanged since: `noteWriteCounter()` persists `counter + CTR_STRIDE` and
+`setup()` resumes *from the mark*, so a restart puts the device up to 64
+counters ahead of the receiver; every write is then refused in silence,
+because §4.2 acknowledges before validating. Erasing `.bwctr` works because
+it drops the device to 0, far below a clock-seeded receiver (D-064).
+
+**The cure was built and then wired to the wrong event.**
+`async_sync_write_counter()` was only ever started from `async_setup_entry`,
+so it ran when the *receiver* started -- never when the *device* restarted,
+which is the case D-078 was about. `home-assistant-install.md` even said so:
+*"a device that restarts while Home Assistant keeps running is not noticed"*,
+with pressing the resynchronise button as the remedy. A limitation written
+down in the troubleshooting section is still a limitation; it took someone
+else's twenty lights to make that obvious.
+
+**Fixed with the signal the device already sends.** `setup()` picks a random
+settings revision at startup -- deliberately, so that a device whose values
+went back to their defaults is re-read (§3.2). So a revision that *moves*
+while we are watching is the restart signal, and it costs nothing new on the
+air. On a change we arm a flag; the next write spends it, asking §5.6 before
+drawing a counter. Chosen over the alternatives:
+
+- **asking on every revision change, at once** -- a connection per
+  `changed()` on a device nobody is commanding;
+- **asking before every write** -- a connection per command, which doubles
+  the cost of the thing the project measures itself on (1.7 s, D-050);
+- **watching the advertising counter jump** -- a device resuming its
+  advertising mark jumps by `ADV_STRIDE`, which would cover a write-only
+  device too, but the threshold is a magic number and a receiver out of range
+  for twenty minutes produces the same jump honestly.
+
+`changed()` moves the revision as well, so it arms a resynchronisation
+nothing needed: one connection before the next command, and the adoption
+refuses to move the counter backwards (D-083 item 11), so a needless one
+changes nothing. A device that does not offer §5.6 is remembered as such,
+once, or every revision change would buy two connections and a dropped GATT
+cache for ever.
+
+**What is still open, named rather than glossed:** a sealed device with *no*
+readable entry advertises no settings revision, so it has no restart signal
+at all and still needs the button or a reload. That is the write-only sealed
+device, which neither bench runs.
+
+### Fault 2 -- sixteen warnings in a day, on a device doing nothing wrong
+
+> `xxx: the new encryption counter (10060) is not larger than the previous
+> value (10060). The data might be compromised. BLE advertisement will be
+> skipped`
+
+Equal, not smaller: **the same advertisement arriving twice.** Six ESPHome
+proxies deliver one packet six times, and every repeat was announced as
+possibly compromised data.
+
+The check was copied from `bthome-ble` in D-082 and was faithful to the copy
+that was read. **The rule has since moved upstream**: 3.22.1 -- the version
+Home Assistant pins -- refuses a counter that is `<=` the last one; 3.24.0
+refuses only one that is `<`. Nothing in the changelog says so, which is how
+it was missed; the venvs on this bench hold both versions, and the guard now
+reads the installed one.
+
+We follow the newer reading. The invariant the test holds, whichever version
+is installed, is that **this receiver never refuses a packet the library
+would have shown the user** -- being stricter than core `bthome` is the one
+thing a receiver arguing for BTHome compatibility cannot afford.
+
+Accepting a duplicate is only safe because handling one twice is idempotent,
+which is now asserted rather than assumed: same declaration, same revision,
+no read, no value moved. Writing that test found the one place it is not
+free -- a duplicate now reaches `_notice_revision`, which re-asks for a read
+until one succeeds. Two existing guards already hold it (the `_reading` flag
+from D-087 and the `READ_RETRY` backoff), and the test states the condition
+they depend on.
+
+### Fault 3 -- a characteristic holding the write instead of the value
+
+Found while verifying his third complaint, not reported by him.
+
+`handleWrite()` published the entry's new value from inside `onWrite`. **That
+value is destroyed**: Espruino stores the bytes a central wrote into the
+characteristic's own value *after* the handler returns. The hazard was known
+-- `counterCharacteristic()` is built around it, with a `setTimeout` and a
+comment naming it, after it cost a hardware session (D-077). The entry
+characteristics were never given the same treatment.
+
+So after any write, a readable entry held the write itself: on a sealed
+device a write-direction ciphertext sitting where §4.3 promises the entry's
+current value, and on any device the value the receiver asked for rather than
+the one the device kept. It is invisible in plaintext whenever the two are
+the same bytes, which is the usual case and is why nothing caught it.
+
+**And the test fake could not have caught it**, which is the finding worth
+keeping. `updateServices()` was `() => {}`: nothing the module published for
+a central to read was ever looked at by any test. The fake now applies it,
+and models a write the way the stack really does it -- handler first, written
+bytes into the value afterwards. The regression test writes 90 to an entry
+whose device clamps at 50 and reads the characteristic back: `[0x01, 90]`
+before the fix, `[0x01, 50]` after.
+
+### What was reported and is not a fault
+
+*"the state changes in the UI, regardless of the errors"* -- when the device
+silently refuses a write, the acknowledgement is all the receiver gets, and
+§4.2 is the whole of the answer. The value is adopted because the write
+succeeded as far as anything can tell. **Fault 1 removes the cause** rather
+than detecting the effect, which is the only move available: reading the
+characteristic back to check was ruled out in D-071, and §4.3 forbids it
+normatively. The rest of the class stays with D-086, in the firmware, where
+a write can be refused at the ATT layer.
+
+The ON -> OFF -> ON flicker he also describes is not reproducible here: the
+entity publishes the requested value while the write is in flight. His
+checkout predates D-087 and D-088, which is worth confirming before looking
+further.
+
+### The pattern, since this is the fourth time
+
+D-078, D-079, D-080, D-083 and now this: **a mechanism that is built,
+tested, and wired to an event that never fires.** The counter report was
+verified on hardware (D-078), turned on by default (D-080), guarded against
+moving backwards (D-083 item 11) -- and started from the one event that is
+not the device restarting. Every test it had asked it the question directly.
+
+What would have caught it is a test that *does not name the mechanism*: a
+device restarts, a command follows, the device must accept it. The three new
+tests are written that way round.

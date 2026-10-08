@@ -129,7 +129,16 @@ function run(source, storedFiles) {
         serviceUuid = Object.keys(services)[0];
         characteristics = services[serviceUuid];
       },
-      updateServices() {},
+      // Applied, not discarded. A no-op here meant nothing the module published
+      // for a central to read was ever looked at by a test -- including a
+      // publication that the real stack overwrites a moment later (D-092).
+      updateServices(services) {
+        const chars = services[serviceUuid] || {};
+        for (const uuid of Object.keys(chars)) {
+          if (!characteristics[uuid]) characteristics[uuid] = {};
+          characteristics[uuid].value = chars[uuid].value;
+        }
+      },
       getAddress: () => "c8:80:32:ad:f7:b9",
     },
     E: { getBattery: () => BATTERY },
@@ -176,6 +185,32 @@ function run(source, storedFiles) {
     subscriptions,
     refuse(predicate) {
       refuseAdvertising = predicate;
+    },
+    /* A central writing to a characteristic, as Espruino really does it.
+     *
+     * The handler runs first and the written bytes land in the characteristic's
+     * own value *after* it returns -- so anything the handler published there
+     * is destroyed. The module's counter report was built around this, with a
+     * setTimeout and a comment; the entry characteristics were not, and no test
+     * could tell, because the fake neither applied updateServices() nor
+     * reproduced the overwrite (D-092).
+     */
+    write(uuid, data) {
+      const c = characteristics[uuid];
+      if (!c) throw new Error(`no characteristic ${uuid}`);
+      if (c.onWrite) c.onWrite({ data });
+      c.value = data;
+    },
+    /* Run every timeout that is still pending, oldest first. */
+    flush() {
+      let pending = timeouts.filter((t) => !t.cancelled && !t.done);
+      while (pending.length) {
+        for (const t of pending) {
+          t.done = true;
+          t.fn();
+        }
+        pending = timeouts.filter((t) => !t.cancelled && !t.done);
+      }
     },
     pins,
     get characteristics() {
@@ -376,6 +411,48 @@ test("a write keeps the device fast even without a connect event", () => {
 
   result.characteristics[uuid].onWrite({ data: [0x1e, 0x01] });
   assert.ok(result.options[result.options.length - 1].interval < idle);
+});
+
+/* --- what a central reads after writing (S4.3, D-092) --------------------- */
+
+test("a write leaves the entry's own value readable, not the write itself", () => {
+  /* S4.3: a readable characteristic returns the entry's *current* value. The
+   * module published it from inside onWrite, where Espruino destroys it -- the
+   * bytes the central wrote land in the characteristic's value after the
+   * handler returns. Invisible in plaintext, where the two are usually the same
+   * bytes; visible the moment the device does not store what it was sent, and
+   * visible on the wire whenever the device is sealed, since a read is sealed
+   * under a different direction byte than the write it would be echoing.
+   *
+   * The counter report at 2FAA1000 was built around this hazard, with a
+   * setTimeout and a comment explaining it. The entry characteristics were not
+   * (@enaon's report is what sent me looking). */
+  const result = run(load("light-loop-standalone.js"));
+  let charge = 90;
+  result.context.bw.setup({
+    advertise: [
+      {
+        type: "battery",
+        set: (v) => {
+          charge = Math.min(v, 50); // a device that clamps, which S4.3 allows
+        },
+        get: () => charge,
+      },
+    ],
+    interval: 1000,
+  });
+  const uuid = Object.keys(result.characteristics).find((u) =>
+    u.toUpperCase().startsWith("2FAA0001")
+  );
+
+  result.write(uuid, [0x01, 90]);
+  result.flush();
+
+  assert.deepEqual(
+    Array.from(result.characteristics[uuid].value),
+    [0x01, 50],
+    "the characteristic must hold what the device now has, not what was written"
+  );
 });
 
 test("an advertising interval the radio cannot honour is refused at setup", () => {
