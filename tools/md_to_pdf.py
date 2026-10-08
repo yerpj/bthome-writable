@@ -28,6 +28,21 @@ BROWSERS = (
     "/usr/bin/google-chrome",
 )
 
+COMPACT = """
+/* For a one-pager: a briefing meant to be held in the hand, not a document to
+   be read in sequence. Only spacing and scale change -- the type, the tables
+   and the monospaced blocks stay as they are, so a compact page still looks
+   like the rest of what this repository produces. */
+@page { margin: 11mm 12mm; }
+html { font-size: 9pt; }
+body { line-height: 1.38; }
+h1 { font-size: 1.55rem; }
+h2 { font-size: 1.08rem; margin: 0.95rem 0 0.3rem; }
+h3 { margin: 0.7rem 0 0.25rem; }
+p, ul, ol, table, pre { margin: 0.45rem 0; }
+li { margin: 0.1rem 0; }
+"""
+
 STYLE = """
 @page { size: A4; margin: 18mm 16mm; }
 
@@ -133,7 +148,7 @@ def find_browser() -> str:
     )
 
 
-def render(source: Path, output: Path) -> None:
+def render(source: Path, output: Path, compact: bool = False) -> None:
     import markdown
 
     text = source.read_text(encoding="utf-8")
@@ -149,7 +164,8 @@ def render(source: Path, output: Path) -> None:
         text,
         extensions=["tables", "fenced_code", "sane_lists", "attr_list"],
     )
-    html = TEMPLATE.format(title=title, style=STYLE, body=body)
+    style = STYLE + (COMPACT if compact else "")
+    html = TEMPLATE.format(title=title, style=style, body=body)
 
     with tempfile.TemporaryDirectory() as workdir:
         page = Path(workdir) / "page.html"
@@ -186,10 +202,15 @@ def main() -> int:
     parser.add_argument(
         "--output", type=Path, help="target PDF (default: alongside the source)"
     )
+    parser.add_argument(
+        "--compact",
+        action="store_true",
+        help="tighter margins and scale, for a one-page briefing",
+    )
     args = parser.parse_args()
 
     output = args.output or args.source.with_suffix(".pdf")
-    render(args.source, output)
+    render(args.source, output, compact=args.compact)
     return 0
 
 
