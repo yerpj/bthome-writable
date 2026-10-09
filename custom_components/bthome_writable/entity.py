@@ -86,6 +86,14 @@ class BTHomeWritableEntity(Entity):
             default_name=coordinator.name,
         )
         self._in_flight: bytes | None = None
+        self._writes_in_flight = 0
+        """How many of this entity's writes have not finished.
+
+        The value shown while a command is in flight belongs to the *newest*
+        one, so it may only be dropped once nothing of ours is still out there.
+        Counting rather than clearing on the first completion is the whole
+        of D-094: a slow write finishing after a newer one was issued used to
+        put the older value back on screen (@enaon, and reproduced here)."""
 
     @property
     def entry_number(self) -> int:
@@ -162,14 +170,14 @@ class BTHomeWritableEntity(Entity):
             )
 
         self._in_flight = value if self._coalesce else None
+        self._writes_in_flight += 1
         self.async_write_ha_state()
         try:
             await self.coordinator.async_write(
                 self._entry, value, coalesce=self._coalesce
             )
         except Exception as caught:
-            self._in_flight = None
-            self.async_write_ha_state()
+            self._settled()
             raise HomeAssistantError(
                 translation_domain=DOMAIN,
                 translation_key="write_failed",
@@ -178,13 +186,33 @@ class BTHomeWritableEntity(Entity):
                     "error": str(caught),
                 },
             ) from caught
+        else:
+            self._settled()
+
+    @callback
+    def _settled(self) -> None:
+        """One of this entity's writes has finished, successfully or not.
+
+        The shown value is released only when the last one has: until then it
+        is the value of the newest command, which is still the honest thing to
+        show (D-094).
+        """
+        self._writes_in_flight = max(0, self._writes_in_flight - 1)
+        if self._writes_in_flight == 0:
+            self._in_flight = None
+        self.async_write_ha_state()
 
     @callback
     def _write_finished(self, entries: set[int], error: Exception | None) -> None:
-        """The queued write reached the device, or failed to."""
+        """Say that a write failed, for the benefit of whoever reads later.
+
+        It no longer touches `_in_flight`. This fires for *any* write to this
+        entry, including one issued before the command now in flight, and
+        releasing the shown value on someone else's completion is what put a
+        stale value back on screen (D-094).
+        """
         if self._entry not in entries:
             return
-        self._in_flight = None
         if error is not None:
             # Also raised to whoever called the action. Kept here as well
             # because an automation's failure is read later, in the logbook,

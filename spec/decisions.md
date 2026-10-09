@@ -5246,3 +5246,72 @@ Three defects, and not one of them is in the protocol or the code. They are a
 file name, a missing sentence and a missing number -- the three things an
 author cannot see, which is exactly why T4.2 was written to be run by someone
 else and why it should not have waited this long.
+
+## D-094 -- the switch that put an old value back, and the wrong explanation it got first  [HW]
+
+**Status:** 2026-10-09. @enaon reported it on 2026-10-08:
+
+> I can see the state going back and forth sometimes when everything is
+> working ok, like: I toggle 'ON', it toggles back to 'OFF' by itself, then
+> connects and toggles back to 'ON'.
+
+D-092 could not reproduce it and said so, with a guess attached: his
+checkout predates D-087 and D-088. **That guess was wrong**, and the
+recorder on this bench had the proof the same day -- four clean instances of
+it during the T4.2 run, which nobody had looked at.
+
+### Caught live
+
+Subscribed to `state_changed` and to this integration's own write event, and
+asked the owner to press twice:
+
+```
+16:20:45.587  SERVICE turn_on     ->  STATE off -> on
+16:20:52.359  SERVICE turn_off    ->  STATE on -> off
+16:20:53.097  WRITE  entry 1  connect_ms 4891  write_ms 27  total 4919
+16:20:53.098  STATE  off -> on                     <- the first write, landing
+16:20:56.074  WRITE  entry 1  connect_ms 933  total 1677
+16:20:56.075  STATE  on -> off
+```
+
+The first command took **4.9 seconds** to catch the device. The user pressed
+off while it was still out there. When it finally landed, the entity treated
+that completion as its own: it released the value it was showing and fell
+back on what the coordinator held -- which that very write had just set to
+`on`. Three seconds of a wrong state, corrected only when the second
+command arrived.
+
+### The fault, in one sentence
+
+`_write_finished` fires **per entry, not per write**. An entity with a
+command in flight cannot tell its own completion from an older one's, and
+released the shown value on whichever arrived first.
+
+Fixed by counting: `_writes_in_flight` goes up when a command is issued and
+down when that `await` returns, and the shown value is dropped only at zero.
+`_write_finished` keeps the half that was always right -- saying in the log
+and the logbook that a command failed -- and no longer touches what is on
+screen.
+
+### What the test had to be changed to catch
+
+The first version of the regression test asserted the state *after* both
+commands and passed with the bug still in place: in a fake, both writes
+finish in microseconds, so the wrong value is shown for no time at all. On
+hardware it lasted three seconds because the second write needed a real
+connection.
+
+**So the test records every state the entity passes through** and asserts
+that `on` never appears after the off press. With the fault restored it
+reports `['on', 'off']`, which is the bench trace in miniature. A test that
+looks only at where things end up cannot see a transient, and a transient is
+exactly what a user reports.
+
+### Worth keeping
+
+This is the second time an external report was answered with a plausible
+guess rather than a reproduction (the first: D-083's reversed MAC, where the
+claim that we followed `bthome-ble` was simply not checked). Both times the
+evidence was already on this bench. @enaon is owed the correction, and the
+4891 ms connect in that trace is worth its own look -- the measured figure
+for a first command is 1.7 s.

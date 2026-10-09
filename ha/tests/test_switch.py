@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 
 from homeassistant.const import STATE_OFF, STATE_ON, STATE_UNAVAILABLE, STATE_UNKNOWN
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr
 import pytest
@@ -142,6 +142,85 @@ async def test_rapid_toggles_collapse_behind_the_write_in_flight(
     assert len(gatt.writes) <= 2
     assert gatt.writes[-1] == (UUID_TEMPLATE.format(1), bytes.fromhex("1e00"))
     assert hass.states.get(LIGHT).state == STATE_OFF
+
+
+async def test_a_slow_command_does_not_put_its_value_back_later(
+    hass: HomeAssistant, radio, gatt
+) -> None:
+    """D-094, reported by @enaon and caught on the bench during T4.2.
+
+    *"I toggle ON, it toggles back to OFF by itself, then connects and toggles
+    back to ON."* The captured sequence: `turn_on` took 4.9 s to find the
+    device, the user pressed off at 6.8 s, and when the first write finally
+    landed the switch jumped back to **on** for three seconds.
+
+    The entity showed the newest command's value and released it on the *first*
+    completion for its entry -- which, with a command still out there, is
+    somebody else's. What it now does is count its own.
+    """
+    await setup_device(hass, radio, "single-light")
+    gatt.declare(1)
+
+    landed = asyncio.Event()
+    original = gatt.write_gatt_char
+    seen: list[bytes] = []
+
+    async def slow_first(characteristic, payload, response=True):
+        seen.append(bytes(payload))
+        if len(seen) == 1:
+            await landed.wait()  # the device is slow to be caught
+        await original(characteristic, payload, response=response)
+
+    gatt.write_gatt_char = slow_first
+
+    # Every state this entity passes through, not merely where it ends up: on
+    # the bench the wrong value showed for three seconds and then corrected
+    # itself, and a test that looks only at the end sees nothing wrong.
+    shown: list[str] = []
+
+    @callback
+    def record(event) -> None:
+        if event.data.get("entity_id") == LIGHT:
+            state = event.data.get("new_state")
+            if state is not None:
+                shown.append(state.state)
+
+    hass.bus.async_listen("state_changed", record)
+
+    turn_on = hass.async_create_task(
+        hass.services.async_call(
+            "switch", "turn_on", {"entity_id": LIGHT}, blocking=True
+        )
+    )
+    # Plain sleeps, not `settle`: that waits for every pending task, and one of
+    # them is deliberately held open here.
+    await asyncio.sleep(0.05)
+    assert hass.states.get(LIGHT).state == STATE_ON, "the request shows at once"
+
+    # The user gives up waiting and presses off, with the first still in flight.
+    turn_off = hass.async_create_task(
+        hass.services.async_call(
+            "switch", "turn_off", {"entity_id": LIGHT}, blocking=True
+        )
+    )
+    await asyncio.sleep(0.05)
+    assert hass.states.get(LIGHT).state == STATE_OFF
+    from_the_off_press = len(shown)
+
+    landed.set()  # the first command arrives at last
+    await asyncio.sleep(0.05)
+    await turn_on
+    await turn_off
+    await settle(hass)
+
+    assert STATE_ON not in shown[from_the_off_press:], (
+        f"after the off press the switch showed {shown[from_the_off_press:]}: an "
+        "older command completing put its own value back on screen"
+    )
+    assert hass.states.get(LIGHT).state == STATE_OFF
+    assert seen == [bytes.fromhex("1e01"), bytes.fromhex("1e00")], (
+        "both commands still reach the device, in order"
+    )
 
 
 async def test_the_entity_goes_unavailable_when_the_device_stops_advertising(
