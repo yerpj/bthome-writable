@@ -11,8 +11,20 @@ stop after step 3.
 
 Open the [Espruino Web IDE](https://www.espruino.com/ide/), connect to your
 board, and paste the whole of
-[`espruino/dist/single-light-standalone.js`](../espruino/dist/single-light-standalone.js)
+[`espruino/dist/single-light-standalone.min.js`](../espruino/dist/single-light-standalone.min.js)
 into the right-hand pane. Send it.
+
+**The minified one, and it matters.** Each example ships twice: a readable
+`-standalone.js` of about 40 kB, which is there to be read, and a
+`-standalone.min.js` of about 18 kB, which is the one to send. A Puck.js has
+40 960 bytes of Storage and rather less usable variable memory, so the readable
+bundle fails both ways -- `Unable to find or create file` if your IDE saves to
+flash, `OUT OF MEMORY` and `LOW_MEMORY` if it sends to RAM. Neither message
+mentions size (`decisions.md` D-093). On a board with more room, either works.
+
+**Check where your IDE sends.** *Settings -> Communications -> Save on Send*
+decides between RAM and flash, and it is remembered between sessions. This page
+assumes **RAM**, which is the default and what the next paragraph relies on.
 
 That file is generated with the `BTHomeWritable` module inlined, so there is
 nothing of this project to install. `require("BTHome")` is resolved by the Web
@@ -23,7 +35,7 @@ The console should answer with the board's address and which object types it is
 offering writes for — `30` is `0x1E`, BTHome's `light`:
 
 ```
-advertising as c8:80:32:ad:f7:b9 public
+advertising as c8:80:32:ad:f7:b9
 writable entries: [ 30 ]
 ```
 

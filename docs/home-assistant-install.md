@@ -92,6 +92,23 @@ entities are not assumed state: they show what the device said. If a read fails
 because something else held the device's one connection, it is retried on a
 later advertisement (D-049).
 
+### When the device goes away
+
+A board that loses power stops advertising, and its entities eventually turn
+**Unavailable**: greyed out on the device page, under *Settings → Devices &
+services → Devices*, and reading `unavailable` in *Developer tools → States*.
+
+**Eventually is the word.** Home Assistant decides this, not this integration —
+we hand the question to `bluetooth.async_track_unavailable`, the same mechanism
+every Bluetooth integration uses. Measured on a board advertising every second:
+**8 minutes 35 seconds** between the last packet and the entity turning
+unavailable, and core `bthome`'s own sensor for the same board flipped in the
+same second (D-093). So an entity that still looks fine a few minutes after you
+unplugged something is not a fault, and nothing here can make it quicker.
+
+Coming back is immediate: under a second from power returning to the entity
+being usable again, with no reconfiguration.
+
 ## Why 2026.7 and not older
 
 This integration needs `bthome-ble` 3.22.1 or newer, because older versions do

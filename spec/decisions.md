@@ -5145,3 +5145,104 @@ not the device restarting. Every test it had asked it the question directly.
 What would have caught it is a test that *does not name the mechanism*: a
 device restarts, a command follows, the device must accept it. The three new
 tests are written that way round.
+
+## D-093 -- T4.2: the documented path did not work on the reference board  [HW]
+
+**Status:** 2026-10-09, run by the owner on a Puck.js (2v27, CR2032) and the
+bench Home Assistant. The acceptance test for the documentation, and the last
+item on the pre-submission list. Full table in `docs/walkthrough.md`.
+
+The bench was cleaned for it the evening before: the Puck's Storage emptied,
+the two Home Assistant entries deleted with their stale entities, the pending
+discoveries dismissed. The run was conducted as a stranger would -- the
+owner's own words afterwards: *"j'ai joue a l'ignorant... Je n'ai pris aucun
+raccourci."*
+
+### The finding that matters: nothing a reader is told to paste fits a Puck.js
+
+Step 1 of the quickstart says to paste `single-light-standalone.js` into the
+Web IDE. It cannot work on this board, either way round:
+
+| Where it goes | What happens |
+|---|---|
+| Flash (`Save on Send: direct to flash`) | `Compacting...` then `Uncaught Error: Unable to find or create file` -- 41 848 bytes written into 40 960 of Storage |
+| RAM (the default, and what the document intends) | `OUT OF MEMORY at getAdvertisement`, then `New interpreter error: LOW_MEMORY,MEMORY`; `setup()` dies half-built and `bw.plan()` is null |
+
+**And it is the whole shelf, not one file.** Every readable bundle is 40-42 kB
+and every minified one 18-19 kB. `docs/try-it.md` -- the ten-minute
+replication published on espruino#8024 for Gordon and @enaon -- offered
+`light-loop-standalone.js` as its fallback, so the trap was live in the
+document this project has been handing to other people.
+
+**Why a year of hardware work never hit it.** Every path the bench exercises
+avoids the one that is documented: `tools.espruino_upload` is driven with
+`.min.js`, and `tools.espruino_deploy` puts the modules in Storage and sends a
+small application. Pasting the readable bundle is something only a reader does.
+
+Fixed in both documents, which now name the minified bundle and say why, and
+say where the Web IDE's *Save on Send* setting lives. Guarded by
+`tools/tests/test_pasteable_bundles.py`, which reads the documents rather than
+the shelf: it extracts every bundle a reader is told to paste and fails if one
+is larger than 32 kB -- a line drawn between a measured failure and a measured
+success. It fails on both documents as they stood this morning.
+
+### Two places the documents simply said nothing
+
+**"Where will I see unavailable?"** Asked out loud at step 8. The documents
+say an entity goes unavailable and never say where that is visible. Two
+sentences now: greyed out on the device page, `unavailable` in developer
+tools.
+
+**How long that takes.** The step says *"power the board off, wait"*. It took
+**8 minutes 35 seconds** from the last packet. Worth stating because it is
+long enough to look like a fault -- and worth stating correctly: the recorder
+shows our switch and core `bthome`'s battery sensor for the same board
+flipping to unavailable **in the same second**, which settles whose timing it
+is. This integration delegates to `bluetooth.async_track_unavailable`; every
+Bluetooth integration waits exactly as long, and there is nothing here to
+make quicker. Coming back took under a second.
+
+### What passed, and is now evidence rather than assertion
+
+- **Discovery and configuration.** The board was offered without being asked
+  for (`source=bluetooth`), configured in one step, no bindkey asked -- notable
+  because Home Assistant was holding a *stale encrypted* advertisement for that
+  address, and the fresh plaintext one superseded it.
+- **One card.** `switch...light` from this integration and
+  `sensor...battery` from core `bthome`, on one device.
+- **The closed loop from the interface**, both ways, at a delay the owner
+  called *"conforme"* -- which is the question that row asks, not whether it
+  works.
+- **Step 2 by the independent path**: nRF Connect on a phone, `1E01` -> LED on,
+  `1E00` -> off. No tool of ours in the loop. That is the strongest form of
+  this step and it had never been run that way.
+- **A power cycle costs the user no reconfiguration.**
+
+### What the run could not test, stated for the dossier
+
+**Installing through HACS.** It was already installed, and no document tells a
+reader in that position what to do. So the install path has still never been
+walked by anyone who did not write it. This is the honest gap to carry into
+the submission -- and a good thing to ask of someone on the discussion rather
+than to paper over.
+
+**That a sketch is gone after a power cycle.** The run put the code in flash
+after step 1 failed, so it survived by design. The documented claim -- it runs
+from RAM, a power cut undoes it -- remains unverified by a third party.
+
+### Two things the recorder gave for free
+
+- **A toggle at 13:41:41 reads `off`, then `on` in the same second, then `off`
+  three seconds later.** That is the shape @enaon reported and this bench could
+  not reproduce (D-092). It is now in our own recorder, with current code, and
+  is worth chasing on its own.
+- **The battery reads 81 % during a write and 100 % again after.** The LED
+  draws, the coin cell sags. Not a fault; a good illustration of what a command
+  costs on a CR2032.
+
+### The shape of it
+
+Three defects, and not one of them is in the protocol or the code. They are a
+file name, a missing sentence and a missing number -- the three things an
+author cannot see, which is exactly why T4.2 was written to be run by someone
+else and why it should not have waited this long.
