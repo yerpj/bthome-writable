@@ -2,8 +2,15 @@
 AES-CCM authenticated encryption, built from Espruino's native AES.
 
 Some builds expose `AES.ccmEncrypt`/`AES.ccmDecrypt` directly (guarded by
-USE_AES_CCM); Puck.js is not one of them. This gives the same thing on any build
-that has AES at all.
+USE_AES_CCM); Puck.js is not one of them. **This module uses them when they are
+there** and builds the same thing out of `AES.encrypt` when they are not, so one
+module covers both and the faster path is taken by itself.
+
+That was not the original shape -- this file claimed to work "on any build that
+has AES at all", which assumed every firmware either has the generic `AES` or
+needs nothing from us. @enaon's nice!nano is the third case: `AES.ccmEncrypt`
+present, `AES.encrypt` absent, so the construction below cannot run at all
+(issue #1). The dual path is his patch, generalised.
 
   var ccm = require("AESCCM");
   var r = ccm.encrypt(plaintext, key, nonce, 4);   // -> {data, mic}
@@ -35,6 +42,36 @@ firmware ignores CTR's `iv` and always starts from a zero counter block (D-027),
 so it would be silently, catastrophically wrong. ECB encrypts each block
 independently, which is all the keystream needs.
 */
+
+/* Whether this firmware implements CCM itself. Asked on every call rather than
+   once at load: a module may be required before the sketch that sets things up,
+   and two `typeof` checks cost nothing beside an AES. */
+function native() {
+  return typeof AES !== "undefined"
+    && typeof AES.ccmEncrypt === "function"
+    && typeof AES.ccmDecrypt === "function";
+}
+
+function bytes(v) {
+  return v instanceof Uint8Array ? v : new Uint8Array(v);
+}
+
+/* The firmware's result, normalised to this module's {data, mic}.
+   Which name it uses for the tag is not something this project can check --
+   no board here has USE_AES_CCM -- so both spellings are taken, and anything
+   else is reported with what actually arrived, to whoever does have the
+   board. */
+function fromNative(r) {
+  var tag = r && (r.tag !== undefined ? r.tag : r.mic);
+  if (!r || r.data === undefined || tag === undefined) {
+    throw new Error("AES.ccmEncrypt returned " + JSON.stringify(r) + ", expected {data, tag}");
+  }
+  return { data: bytes(r.data), mic: bytes(tag) };
+}
+
+/* Which path a board is taking, so a device can say so rather than be guessed
+   about. */
+exports.usingNative = native;
 
 var CHUNK = 32; // bytes per AES call: two blocks, small enough to be reliable
 var buf = new Uint8Array(CHUNK); // built once, while the heap is unfragmented
@@ -108,6 +145,7 @@ function stream(data, source, key, nonce, L) {
 
 exports.encrypt = function (pt, key, nonce, M) {
   if (M === undefined) M = 4;
+  if (native()) return fromNative(AES.ccmEncrypt(pt, key, nonce, M));
   var L = 15 - nonce.length;
   var tag = tagOf(key, pt, nonce, M, L);
   var data = new Uint8Array(pt.length);
@@ -121,6 +159,12 @@ exports.encrypt = function (pt, key, nonce, M) {
    throw because a bad MIC is an expected event -- a wrong key, or someone
    trying it on -- not a mistake by the caller. */
 exports.decrypt = function (ct, key, nonce, mic) {
+  if (native()) {
+    var answer = AES.ccmDecrypt(ct, key, nonce, mic);
+    // Null for a bad MIC, same as below; undefined is how some firmware says
+    // the same thing.
+    return answer === null || answer === undefined ? null : bytes(answer);
+  }
   var M = mic.length, L = 15 - nonce.length, i;
   // The keystream does not depend on the plaintext, so the message can be
   // recovered before the tag is known to be right.

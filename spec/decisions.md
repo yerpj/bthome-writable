@@ -5315,3 +5315,55 @@ claim that we followed `bthome-ble` was simply not checked). Both times the
 evidence was already on this bench. @enaon is owed the correction, and the
 4891 ms connect in that trace is worth its own look -- the measured figure
 for a first command is 1.7 s.
+
+## D-095 -- AESCCM takes the firmware's own CCM where there is one  [HW]
+
+**Status:** 2026-10-09, from @enaon's issue #1, opened 2026-10-07 and not
+noticed here until today -- after we had told him issues on this repository
+were welcome. Two of his were sitting unanswered.
+
+### The case the module did not allow for
+
+`AESCCM.js` said of itself: *"This gives the same thing on any build that has
+AES at all."* It assumed two populations -- a firmware with the generic
+`AES.encrypt`, which our construction needs, or one with `AES.ccmEncrypt`,
+which needs nothing from us.
+
+**His nice!nano is the third:** `AES.ccmEncrypt` present, `AES.encrypt`
+absent. There the file cannot run at all, and it is the board he tests
+encryption on. He had already written the replacement and attached it.
+
+### What was done
+
+One module, two paths: the firmware's CCM when `AES.ccmEncrypt` and
+`AES.ccmDecrypt` are both there, the construction here otherwise. Asked per
+call rather than once at load, because a module can be required before the
+sketch that sets anything up and two `typeof` checks cost nothing beside an
+AES. `exports.usingNative()` lets a device say which path it took rather
+than be guessed about.
+
+**It also answers a question that was open for Gordon.** The pending item
+was whether to publish two modules to EspruinoDocs or ask Espruino for
+`USE_AES_CCM` more widely. Neither: one module that prefers the native path
+covers both kinds of board, and is far quicker on the boards that have it --
+our own AES calls cost about 75 ms each (D-028).
+
+### What could be tested here, and what could not
+
+No board on this bench has `USE_AES_CCM`, so **the firmware's actual return
+shape cannot be verified here**. @enaon's patch reads `{data, tag}`, written
+with an assistant rather than from a board's documentation. So:
+
+- both spellings are accepted, `tag` and `mic`;
+- anything else throws with **what actually arrived** in the message, because
+  the person who meets it has the board and we do not;
+- OpenSSL's AES-CCM stands in for the firmware in the tests.
+
+That last one pays for itself twice. It exercises the adapter, and it checks
+`test-vectors.json` against a **second, independent CCM implementation** --
+until now every vector was only ever confirmed by the construction that
+produced it. One test asserts the two paths agree byte for byte on every
+vector, since a device may run either and the air must not be able to tell.
+
+**Still owed: a run on his board.** The contract exists already -- the shared
+vectors -- and that is what to ask for rather than a yes.
