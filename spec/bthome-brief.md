@@ -68,7 +68,9 @@ argument for reviewing this rather than for trusting it.
 | Declaration on the air, three writable lights | **5 bytes** |
 
 Two reference implementations, a shared test-vector contract with on-device
-AES-CCM vectors, 689 automated tests across three suites.
+AES-CCM vectors, 699 automated tests. The installation guides have been walked
+end to end using nothing else: three documentation defects, no protocol or code
+defect (D-093).
 
 ## Objections, and the short answers
 

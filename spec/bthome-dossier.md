@@ -192,6 +192,12 @@ Claims to avoid, because they were wrong once in public:
   re-entrancy fault in the read loop that this bench could not produce (D-087).
   One site is not a population, so more are still worth having — but the
   objection *"it only works on one bench"* no longer stands unanswered.
+  **Since then he has also run the sealed path** on twenty encrypted lights,
+  which no one outside this bench had, and filed three faults: a device that
+  reboots losing every command in silence, a warning raised on duplicate
+  packets, and a switch showing a stale value (D-092, D-094). All fixed, each
+  with a test that fails without the fix. He also found that `AESCCM.js` could
+  not run on a firmware with native CCM and no generic AES (D-095).
 - ~~An encrypted device on version 2, on hardware~~ — done 2026-09-21. A
   Puck.js running `encrypted-light.js`: Home Assistant raised the bindkey step
   by itself, read the declaration out of the decrypted advertising, and a sealed
@@ -201,6 +207,17 @@ Claims to avoid, because they were wrong once in public:
   moved: no downlink proposed anywhere, `0xFF` still unassigned, both standing
   requests untouched since 2025. GitHub *code* search needs authentication and
   was the one surface not covered.
+- ~~Walk the documentation end to end (T4.2)~~ — **done 2026-10-09** (D-093).
+  Run by the owner playing the stranger, on a Puck.js. Three defects, **none of
+  them in the protocol or the code**: the quickstart told a reader to paste a
+  bundle that fits a Puck.js neither in flash nor in RAM, and the same trap was
+  live in `try-it.md`, which had been handed to people on the discussion; and
+  two missing sentences about going unavailable. All fixed, with a test that
+  reads the documents and refuses a bundle a reader is told to paste that is
+  too large. **What it could not test** is installing through HACS, which was
+  already installed — so that path has still never been walked by anyone who
+  did not write it. Worth saying plainly, and worth asking of someone on the
+  discussion.
 - **Write the submission personally.** The Open Home Foundation
   [AI policy](https://developers.home-assistant.io/docs/ai_policy) closes
   issues and pull requests believed to be agent-written, and asks that answers
