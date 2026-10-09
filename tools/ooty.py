@@ -1,11 +1,17 @@
 """Cut and restore the power to the board under test.
 
 The OOTY is a hardware debug aid sitting on the bench: among other things it
-switches a 3V3 rail, and the Puck.js is on that rail. That removes a whole class
-of incident from this project. Twice now a deployment has left the device
-unable to advertise, and therefore unable to be connected to, and therefore
-unfixable without a finger on the button (decisions.md D-029, D-031). A rail
-that can be cycled from here makes those recoverable.
+switches a 3V3 rail. It was how a deployment that left a board unable to
+advertise -- and therefore unable to be connected to, and therefore unfixable
+without a finger on the button -- was recovered from here (decisions.md D-029,
+D-031).
+
+**The Puck.js came off this rail on 2026-10-09** and runs from a CR2032. The
+rail still switches, and still reports its state cheerfully, so this module can
+no longer recover that board: a board that does not come back after `cycle` is
+not necessarily broken, it may simply not be powered from here. Check
+`docs/shared-bench.md` for what is on the rail before concluding anything about
+a silent device.
 
     python -m tools.ooty state
     python -m tools.ooty on

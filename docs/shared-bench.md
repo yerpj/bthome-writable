@@ -7,8 +7,14 @@ there is really only one rule, and one list of things that rule does not cover.
 
 One Home Assistant instance at `http://haosjry.local:8123`, one Bluetooth
 adapter that instance owns, one Puck.js, one nice!nano with an SSD1306, and one
-OOTY debug board on `COM8` that switches the Puck's 3V3 rail. There is exactly
-one of each. Home Assistant's configuration is reachable over SMB at
+OOTY debug board on `COM8` that switches a 3V3 rail. There is exactly one of
+each.
+
+**The Puck.js is no longer on that rail.** Since 2026-10-09 it runs from a
+CR2032 and is power-cycled by hand. `tools.ooty` still switches the rail, and
+the rail still reads `ON`, so a silent Puck looks exactly like a dead one:
+cycling the rail does nothing to it, and no amount of `ooty cycle` will bring
+it back. Ask the owner to pull the cell. This cost an hour the first time. Home Assistant's configuration is reachable over SMB at
 `\\haosjry.local\config` (the integration lives in `custom_components/`).
 
 ## The rule
