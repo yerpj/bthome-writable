@@ -48,11 +48,34 @@ MODULES = ("BTHomeWritable.js", "AESCCM.js")
 PAGES = ("BTHomeWritable.md", "AESCCM.md")
 """The module pages, written by hand and copied rather than generated.
 
-They carry what the published module no longer does -- the options, the
-packet budget, what a rejected write looks like -- because that is where
-EspruinoDocs keeps it. Copying them here means the output directory is the
-whole pull request, with nothing to remember.
+They carry what the published module no longer does -- the options, the packet
+budget, what a rejected write looks like -- because that is where EspruinoDocs
+keeps it.
 """
+
+PULL_REQUESTS = {
+    "aesccm": ("AESCCM.js", "AESCCM.md"),
+    "bthome-writable": ("BTHomeWritable.js", "BTHomeWritable.md"),
+}
+"""One directory per pull request, because these are two offers, not one.
+
+`AESCCM` is AES-CCM -- Bluetooth's, Zigbee's -- and is worth having whether or
+not BTHome ever assigns an object ID; it also rescues anyone on a Bangle.js 2,
+whose firmware builds no generic `AES` at all. `BTHomeWritable` carries a
+provisional object ID and needs a Home Assistant integration that lives
+elsewhere. Bundled, the second would hold the first hostage.
+
+They go in that order: the writable module's page links to `/AESCCM`.
+"""
+
+
+def directory(name: str) -> Path:
+    """Which pull request a file belongs to."""
+    for pr, members in PULL_REQUESTS.items():
+        if name in members:
+            return OUTPUT_DIR / pr
+    raise KeyError(name)
+
 
 BUDGET = 22_000
 """Within sight of the largest module EspruinoDocs ships, `QOA.js` at 19 027.
@@ -75,9 +98,21 @@ HEADER = """\
 /* {title}
 
    Generated from {origin} in github.com/yerpj/bthome-writable, which carries
-   the reasoning behind every line. Edit it there. The object ID used to
-   declare writable entries is not yet assigned by BTHome: see this module's
-   page. */
+   the reasoning behind every line. Edit it there.{caveat} */
+"""
+
+CAVEATS = {
+    "BTHomeWritable.js": (
+        "\n\n   BTHome has not assigned the object ID\n"
+        "   this uses to declare writable entries: see this module's page."
+    ),
+    "AESCCM.js": "",
+}
+"""Only one of these modules is waiting on anybody.
+
+They ship as separate pull requests, and AES-CCM stands on its own: putting a
+BTHome caveat at the top of a general-purpose cipher would be telling a reader
+to worry about something that cannot affect them.
 """
 
 TITLES = {
@@ -160,14 +195,19 @@ def shrink(source: str) -> str:
 
 
 def main() -> int:
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    for pr in PULL_REQUESTS:
+        (OUTPUT_DIR / pr).mkdir(parents=True, exist_ok=True)
     failed = False
     for name in MODULES:
         source = (SOURCE_DIR / name).read_text(encoding="utf-8")
         body = shrink(source)
-        header = HEADER.format(title=TITLES[name], origin="espruino/" + name)
+        header = HEADER.format(
+            title=TITLES[name],
+            origin="espruino/" + name,
+            caveat=CAVEATS[name],
+        )
         text = header + "\n" + body
-        (OUTPUT_DIR / name).write_text(text, encoding="utf-8", newline="\n")
+        (directory(name) / name).write_text(text, encoding="utf-8", newline="\n")
         over = " OVER BUDGET" if len(text) > BUDGET else ""
         print(
             f"{name:20} {len(source):6} -> {len(text):6} bytes "
@@ -177,10 +217,12 @@ def main() -> int:
 
     for page in PAGES:
         text = (PAGE_DIR / page).read_text(encoding="utf-8")
-        (OUTPUT_DIR / page).write_text(text, encoding="utf-8", newline="\n")
+        (directory(page) / page).write_text(text, encoding="utf-8", newline="\n")
         print(f"{page:20} {len(text):6} bytes (copied)")
 
-    print(f"\nthe pull request is the contents of {OUTPUT_DIR.relative_to(ROOT)}")
+    print()
+    for pr in PULL_REQUESTS:
+        print(f"pull request: the contents of {(OUTPUT_DIR / pr).relative_to(ROOT)}")
     return 1 if failed else 0
 
 

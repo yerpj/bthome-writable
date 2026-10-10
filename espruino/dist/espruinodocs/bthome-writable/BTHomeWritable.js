@@ -2,9 +2,10 @@
 /* BTHome downlink: declare writable entries, serve them over GATT.
 
    Generated from espruino/BTHomeWritable.js in github.com/yerpj/bthome-writable, which carries
-   the reasoning behind every line. Edit it there. The object ID used to
-   declare writable entries is not yet assigned by BTHome: see this module's
-   page. */
+   the reasoning behind every line. Edit it there.
+
+   BTHome has not assigned the object ID
+   this uses to declare writable entries: see this module's page. */
 
 /* Module for making BTHome objects writable: the device lists, in its BTHome advertising, the object types it accepts writes for, and serves each one on its own GATT characteristic. */
 

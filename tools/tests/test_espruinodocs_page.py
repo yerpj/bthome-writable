@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import re
 
-from tools.build_espruino_module import OUTPUT_DIR, PAGE_DIR, SOURCE_DIR
+from tools.build_espruino_module import PAGE_DIR, SOURCE_DIR, directory
 
 MODULE = SOURCE_DIR / "BTHomeWritable.js"
 PAGE = PAGE_DIR / "BTHomeWritable.md"
@@ -92,7 +92,7 @@ def test_the_per_entry_interval_says_its_unit_too() -> None:
 
 def test_the_published_pages_match_their_sources() -> None:
     for name in ("BTHomeWritable.md", "AESCCM.md"):
-        assert (OUTPUT_DIR / name).read_text(encoding="utf-8") == (
+        assert (directory(name) / name).read_text(encoding="utf-8") == (
             PAGE_DIR / name
         ).read_text(encoding="utf-8"), (
             f"{name} in dist is stale; run `python -m tools.build_espruino_module`"

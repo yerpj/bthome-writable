@@ -2,9 +2,7 @@
 /* AES-CCM, from the firmware's own where there is one.
 
    Generated from espruino/AESCCM.js in github.com/yerpj/bthome-writable, which carries
-   the reasoning behind every line. Edit it there. The object ID used to
-   declare writable entries is not yet assigned by BTHome: see this module's
-   page. */
+   the reasoning behind every line. Edit it there. */
 
 /* AES-CCM authenticated encryption, built from Espruino's native AES. Some builds expose `AES.ccmEncrypt`/`AES.ccmDecrypt` directly (guarded by USE_AES_CCM); Puck.js is not one of them. */
 

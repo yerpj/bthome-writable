@@ -16,7 +16,11 @@ const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 
+/* One directory per pull request: AESCCM stands alone, and should not wait
+ * on an object ID BTHome has not assigned. */
 const PUBLISHED = path.join(__dirname, "..", "dist", "espruinodocs");
+const WRITABLE = path.join(PUBLISHED, "bthome-writable");
+const CCM = path.join(PUBLISHED, "aesccm");
 
 const FIXTURES = JSON.parse(
   fs.readFileSync(
@@ -54,7 +58,7 @@ function fakeEncodeOne(entry, value) {
 }
 
 test("the published BTHomeWritable loads and builds the fixtures", () => {
-  const bw = require(path.join(PUBLISHED, "BTHomeWritable.js"));
+  const bw = require(path.join(WRITABLE, "BTHomeWritable.js"));
   const noop = () => {};
 
   const single = bw.planPacket(
@@ -95,7 +99,7 @@ test("the published AESCCM loads and passes the shared vectors", () => {
     },
   };
   try {
-    const ccm = require(path.join(PUBLISHED, "AESCCM.js"));
+    const ccm = require(path.join(CCM, "AESCCM.js"));
     assert.equal(ccm.usingNative(), false, "no native CCM in this stand-in");
     let checked = 0;
     for (const v of VECTORS.vectors) {
@@ -117,9 +121,12 @@ test("the published AESCCM loads and passes the shared vectors", () => {
 });
 
 test("the published copies name where they came from", () => {
-  for (const name of ["BTHomeWritable.js", "AESCCM.js"]) {
-    const text = fs.readFileSync(path.join(PUBLISHED, name), "utf8");
+  for (const [dir, name] of [[WRITABLE, "BTHomeWritable.js"], [CCM, "AESCCM.js"]]) {
+    const text = fs.readFileSync(path.join(dir, name), "utf8");
     assert.match(text, /bthome-writable/, name);
-    assert.match(text, /not yet assigned by BTHome/, name);
   }
+  assert.match(
+    fs.readFileSync(path.join(WRITABLE, "BTHomeWritable.js"), "utf8"),
+    /BTHome has not assigned the object ID/
+  );
 });
