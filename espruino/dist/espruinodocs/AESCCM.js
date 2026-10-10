@@ -8,6 +8,9 @@
 
 /* AES-CCM authenticated encryption, built from Espruino's native AES. Some builds expose `AES.ccmEncrypt`/`AES.ccmDecrypt` directly (guarded by USE_AES_CCM); Puck.js is not one of them. */
 
+/* global AES */
+/* Espruino's own, and the only thing outside this file it depends on. */
+
 /* Whether this firmware implements CCM itself. */
 function native() {
   return typeof AES !== "undefined"

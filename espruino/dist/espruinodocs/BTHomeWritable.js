@@ -9,7 +9,6 @@
 /* Module for making BTHome objects writable: the device lists, in its BTHome advertising, the object types it accepts writes for, and serves each one on its own GATT characteristic. */
 
 const DECL_ID = 0xFF; // declaration object, last in the packet (S2.2)
-const COUNTER_UUID = "2FAA1000" + "-3B0B-4B1A-9E2A-B4C2952E62F2"; /* the counter report (D-075), off unless `counterReport:true`. */
 const CHALLENGE_LEN = 8;
 const PKT_ID = 0x00; // BTHome packet id, always our first object
 const REV_ID = 0x65; // BTHome settings revision (S3.2)
@@ -22,6 +21,7 @@ const ENC_OVERHEAD = 4 + MIC_LEN; // counter u32 LE and MIC, on top of the ciphe
 const BUDGET = 31 - 3 - 4; // adv payload - Flags AD - service data header (S2.4)
 const UUID_TAIL = "-3B0B-4B1A-9E2A-B4C2952E62F2"; // provisional (D-001)
 const SERVICE_UUID = "2FAA0000" + UUID_TAIL;
+const COUNTER_UUID = "2FAA1000" + UUID_TAIL; /* the counter report (D-075), off unless `counterReport:true`. */
 const TEXT_TYPES = { text:true }; // encoded by the BTHome module with a length byte
 const EVENT_IDS = { 0x3A:true, 0x3C:true }; // button, dimmer: the value is an event code
 

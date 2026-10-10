@@ -43,6 +43,11 @@ so it would be silently, catastrophically wrong. ECB encrypts each block
 independently, which is all the keystream needs.
 */
 
+/* global AES */
+/* Espruino's own, and the only thing outside this file it depends on. Declared
+   because EspruinoDocs' lint has no entry for it, and because a module should
+   say what firmware it is asking for. */
+
 /* Whether this firmware implements CCM itself. Asked on every call rather than
    once at load: a module may be required before the sketch that sets things up,
    and two `typeof` checks cost nothing beside an AES. */
