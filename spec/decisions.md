@@ -5367,3 +5367,77 @@ vector, since a device may run either and the air must not be able to tell.
 
 **Still owed: a run on his board.** The contract exists already -- the shared
 vectors -- and that is what to ask for rather than a yes.
+
+## D-096 -- the modules are offered to EspruinoDocs, as two pull requests  [DECISION, ruled]
+
+**Status:** 2026-10-10. Gordon asked twice for these to go into EspruinoDocs
+*"so folks can start experimenting easily"*. Opened:
+
+- **[EspruinoDocs#761](https://github.com/espruino/EspruinoDocs/pull/761)**
+  -- `AESCCM.js` and its page;
+- **[EspruinoDocs#762](https://github.com/espruino/EspruinoDocs/pull/762)**
+  -- `BTHomeWritable.js` and its page.
+
+### Two, not one, and the owner was right to insist
+
+They were prepared as a single pull request. Splitting them is better for a
+reason that only appears once you try: **AES-CCM owes nothing to BTHome.**
+It is Bluetooth's and Zigbee's cipher, and `BANGLEJS2.py` builds `AES_CCM`
+while building no generic `AES`, so anyone on a Bangle.js 2 needs that module
+whatever BTHome decides about an object ID. Bundled with a module carrying a
+provisional ID, it would have waited on a decision that cannot affect it.
+
+The split immediately caught a defect the bundle had hidden: the generated
+header told *every* module that BTHome had not assigned its object ID --
+including the cipher, which has none. A reader of `AESCCM.js` would have gone
+looking for a problem that could not reach them. The caveat is per-module
+now, and tested in both directions.
+
+### Why a generated copy rather than a hand-written one
+
+Their median module is 2 477 bytes and their largest 19 027; ours was 38 040,
+because this repository comments its reasoning where it happens. Right here,
+wrong there -- in their tree the *why* lives on the `.md` page. So
+`tools/build_espruino_module.py` keeps the first sentence of each block
+comment and nothing else changes: 21 711 bytes, and the options table moved
+to the page.
+
+What makes that safe is one invariant, held by a test: **strip the comments
+from the source and from the published copy and the bytes are identical.**
+The published module is the tested module rather than something resembling
+it. A JS test loads the generated files and builds the fixtures with them,
+because a byte comparison cannot notice a file that no longer parses.
+
+### What was checked before offering them
+
+Their own `.eslintrc` over our files: ten errors. Their own modules fail it
+sixteen times across four files, and the repository has **no CI at all**, so
+it is a local tool rather than a gate. Two of the ten were worth taking
+anyway -- a duplicated UUID suffix, and `/* global AES */`, which is the one
+thing outside `AESCCM.js` that it needs. Of the four left, one
+(`prefer-object-spread`) asks for syntax their own `ecmaVersion: 2015`
+refuses to parse; checked, `{...a}` is a parsing error under that config.
+
+### What this commits us to
+
+- **`#762` says the owner is about to ask BTHome to reserve `0xFF`.** That
+  is now a public statement with a clock on it, however soft. The owner has
+  decided to take the time to do the BTHome submission properly rather than
+  quickly, which is right -- but if Gordon asks about timing, the honest
+  answer is days, not weeks.
+- **If BTHome assigns a different ID**, the module changes a constant and the
+  published copy has to be regenerated and re-offered. Both pages say so.
+- **The pages are now a maintained surface**: the options table lives there
+  and nowhere else, which is why `tools/tests/test_espruinodocs_page.py`
+  holds the page to the code -- every option read must have a row, every
+  duration must name milliseconds, every size must name bytes.
+
+### Still ahead of the BTHome submission
+
+1. A parser pull request to `bthome-ble`, which is the pattern both 2026-04
+   assignments followed (each spec change linked one).
+2. The submission itself, in the owner's own words (D-091, `CLAUDE.md`
+   rule 7).
+
+Nothing else is waiting on anybody. Both of @enaon's issues are answered and
+closed, and the discussion has no open question.
