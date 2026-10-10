@@ -53,7 +53,7 @@ var lamp = false;
 
 bw.setup({
   advertise : [
-    { type:"battery", get:()=>E.getBattery(), interval:300000 },
+    { type:"battery", get:()=>E.getBattery(), interval:300000 },  // read it every 5 min
     { type:"light",   set:v=>{ lamp = v; digitalWrite(LED1, v); } }
   ],
   interval : 1000,
@@ -150,9 +150,9 @@ Reference
 | Option | |
 |---|---|
 | `advertise` | the entry list, in order. Entry *k* is characteristic `2FAA000k` |
-| `interval` | advertising interval, 20–10000 ms (default 2000). A per-entry `interval` is how long that sensor's value may be reused before `get()` is called again; `0` reads on every packet |
-| `fastInterval` | interval while a receiver is around, floored at 100 (the default) |
-| `fastTimeout` | ms to keep advertising fast after a disconnect (default 30000) |
+| `interval` | advertising interval in **milliseconds**, 20–10000 (default 2000). A per-entry `interval`, also in milliseconds, is how long that sensor's value may be reused before `get()` is called again; `0` reads on every packet |
+| `fastInterval` | advertising interval in milliseconds while a receiver is around, floored at 100 (the default) |
+| `fastTimeout` | milliseconds to keep advertising fast after a disconnect (default 30000) |
 | `whenConnected` | keep advertising during a connection (default `true`) |
 | `maxWriteLength` | largest accepted write, in bytes (default 128) |
 | `bindkey` | 16-byte AES key, as 32 hex characters or an array |
@@ -167,8 +167,8 @@ Reference
 |---|---|
 | `bw.update()` | re-read every sensor and rebuild the packet now |
 | `bw.changed()` | a writable value changed by itself: bump the settings revision so receivers re-read it |
-| `bw.setAdvertisingInterval(ms)` | change the interval without re-running `setup()` |
-| `bw.setFastTimeout(ms)` | change how long the fast window lasts |
+| `bw.setAdvertisingInterval(ms)` | change the advertising interval, in milliseconds, without re-running `setup()` |
+| `bw.setFastTimeout(ms)` | change how long the fast window lasts, in milliseconds |
 | `bw.plan()` | what `setup()` worked out: `entryIds`, the writable entries and their UUIDs |
 
 Notes

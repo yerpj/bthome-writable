@@ -51,12 +51,14 @@ the value bytes, the event code, or a command's opcode.
 Options:
 
   advertise      the entry list above
-  interval       BTHome advertising interval, 20..10000ms (default 2000) - how
-                 often the radio transmits. Per-entry `interval` is how long a
-                 sensor's value may be reused before get() is called again,
-                 defaulting to this; 0 reads on every packet.
-  fastInterval   interval while a receiver is around, floored at 100 (default)
-  fastTimeout    ms to stay fast after a disconnect (default 30000)
+  interval       BTHome advertising interval in milliseconds, 20..10000
+                 (default 2000) - how often the radio transmits. Per-entry
+                 `interval`, milliseconds too, is how long a sensor's value may
+                 be reused before get() is called again, defaulting to this; 0
+                 reads on every packet.
+  fastInterval   advertising interval in milliseconds while a receiver is
+                 around, floored at 100 (default)
+  fastTimeout    milliseconds to stay fast after a disconnect (default 30000)
   whenConnected  keep advertising during a connection (default true)
   maxWriteLength largest accepted write, in bytes of device RAM (default 128)
   bindkey        16-byte AES key, as 32 hex characters or an array. Given, the
