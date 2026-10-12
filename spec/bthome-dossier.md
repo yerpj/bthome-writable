@@ -218,6 +218,13 @@ Claims to avoid, because they were wrong once in public:
   already installed — so that path has still never been walked by anyone who
   did not write it. Worth saying plainly, and worth asking of someone on the
   discussion.
+- ~~Publish the device side to EspruinoDocs~~ — **done 2026-10-12**. Gordon
+  merged [EspruinoDocs#761](https://github.com/espruino/EspruinoDocs/pull/761)
+  (`AESCCM`) and [#762](https://github.com/espruino/EspruinoDocs/pull/762)
+  (`BTHomeWritable`), so the device side is in Espruino's own module library
+  and `require()` finds it. It changes a sentence in the submission: not *two
+  implementations in my repository* but *an independent project ships this*
+  (D-096).
 - **Write the submission personally.** The Open Home Foundation
   [AI policy](https://developers.home-assistant.io/docs/ai_policy) closes
   issues and pull requests believed to be agent-written, and asks that answers

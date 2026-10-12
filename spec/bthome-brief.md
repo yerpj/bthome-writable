@@ -20,10 +20,9 @@ Gordon Williams (Espruino), its co-designer:
 > Home Assistant really does that at the moment. It adds that functionality for
 > those that want it but in a way that doesn't complicate BTHome.
 
-His list of what it unlocks: clocks — setting the time, setting alarms;
-wireless lights; thermostats — a target temperature; configuration on wireless
-sensors — a movement threshold, a polling interval; plant waterers — how much
-water; wireless epaper displays.
+His list of what it unlocks: clocks — the time, alarms; wireless lights;
+thermostats — a target temperature; configuration on wireless sensors — a
+movement threshold, a polling interval; plant waterers; epaper displays.
 
 ## What it does
 
@@ -67,10 +66,11 @@ argument for reviewing this rather than for trusting it.
 | Delivered, two devices | **100 %**, no retries |
 | Declaration on the air, three writable lights | **5 bytes** |
 
-Two reference implementations, a shared test-vector contract with on-device
-AES-CCM vectors, 699 automated tests. The installation guides have been walked
-end to end using nothing else: three documentation defects, no protocol or code
-defect (D-093).
+Two reference implementations, and **the device side ships in Espruino's own
+module library** (merged 2026-10-12). A shared test-vector contract, whose
+AES-CCM vectors three implementations agree on, and 699 automated tests. The
+installation guides have been walked end to end using nothing else: three
+documentation defects, no protocol or code defect (D-093).
 
 ## Objections, and the short answers
 
@@ -94,37 +94,32 @@ Each step is worth something on its own, and none of them forces the next.
    encodings and the encryption are BTHome's throughout; what is new is one
    object and a GATT profile.
 3. **Fold the receiver into core `bthome`**, eventually. Gordon Williams:
-   *"written as a standalone integration to make it easy to add the
-   functionality without modifying BTHome itself, but nothing would stop it
-   being built in to BTHome itself eventually."*
+   *"nothing would stop it being built in to BTHome itself eventually."*
 
 Both reference implementations stay maintained either way.
 
 ## What it costs an installation that does not want it
 
 Nothing measurable. The declaration is five bytes at the **end** of the service
-data, after everything a current parser understands — `bthome-ble` stops at the
-first object ID it does not know, which is exactly why the rule is that it goes
-last. A device that implements none of this is untouched, and so is a receiver
-that ignores `0xFF`.
+data — `bthome-ble` stops at the first object ID it does not know, which is
+exactly why the rule is that it goes last. A device that implements none of
+this is untouched, and so is a receiver that ignores `0xFF`.
 
 ## The security model, briefly
 
 BTHome's own AES-CCM in both directions, with the **direction bound into the
 nonce** — `0x41` advertising, `0xFF` write, `0xFE` read — so nothing captured in
-one direction authenticates in another. A write carries a monotonic counter that
-the device checks *before* spending an AES on it, so a flood of replays costs it
-nothing. Advertising is filtered with `bthome-ble`'s own replay rule, borrowed
-rather than invented. Without the key there is no write, and a writable value is
-never advertised.
+one direction authenticates in another. A write carries a monotonic counter the
+device checks *before* spending an AES on it. Advertising is filtered with
+`bthome-ble`'s own replay rule, borrowed rather than invented. Without the key
+there is no write, and a writable value is never advertised.
 
 ## Known limitations, stated rather than waited for
 
 - **A silently refused write still looks delivered.** The device acknowledges a
   write before validating it, because Espruino cannot yet fail one at the ATT
   layer. The causes are being removed one at a time; the class closes when the
-  firmware can refuse. This is the single root of most faults this project has
-  had.
+  firmware can refuse.
 - **A plaintext packet from a keyed device is accepted**, exactly as core
   `bthome` accepts one. The check belongs in `bthome-ble`, where every BTHome
   device would gain it, rather than bolted onto one extension (D-090).
