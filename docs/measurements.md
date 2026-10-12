@@ -374,6 +374,39 @@ Three writable lights are 5 bytes: `ff 03 1e 1e 1e`.
 | One AES-CCM frame, first implementation | 31.8 ms, of which 4.5 ms is AES |
 | One AES-CCM frame, the implementation that survives memory pressure | 75 ms |
 
+**Broken down, 2026-10-12, Puck.js 2v27** — asked for by Gordon Williams on
+`EspruinoDocs#763`, *"do you know which bits in particular?"*. A 7-byte BTHome
+frame, 20 runs:
+
+| | ms | % of frame |
+|---|---|---|
+| Whole frame (7-byte payload) | 54.9 | |
+| &nbsp;&nbsp;`tagOf`, the CBC-MAC half | 19.1 | 34 |
+| &nbsp;&nbsp;`stream`, the keystream half | 25.7 | 46 |
+| &nbsp;&nbsp;&nbsp;&nbsp;the cipher itself | 2.9 | 5 |
+| &nbsp;&nbsp;&nbsp;&nbsp;`macBlock`, per-block bookkeeping | 9.2 | 16 |
+| &nbsp;&nbsp;&nbsp;&nbsp;`counters`, the same shape plus one AES | 12.3 | 22 |
+
+A 30-byte payload is 92.2 ms. Directly: `AES.encrypt` of 32 bytes is 2.07 ms in
+ECB and 2.35 ms in CBC, and a 7-byte frame makes one call of each — so **the
+cipher is under a tenth of what sealing costs**, and the rest is the
+JavaScript around it. That has not moved since the first implementation: 4.5 ms
+of AES then, 2.9–4.4 ms now. What grew was the bookkeeping.
+
+**And JIT does not rescue it** (`"jit"`, Puck.js builds it):
+
+| | speedup |
+|---|---|
+| `macBlock` as written, JIT | 1.37× |
+| A loop of pure arithmetic, JIT | 2.16× |
+| The same bookkeeping rewritten as plain byte loops so JIT has arithmetic to compile | **4.1× slower** than the typed-array methods, and still 1.9× slower after JIT |
+
+The last row is the finding. `fill`, `set` and `subarray` are native and already
+the fast path; JIT cannot accelerate a method call, and replacing them with the
+loops it *can* compile loses more than it gains. What is left to pay is the
+interpreter's per-call and per-statement cost, which is not something a
+compiler reaches at this granularity.
+
 Paid per packet rebuild rather than per advertisement, so at a 1 s interval it is
 7 % of one second's work and nothing at all between rebuilds. The nice!nano had
 no AES at 2v29.105 (D-035) and has it at 2v29.396 (D-045).
