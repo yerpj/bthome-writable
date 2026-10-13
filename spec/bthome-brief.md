@@ -48,7 +48,7 @@ write         1E 01  ->  2FAA0001         one object, one characteristic
   **[#287](https://github.com/Bluetooth-Devices/bthome-ble/issues/287)**,
   controlling Shelly BLU devices.
 
-Re-checked 2026-10-07: no downlink proposed anywhere, `0xFF` unassigned.
+Re-checked 2026-10-13: no downlink proposed anywhere, `0xFF` unassigned.
 
 ## Evidence
 
@@ -68,7 +68,7 @@ argument for reviewing this rather than for trusting it.
 
 Two reference implementations, and **the device side ships in Espruino's own
 module library** (merged 2026-10-12). A shared test-vector contract, whose
-AES-CCM vectors three implementations agree on, and 699 automated tests. The
+AES-CCM vectors three implementations agree on, and 716 automated tests. The
 installation guides have been walked end to end using nothing else: three
 documentation defects, no protocol or code defect (D-093).
 
