@@ -136,7 +136,7 @@ And a fourth, which is the one a maintainer actually cares about:
 def test_a_device_that_never_declares_is_untouched() -> None:
     """The change must be invisible to everyone else."""
     # adv_info + temperature 25.00 + humidity 50.55
-    data_string = b"@Ä	¿"
+    data_string = b"\x40\x02\xc4\x09\x03\xbf\x13"
     advertisement = bytes_to_service_info(
         data_string, local_name="TEST DEVICE", address="A4:C1:38:8D:18:B2"
     )
