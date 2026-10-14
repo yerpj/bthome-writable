@@ -1,0 +1,70 @@
+<!--
+  SKELETON for the section to add to src/format.html in home-assistant/bthome.io.
+
+  Structure and conventions only, taken from that file as it stands. The words
+  are yours: nothing here is text to submit, and every <!-- REMOVE --> comment
+  must be gone before you commit.
+
+  WHERE IT GOES
+    src/format.html, inside <h4 id="misc-data">Misc data</h4>, after the
+    "Packet id" block and before <h3 id="encryption">. That is line 1988 in
+    the file as of 2026-10-14.
+
+  CONVENTIONS THIS FOLLOWS (counted in their file, not invented)
+    - every technical term inside <code>, including words: <code>object id</code>
+    - "object id" in lower case; "Object id" only as a table heading
+    - tables always wrapped in <div class="table-wrapper">
+    - variable-length objects write "see below" in the Data Type column,
+      as 0x53 (text) and 0x54 (raw) do
+    - &ndash; for ranges, &nbsp; to break a long byte string in a table cell
+    - <strong> is used sparingly (14 times in the page), <em> almost never (1)
+    - two-space indentation inside <p>
+-->
+
+<h5 id="writable-objects">Writable objects</h5>
+<p>
+  <!-- REMOVE: what this object is, in two or three sentences. The facts you
+       have to work from, all verifiable in spec/PROTOCOL.md 2.1 and 2.2:
+
+       - object id 0xFF, followed by one length byte, then that many object ids
+       - it lists the object types the device accepts writes for
+       - the k-th id in the list identifies the k-th writable entry
+       - the values themselves are never advertised
+       - it must be the last object in the service data, because a receiver
+         stops at the first object id it does not recognise
+  -->
+</p>
+<p>
+  <!-- REMOVE: optional second paragraph. The Commands section uses its second
+       paragraph for the security advice; yours might say what a receiver does
+       with the list, or point at the encryption section. Delete this <p>
+       entirely if one paragraph says it. -->
+</p>
+<div class="table-wrapper">
+  <table>
+    <thead>
+      <tr>
+        <th>Object id</th>
+        <th>Property</th>
+        <th>Data Type</th>
+        <th>Example</th>
+        <th>Result</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>
+          <code>0xFF</code>
+        </td>
+        <td><!-- REMOVE: the property name, lower case, e.g. the same word as
+                 the heading --></td>
+        <td>see below</td>
+        <td>
+          <code><!-- REMOVE: the example bytes, no 0x prefix in this column;
+                    see 0x53's row for the house style --></code>
+        </td>
+        <td><!-- REMOVE: what the example means, in words --></td>
+      </tr>
+    </tbody>
+  </table>
+</div>
