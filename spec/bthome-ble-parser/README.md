@@ -165,8 +165,24 @@ against a real clone, not against the installed package:
 git clone https://github.com/<you>/bthome-ble.git && cd bthome-ble
 git checkout -b writable-entries
 git apply /path/to/writable-entries.patch
-pytest -o addopts="" tests/          # 157 pass
+
+PYTHONPATH=src ../bthome-writable/.venv/Scripts/python.exe     -m pytest -q -o addopts="" tests/            # 157 pass
 ```
+
+Two things in that command are load-bearing, and both look like fussiness
+until they bite.
+
+**The interpreter.** Plain `pytest` takes whichever Python is on the path, and
+a system Python has none of `sensor_state_data`,
+`bluetooth_sensor_state_data` or `habluetooth` — four collection errors that
+read like the patch broke something. This project's own venv has them all,
+because it depends on this library. Their own way is `poetry install && poetry
+run pytest`.
+
+**`PYTHONPATH=src`.** Without it, `import bthome_ble` can resolve to the copy
+*installed* in that venv — unpatched 3.24.0 — and the suite passes while
+testing none of your changes. A green run that proves nothing is worse than a
+red one.
 
 `-o addopts=""` turns off the coverage flags their `pyproject.toml` adds, which
 need `pytest-cov`; with it installed, plain `pytest` works.
