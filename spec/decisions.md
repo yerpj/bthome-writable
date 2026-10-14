@@ -5441,3 +5441,60 @@ refuses to parse; checked, `{...a}` is a parsing error under that config.
 
 Nothing else is waiting on anybody. Both of @enaon's issues are answered and
 closed, and the discussion has no open question.
+
+## D-097 -- the AI policy line is authorship, not assistance  [DECISION, owner]
+
+**Status:** 2026-10-14, ruled by the owner, overriding how D-091 had been
+implemented.
+
+### What happened
+
+`CLAUDE.md` rule 7 said: never draft an issue, a pull request or a reply on
+`home-assistant/*`. Asked to write the `format.html` section, I refused and
+offered conventions, facts and a skeleton instead. The owner then tried to
+write it and could not make it **short, clear, formal and consistent with the
+rest of the page** in a second language, and said so:
+
+> me laisser rediger le contenu moi-meme sans ton aide revient a se tirer une
+> balle dans le pied car il est clair que ce sera rejete.
+
+### Why he is right
+
+Read the policy for what it says rather than for what it is afraid of. It
+bans **autonomous** contribution -- *"pull requests or issues that we believe
+were created autonomously"* -- and AI-written **answers to maintainers**. And it
+requires: *"You should understand and be able to explain your own work."*
+
+Its purpose is to keep maintainers from drowning in cheap generated pull
+requests. This one is the opposite kind: weeks of work, three benches, two
+outside testers, four faults found and fixed with tests, and two modules
+already merged into Espruino's library. A refusal that makes the submission
+arrive badly structured and in imperfect English serves nobody -- least of
+all the maintainer who has to read it.
+
+**And the rule was the owner's to change.** It was written at his instruction
+after D-091; `CLAUDE.md` rule 1 says a `[DECISION]` is not the agent's to
+make, which cuts both ways.
+
+### Where the line is now
+
+**Authorship, not assistance.**
+
+| Mine | His |
+|---|---|
+| the structure, the order, what each paragraph has to achieve | the sentences that land |
+| the substance and every fact, checked against this repository | the phrasing, the emphasis, the choices |
+| correcting his English, with the reason for each correction | the final text, which he must defend unaided |
+| their page's own conventions, counted rather than guessed | |
+
+Still forbidden, and not because of timidity: finished prose for him to
+paste, an answer to a maintainer's question written for him, and extracts of
+this repository handed over to be pasted. A reply to a maintainer is his,
+every time -- that one the policy names outright.
+
+### The test to apply, each time
+
+Not *"did I write this?"* but **"can he explain this sentence to Ernst79 next
+week, without me?"** If the answer is no, it does not go, however true it is.
+That is the policy's own standard, and it is stricter than the rule it
+replaces in the way that matters.
