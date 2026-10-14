@@ -34,10 +34,18 @@
   "ci": {
     "comments": 0,
     "state": "success",
-    "title": "6dc3391 main",
-    "updated": "2026-10-14T13:05:21Z",
-    "url": "https://github.com/yerpj/bthome-writable/actions/runs/38568910194",
+    "title": "cc1d8a7 main",
+    "updated": "2026-10-14T14:31:48Z",
+    "url": "https://github.com/yerpj/bthome-writable/actions/runs/38581327477",
     "why": "our own CI, last run"
+  },
+  "espruino#8024": {
+    "comments": 25,
+    "state": "open",
+    "title": "bthome-writable, the design thread",
+    "updated": "",
+    "url": "https://github.com/orgs/espruino/discussions/8024",
+    "why": "the design discussion"
   },
   "espruino/EspruinoDocs#761": {
     "comments": 3,

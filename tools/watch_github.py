@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import re
 import subprocess
 import urllib.error
 import urllib.request
@@ -42,6 +43,30 @@ WATCHLIST: tuple[tuple[str, str, int, str], ...] = (
 )
 
 OURS = "yerpj/bthome-writable"
+
+DISCUSSION = "https://github.com/orgs/espruino/discussions/8024"
+"""The design discussion, which the REST API does not serve.
+
+It is an *organization* discussion rather than a repository one, so neither
+`/repos/.../discussions` nor the repository GraphQL field reaches it. The
+comment count is therefore read off the rendered page, which is fragile by
+nature: if GitHub renames that class the count reads zero rather than
+wrong, and the table says `unreadable` instead of inventing a number.
+"""
+
+
+def discussion_comments() -> int | None:
+    request = urllib.request.Request(DISCUSSION)
+    request.add_header("User-Agent", "bthome-writable-watch")
+    try:
+        with urllib.request.urlopen(request) as response:
+            page = response.read().decode("utf-8", "replace")
+    except (urllib.error.URLError, TimeoutError):
+        return None
+    # The class name alone appears in scripts and templates too: 34 hits for
+    # 25 comments. Only an opening tag that carries it is one.
+    found = len(re.findall(r'class="[^"]*js-comment-body[^"]*"[^>]*>', page))
+    return found or None
 
 
 def token() -> str:
@@ -87,6 +112,16 @@ def look() -> dict[str, dict]:
             "title": item["title"],
             "url": item["html_url"],
         }
+
+    count = discussion_comments()
+    found["espruino#8024"] = {
+        "why": "the design discussion",
+        "state": "open" if count else "unreadable",
+        "comments": count or 0,
+        "updated": "",
+        "title": "bthome-writable, the design thread",
+        "url": DISCUSSION,
+    }
 
     runs = api(f"/repos/{OURS}/actions/runs?per_page=1")
     assert isinstance(runs, dict)
