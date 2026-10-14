@@ -1,0 +1,90 @@
+{
+  "Bluetooth-Devices/bthome-ble#146": {
+    "comments": 5,
+    "state": "open",
+    "title": "Add 2-way communication for acknowledgement and control?",
+    "updated": "2026-10-14T14:28:56Z",
+    "url": "https://github.com/Bluetooth-Devices/bthome-ble/issues/146",
+    "why": "the thread that asked for this"
+  },
+  "Bluetooth-Devices/bthome-ble#257": {
+    "comments": 0,
+    "state": "open",
+    "title": "BTHome should define an Object Id for supported events",
+    "updated": "2025-08-13T08:46:41Z",
+    "url": "https://github.com/Bluetooth-Devices/bthome-ble/issues/257",
+    "why": "a capability declaration, uplink"
+  },
+  "Bluetooth-Devices/bthome-ble#287": {
+    "comments": 3,
+    "state": "open",
+    "title": "Shelly BLU Distance - add control over range and interval",
+    "updated": "2025-10-28T07:11:46Z",
+    "url": "https://github.com/Bluetooth-Devices/bthome-ble/issues/287",
+    "why": "Shelly BLU range and interval"
+  },
+  "Bluetooth-Devices/bthome-ble#424": {
+    "comments": 0,
+    "state": "open",
+    "title": "feat: parse the writable entries object (0xFF)",
+    "updated": "2026-10-14T08:26:46Z",
+    "url": "https://github.com/Bluetooth-Devices/bthome-ble/pull/424",
+    "why": "the parser (D-098)"
+  },
+  "ci": {
+    "comments": 0,
+    "state": "success",
+    "title": "6dc3391 main",
+    "updated": "2026-10-14T13:05:21Z",
+    "url": "https://github.com/yerpj/bthome-writable/actions/runs/38568910194",
+    "why": "our own CI, last run"
+  },
+  "espruino/EspruinoDocs#761": {
+    "comments": 3,
+    "state": "merged",
+    "title": "Add AESCCM module",
+    "updated": "2026-10-12T11:00:12Z",
+    "url": "https://github.com/espruino/EspruinoDocs/pull/761",
+    "why": "AESCCM (merged)"
+  },
+  "espruino/EspruinoDocs#762": {
+    "comments": 1,
+    "state": "merged",
+    "title": "Add BTHomeWritable module",
+    "updated": "2026-10-12T08:36:45Z",
+    "url": "https://github.com/espruino/EspruinoDocs/pull/762",
+    "why": "BTHomeWritable (merged)"
+  },
+  "espruino/EspruinoDocs#763": {
+    "comments": 1,
+    "state": "merged",
+    "title": "AESCCM: correct the timing claim and the board table",
+    "updated": "2026-10-12T12:50:13Z",
+    "url": "https://github.com/espruino/EspruinoDocs/pull/763",
+    "why": "the page corrections (merged)"
+  },
+  "home-assistant/bthome.io#82": {
+    "comments": 0,
+    "state": "open",
+    "title": "Add the writable objects declaration object (0xFF)",
+    "updated": "2026-10-14T14:22:16Z",
+    "url": "https://github.com/home-assistant/bthome.io/pull/82",
+    "why": "the object id (D-098)"
+  },
+  "yerpj/bthome-writable#1": {
+    "comments": 4,
+    "state": "closed",
+    "title": "AES-CCM wrapper for boards missing AES.encrypt",
+    "updated": "2026-10-10T11:23:48Z",
+    "url": "https://github.com/yerpj/bthome-writable/issues/1",
+    "why": "@enaon, AES-CCM on a board without AES"
+  },
+  "yerpj/bthome-writable#2": {
+    "comments": 1,
+    "state": "closed",
+    "title": "ON-OFF-ON",
+    "updated": "2026-10-09T15:24:34Z",
+    "url": "https://github.com/yerpj/bthome-writable/issues/2",
+    "why": "@enaon, ON-OFF-ON"
+  }
+}

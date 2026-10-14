@@ -5507,3 +5507,62 @@ Not *"did I write this?"* but **"can he explain this sentence to Ernst79 next
 week, without me?"** If the answer is no, it does not go, however true it is.
 That is the policy's own standard, and it is stricter than the rule it
 replaces in the way that matters.
+
+## D-098 -- the submission is filed  [DECISION, ruled]
+
+**Status:** 2026-10-14. What the whole project was for, since D-048 settled
+the shape in September.
+
+| | |
+|---|---|
+| [bthome.io#82](https://github.com/home-assistant/bthome.io/pull/82) | the object id. One file, `src/format.html`, +35/-0, mergeable clean |
+| [bthome-ble#424](https://github.com/Bluetooth-Devices/bthome-ble/pull/424) | the parser. Three files, their suite 153 -> 157, none of theirs modified |
+| [bthome-ble#146](https://github.com/Bluetooth-Devices/bthome-ble/issues/146) | a comment on the thread that asked for this in 2024, pointing at both |
+
+All three written by the owner, in his words, under the arrangement of D-097.
+
+### What it says, and what it deliberately does not
+
+It asks for **one object id** and says in the same breath that the number is
+theirs to pick -- `0xE0` became `0x3B` in April, so the concession is not
+theoretical. It claims the declaration breaks nothing, which is true and is
+the first thing a maintainer wants to know. It does not propose the GATT
+profile, does not ask for anything to be built into core, and does not
+mention a timeline.
+
+Three claims carry it, and each was checked the day it was written: the
+parser change takes their suite from 153 to 157 with nothing of theirs
+touched; both ends are implemented, the device side merged into Espruino's
+module library two days earlier; and it has run on three benches, two of
+them other people's.
+
+### What the iteration cost, and what it caught
+
+Nine rounds on the `format.html` section and seven on the pull request body.
+The agent held the structure, the facts and the English; the owner wrote
+every sentence. What that process caught, none of it language:
+
+- **`Byte 3..n` where the ids start at byte 2.** An off-by-one in the wire
+  format, in the summary of a format proposal.
+- **`0x1E` presented as a lamp.** Their own table reads *light detected* --
+  a sensor. Changed to `0x10 power` and `0x1B garage door`, which are theirs.
+- **"Today it skips the declaration"** -- the opposite of true, and it would
+  have dissolved the argument for the parser pull request in one sentence.
+- **"Writable objects are not advertised"** -- as written it denied the object
+  the section was introducing. It is the *values* that are never advertised.
+- **"Nothing in Home Assistant offers this"** -- falsifiable in one reply, since
+  LED BLE controls BLE lights and BTHome's own Espruino page says so.
+
+And one the owner caught in the agent, worth more than the rest: **#257 is
+not our declaration.** It had been described that way since D-091, in the
+brief he was about to speak from. He read the issue instead of its title.
+
+### What happens now
+
+Nothing, for a while, and that is expected: `bthome.io` #72 has been open
+since March and #80 had no maintainer comment for two weeks. The two pull
+requests of April 2026 merged in two days, but they were from a known
+contributor adding an uplink object.
+
+**Replies are the owner's**, by their policy and by D-097. The agent checks
+facts and reads drafts; it does not answer Ernst79.

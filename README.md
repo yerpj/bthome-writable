@@ -55,6 +55,10 @@ standardisation dossier for the BTHome maintainers.
 - `spec/PROTOCOL.md` — the protocol. Normative.
 - `spec/decisions.md` — every resolved question, with the measurement or the
   ruling that resolved it.
+- `docs/data/github-watch.json` — the state of what this project has proposed
+  in other people's repositories, refreshed by `python -m tools.watch_github`.
+  Committed so that its git history is the history of how the submission was
+  received.
 - `spec/bthome-dossier.md` — material for the eventual submission to the
   BTHome maintainers: prior art, the actuator proposal, objections and evidence.
   [`spec/bthome-brief.md`](spec/bthome-brief.md) is the two pages to speak
