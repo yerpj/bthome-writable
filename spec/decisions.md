@@ -5621,3 +5621,61 @@ honest as its last assumption.
 states its own total, use that one, and say so when it cannot be had.
 The previous readings were not wrong because the regex was wrong -- they were
 wrong because nobody asked the page how many items it had.
+
+## D-100 -- the repository was dressed for a reviewer, not for a user
+
+**Status:** 2026-10-14, after Gordon Williams sent people to it.
+
+He wrote on bthome-ble#146 that he had wanted this feature since 2023 and has
+the integration running at home. That sentence brings visitors, and what they
+found was a README opening on a directory table, the words *draft /
+pre-release*, and the history of how protocol version 1 became version 2. The
+GitHub description still read *"2-way version of bthome module, for Espruino"*
+-- true of the module, wrong about the integration, and silent about Home
+Assistant. No topics, no release, no tag.
+
+### What decided the shape
+
+`hacs.json` carries `render_readme: true`. **The README is therefore the page
+HACS shows the person deciding whether to install this**, which settles the
+argument about who it is written for. It now opens with what the thing does,
+the `try-it.png` figure, a table from declared object to Home Assistant entity,
+what you need, and four install steps. Everything that was there before is
+still there, below a horizontal rule, under *For contributors*.
+
+Two details that are not cosmetic:
+
+- the figure is referenced by **absolute `raw.githubusercontent` URL**, because
+  HACS renders the README outside the repository and a relative path resolves
+  to nothing there;
+- the release is **not** marked pre-release, because HACS hides those by
+  default and the point of tagging was to be found. `0.1.0` says what needs
+  saying, and the notes say the wire format is not frozen.
+
+Espruino is named in two chosen places -- a *Devices* section and an
+acknowledgement to Gordon Williams and @enaon -- and nowhere in the first
+screen. The owner's instruction: mention it where it is not necessary, no; drop
+it, also no, since it was the most solid thing to lean on.
+
+### The guard fired, and that is the finding
+
+Setting the topics made the `topics` exemption of D-085 undeserved, and the
+step added there failed the build within the hour, naming the word to delete.
+It was removed, along with its now-dead branch of shell.
+
+D-085 argued that *"a note that says remove this when the brands PR lands is a
+note that will be read once, by whoever wrote it"*. Eight days later the same
+agent set the topics and did not think of the ignore list; CI did. **A guard
+that has caught something is worth more than the argument that it would**, and
+the remaining `brands` exemption now stands on evidence rather than on
+intention.
+
+### Still open
+
+The screenshot. A person decides on an image of the Home Assistant device page
+with its writable entities, and no such image exists -- not in the repository,
+and not in the discussion either: the only attachment there is this project's
+own `try-it.png`, byte-identical. It needs the bench, so it is the owner's
+(reminder set for 2026-10-15 noon). Twelve replies on that thread are
+collapsed and could not be read, so an attachment inside them would have been
+missed -- and would be someone else's installation anyway.

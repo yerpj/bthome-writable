@@ -76,54 +76,36 @@ jobs:
         uses: hacs/action@22.5.0
         with:
           category: integration
-          # Two checks are ignored because neither can be satisfied from
-          # inside this repository today:
+          # One check is ignored, because it cannot be satisfied from inside
+          # this repository:
           #
           #   brands  the domain is not registered in home-assistant/brands.
           #           That needs a pull request there -- task T4.3.
-          #   topics  the GitHub repository has no topics set. That is a
-          #           repository setting, not a file.
           #
-          # Both are release work, not defects, and a permanently red tick
+          # It is release work, not a defect, and a permanently red tick
           # teaches people to stop reading ticks. **The step below is what
-          # stops this being forgotten**: it fails as soon as either check
-          # could pass, naming the word to delete from this line. Every other
-          # HACS check stays on.
-          ignore: brands topics
+          # stops this being forgotten**: it fails as soon as the check could
+          # pass, naming the word to delete from this line. Every other HACS
+          # check stays on.
+          #
+          # `topics` was ignored here too until 2026-10-14, when the repository
+          # got its topics -- and the step below is how we found out, within
+          # the hour. It does work.
+          ignore: brands
 
       # An ignore that nobody revisits is how a release ships without its brand
-      # assets. So this asks, on every run, whether the two exemptions above are
-      # still deserved -- and breaks the build the moment one is not.
+      # assets. So this asks, on every run, whether the exemption above is
+      # still deserved -- and breaks the build the moment it is not.
       #
       # It never fails for being unable to answer: a rate-limited API or a
       # network blip says "not judging" and passes. The only red it produces is
       # the one worth acting on.
-      - name: The ignored HACS checks are still necessary
+      - name: The ignored HACS check is still necessary
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           stale=0
           domain=$(jq -r .domain custom_components/*/manifest.json)
-
-          topics=$(curl -sS --max-time 20 \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/$GITHUB_REPOSITORY" \
-            | jq -r '(.topics // []) | length')
-          case "$topics" in
-            ''|*[!0-9]*)
-              echo "::notice::could not read the repository topics; not judging"
-              ;;
-            0)
-              echo "topics: still none, so ignoring the check is still right"
-              ;;
-            *)
-              echo "::error::This repository now has $topics topic(s), so the"
-              echo "::error::HACS 'topics' check would pass. Remove 'topics'"
-              echo "::error::from the ignore: list in this workflow."
-              stale=1
-              ;;
-          esac
 
           brands="https://raw.githubusercontent.com/home-assistant/brands"
           code=$(curl -sS --max-time 20 -o /dev/null -w '%{http_code}' \

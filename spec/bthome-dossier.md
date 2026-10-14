@@ -235,14 +235,16 @@ Claims to avoid, because they were wrong once in public:
   to maintainers be the contributor's own. This dossier is material to read and
   internalise, never text to paste (D-091).
 - **Draw an icon**, then **register `bthome_writable` in
-  `home-assistant/brands`** (a pull request there) and **give the GitHub
-  repository topics** (a settings field). `docs/brand/` holds the reference and
-  the specification; HACS also reads
-  `custom_components/bthome_writable/brand/icon.png`, which is the cheaper half. HACS
-  checks both and this repository passes neither, so both are currently
-  `ignore`d in `.github/workflows/ci.yml`. Neither is a defect; both are release
-  work. The workflow fails as soon as either *could* pass, naming the word to
-  delete -- so the exemptions remove themselves rather than relying on anyone
+  `home-assistant/brands`** (a pull request there). `docs/brand/` holds the
+  reference and the specification; HACS also reads
+  `custom_components/bthome_writable/brand/icon.png`, which is the cheaper half.
+  This is the one HACS check the repository still cannot pass, so it is
+  `ignore`d in `.github/workflows/ci.yml`. It is not a defect; it is release
+  work. The workflow fails as soon as it *could* pass, naming the word to
+  delete -- so the exemption removes itself rather than relying on anyone.
+  **The repository topics, exempted the same way, were set on 2026-10-14 and
+  the guard caught it within the hour** (D-100), which is the evidence that this
+  arrangement works rather than the hope that it would
   remembering (D-085).
 - ~~Measure what the mechanism costs a coin cell~~ — **out of scope** (D-081,
   2026-10-03). The advertising interval belongs to the device's application, as
