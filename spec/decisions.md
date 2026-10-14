@@ -5566,3 +5566,58 @@ contributor adding an uplink object.
 
 **Replies are the owner's**, by their policy and by D-097. The agent checks
 facts and reads drafts; it does not answer Ernst79.
+
+## D-099 -- "nothing new on the discussion" was said about a partial view
+
+**Status:** 2026-10-14, found by the owner.
+
+He quoted Gordon -- *"when you do submit it to BTHome, please let us know where,
+so we can show some support"* -- and the sentence appeared in none of the
+snapshots of the discussion taken since 2026-10-08. Asked where it came from,
+he answered: **you have to expand the thread to see it.**
+
+### What was wrong
+
+GitHub collapses long discussions behind *"Show N previous replies"*, and the
+replies are fetched only when a reader clicks. Counting the comment bodies in
+the fetched HTML therefore undercounts, and the page says so in its own
+header if anyone reads it:
+
+| snapshot | header says | bodies in the HTML |
+|---|---|---|
+| 2026-10-08 | 6 comments, 22 replies = **28** | 23 |
+| 2026-10-12 | 7 comments, 28 replies = **35** | 24 |
+| 2026-10-14 | 8 comments, 28 replies = **36** | 25 |
+
+On the 12th, *"24 comments, nothing new"* was reported to the owner. The
+discussion held 35 items, and one of the ones not shown was a maintainer
+asking to be told where the submission would land -- which is also the most
+actionable thing anyone has said in that thread.
+
+### Why no API saved us
+
+`espruino#8024` is an **organization** discussion. `/repos/.../discussions`
+does not reach it, and GraphQL answers that the organization has zero
+discussions. Scraping was not laziness; it is the only route. What was lazy
+was counting what the page chose to render and calling it the total.
+
+### Fixed
+
+`tools/watch_github.py` now reads **GitHub's own header count**, which
+includes what the page will not show, and reports how many replies are
+collapsed so a reader knows the bodies are incomplete. 36 items, 12 hidden.
+
+Two bugs on the way to that, both worth naming because they are the same
+species as the fault: the first version counted occurrences of a CSS class
+rather than opening tags and found 34 comments where there were 25; the
+second matched against HTML that had not been unescaped, so the separator in
+*"8 comments &middot; 28 replies"* was eight characters where the pattern
+expected one, and the thread read as unreadable. A scraper is only ever as
+honest as its last assumption.
+
+### The rule this leaves
+
+**A count you computed is not a count the source published.** Where a source
+states its own total, use that one, and say so when it cannot be had.
+The previous readings were not wrong because the regex was wrong -- they were
+wrong because nobody asked the page how many items it had.

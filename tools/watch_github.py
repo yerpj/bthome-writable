@@ -18,6 +18,7 @@ and no token in the environment. Read-only: this never writes to GitHub.
 from __future__ import annotations
 
 import argparse
+import html
 import json
 from pathlib import Path
 import re
@@ -45,28 +46,44 @@ WATCHLIST: tuple[tuple[str, str, int, str], ...] = (
 OURS = "yerpj/bthome-writable"
 
 DISCUSSION = "https://github.com/orgs/espruino/discussions/8024"
-"""The design discussion, which the REST API does not serve.
+"""The design discussion, which no API serves.
 
-It is an *organization* discussion rather than a repository one, so neither
-`/repos/.../discussions` nor the repository GraphQL field reaches it. The
-comment count is therefore read off the rendered page, which is fragile by
-nature: if GitHub renames that class the count reads zero rather than
-wrong, and the table says `unreadable` instead of inventing a number.
+It is an *organization* discussion: `/repos/.../discussions` does not reach it,
+and GraphQL reports the organization as having none. The rendered page is the
+only source.
+
+**And the page hides things.** Long threads collapse their replies behind
+"Show N previous replies", so counting the comment bodies present in the HTML
+undercounts: on 2026-10-12 that gave 24 when the discussion held 35, and a
+reply from Gordon asking to be told where the submission landed was inside the
+collapsed part. Several readings of "nothing new on the discussion" were made
+on that partial view and were wrong (D-099).
+
+So what is counted is GitHub's own header -- "8 comments · 28 replies" -- which
+is authoritative and includes what the page will not show.
 """
 
+HEADER_COUNT = re.compile(r"(\d+)\s+comments?\s*.\s*(\d+)\s+repl")
 
-def discussion_comments() -> int | None:
+
+def discussion_items() -> tuple[int | None, int]:
+    """(total items, replies the page is hiding). None when unreadable."""
     request = urllib.request.Request(DISCUSSION)
     request.add_header("User-Agent", "bthome-writable-watch")
     try:
         with urllib.request.urlopen(request) as response:
             page = response.read().decode("utf-8", "replace")
     except (urllib.error.URLError, TimeoutError):
-        return None
-    # The class name alone appears in scripts and templates too: 34 hits for
-    # 25 comments. Only an opening tag that carries it is one.
-    found = len(re.findall(r'class="[^"]*js-comment-body[^"]*"[^>]*>', page))
-    return found or None
+        return None, 0
+    # Unescape first: the separator in "8 comments &middot; 28 replies" is an
+    # entity, and a pattern expecting one character between the numbers finds
+    # eight. This is what made the first version report the thread unreadable.
+    text = html.unescape(re.sub(r"<[^>]+>", " ", page))
+    match = HEADER_COUNT.search(text)
+    if not match:
+        return None, 0
+    hidden = sum(int(n) for n in re.findall(r"Show (\d+) previous repl", text))
+    return int(match.group(1)) + int(match.group(2)), hidden
 
 
 def token() -> str:
@@ -113,9 +130,9 @@ def look() -> dict[str, dict]:
             "url": item["html_url"],
         }
 
-    count = discussion_comments()
+    count, hidden = discussion_items()
     found["espruino#8024"] = {
-        "why": "the design discussion",
+        "why": f"the design discussion ({hidden} replies collapsed on the page)",
         "state": "open" if count else "unreadable",
         "comments": count or 0,
         "updated": "",
