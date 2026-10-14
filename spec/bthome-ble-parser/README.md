@@ -155,6 +155,22 @@ The truncated case needs no new code: the loop's existing
 promises more than the packet holds. The test is there so the behaviour is
 pinned rather than assumed.
 
+## Applying it
+
+`writable-entries.patch` in this directory is the whole change — the two source
+edits and the four tests — against the repository as it stands. It was checked
+against a real clone, not against the installed package:
+
+```sh
+git clone https://github.com/<you>/bthome-ble.git && cd bthome-ble
+git checkout -b writable-entries
+git apply /path/to/writable-entries.patch
+pytest -o addopts="" tests/          # 157 pass
+```
+
+`-o addopts=""` turns off the coverage flags their `pyproject.toml` adds, which
+need `pytest-cov`; with it installed, plain `pytest` works.
+
 ## This was applied and run before being offered
 
 Against `bthome-ble` 3.24.0, which is what `pyproject.toml` says upstream is
@@ -162,13 +178,12 @@ today. The change was made to a copy of the installed library and tested with
 **their own suite**, not only ours:
 
 ```
-tests/test_parser_v2.py   118 passed      (their file, unmodified)
-the four tests above        4 passed
-                          122 passed in 0.32s
+a copy of the installed 3.24.0, their test_parser_v2.py     122 passed
+a fresh clone of the repository, their whole tests/         157 passed
 ```
 
-Their suite passing unmodified is the claim worth making in the pull request:
-no existing object changes behaviour.
+Their suite passing is the claim worth making in the pull request: no existing
+object changes behaviour.
 
 One honest note on the reviewer's likely first question — *why a tuple of raw
 object IDs rather than something richer?* Because the parser cannot know more
