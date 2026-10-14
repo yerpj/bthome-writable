@@ -158,7 +158,12 @@ pinned rather than assumed.
 ## Applying it
 
 `writable-entries.patch` in this directory is the whole change — the two source
-edits and the four tests — against the repository as it stands. It was checked
+edits and the four tests — against the repository as it stands. **It is the
+artefact; the code quoted above is for reading.** There was briefly a third
+copy of the tests as a `.py` file here, which our own linter then judged by our
+import conventions rather than theirs — a file written for someone else's
+repository has no business being linted by ours, and a third copy of anything
+is a third thing to keep in step. It was checked
 against a real clone, not against the installed package:
 
 ```sh
