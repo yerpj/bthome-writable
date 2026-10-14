@@ -40,8 +40,10 @@ write         1E 01  ->  2FAA0001         one object, one characteristic
 ## It answers requests already made here
 
 - **[bthome-ble #257](https://github.com/Bluetooth-Devices/bthome-ble/issues/257)**
-  — *"BTHome should define an Object Id for supported events"*: our
-  declaration, asked for independently in 2025 for a narrower case.
+  — *"BTHome should define an Object Id for supported events"*: a device
+  declaring its own capability in advertising, so a receiver stops guessing.
+  Uplink, and a bitmask rather than our list — the same shape of need, not
+  the same object.
 - **[#146](https://github.com/Bluetooth-Devices/bthome-ble/issues/146)**
   two-way communication — Ernst79: *"we will welcome contributions from others
   if they want to add this somehow."* And

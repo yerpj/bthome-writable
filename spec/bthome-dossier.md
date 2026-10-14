@@ -32,8 +32,12 @@ would not have been seen (D-091).
   — *BTHome should define an Object Id for supported events* (axa88,
   2025-08-13, open, no comments). A device should be able to declare which
   events it supports instead of every receiver assuming all of them.
-  - **This is the same move as `0xFF`, asked for independently and a year
-    earlier**, for a narrower case. Worth leading with: the proposal is a
+  - **It is not `0xFF`, and saying so was an overstatement** (corrected
+    2026-10-14, by the owner reading the issue rather than its title). axa88
+    asks for an 8-bit mask of the *event types a device emits*; no writing is
+    involved. What it shares is the shape: a device declaring its own
+    capability in advertising so that a receiver stops assuming. Cite it for
+    the pattern, never as the same request. Worth mentioning: the proposal is a
     general answer to a question the project has already been asked, not a
     concept invented here.
 - **[bthome-ble #146](https://github.com/Bluetooth-Devices/bthome-ble/issues/146)**

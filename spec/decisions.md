@@ -4958,7 +4958,16 @@ been seen.
 events it supports, rather than every receiver assuming all of them.
 
 That is **our declaration, asked for independently and a year earlier**, for
-a narrower case. It belongs in the dossier: it turns the proposal from *here
+a narrower case.
+
+> **Corrected 2026-10-14.** It is not. The owner read the issue instead of its
+> title and asked what the link actually was: axa88 wants an 8-bit mask of the
+> *event types a device emits*, so that Home Assistant stops creating an entity
+> for every possible button event. Uplink, a bitmask, no writing. What it shares
+> with `0xFF` is the shape of the need -- a device declaring its own capability
+> in advertising so a receiver stops assuming -- and that is all it may be cited
+> for. Claiming more was a sentence the owner would have had to defend in front
+> of the person who wrote the issue. It belongs in the dossier: it turns the proposal from *here
 is a concept we invented* into *here is a general answer to something you
 have already been asked for*. Added to section 1.
 
