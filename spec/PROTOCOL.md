@@ -76,8 +76,12 @@ The declaration is one element of the BTHome service data:
 - **Repetition is the price of that.** Thirty identical lights cost thirty bytes
   to declare, because an entry *is* its position. Pairs of `<id><count>` would
   compress it, at the cost of a form to parse and a number to derive; the
-  advertising payload runs out at around twenty-five entries either way, so the
-  packet is the ceiling long before the format is. If devices with many
+  advertising payload runs out first either way, so the packet is the ceiling
+  long before the format's 255 is. **Measured**, a board accepts 17 to 22 bytes
+  of service data (`docs/measurements.md` §5), and three of those go to the
+  info byte and packet id, two to this object's own id and count, two more to
+  the settings revision when any entry is readable — so **13 to 17 entries**,
+  against a theoretical 19. If devices with many
   identical controls turn out to exist, a compressed declaration wants its own
   object ID rather than a reinterpretation of this one.
 - A declaration with no entries is legal and means "nothing writable"; a device

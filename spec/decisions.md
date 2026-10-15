@@ -5901,10 +5901,19 @@ lights spends thirty bytes saying so, because an entry **is** its position.
 
 Positional addressing buys a declaration with nothing to parse beyond a list
 of ids, and an entry number that needs no derivation. Pairs of `<id><count>`
-would compress it and cost both of those. The advertising payload runs out at
-roughly twenty-five entries either way, so the packet, not the format, is the
-ceiling -- and a device with thirty identical controls has an advertising
-problem before it has a declaration problem.
+would compress it and cost both of those. The advertising payload runs out
+first either way, so the packet, not the format, is the ceiling -- and a device
+with thirty identical controls has an advertising problem before it has a
+declaration problem.
+
+**The first version of this paragraph said "around twenty-five entries", and
+nobody had measured it.** §5 of `docs/measurements.md` has: 17 to 22 bytes of
+service data accepted, depending on board and firmware. Take three for the
+info byte and packet id, two for this object's id and count, two for the
+settings revision when any entry is readable, and the real figure is **13 to
+17**, against a theoretical 19. The number went into the specification and into
+the owner's public reply before anyone checked it -- the exact failure D-099
+and D-101 are about, committed in the act of writing them up.
 
 If such devices turn out to exist, a compressed declaration wants **its own
 object ID**, not a reinterpretation of this one: the same bytes meaning two
