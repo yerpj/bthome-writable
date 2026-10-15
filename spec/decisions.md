@@ -5679,3 +5679,75 @@ own `try-it.png`, byte-identical. It needs the bench, so it is the owner's
 (reminder set for 2026-10-15 noon). Twelve replies on that thread are
 collapsed and could not be read, so an attachment inside them would have been
 missed -- and would be someone else's installation anyway.
+
+## D-101 -- the objection that was answered by a line of specification
+
+**Status:** 2026-10-15. `bthome-ble#146` took eight comments in a day, between
+the owner, Gordon Williams and **@pvvx** -- who writes the custom firmware a
+good part of the BTHome device population runs, so his is not a passing remark.
+
+### What he objected to
+
+1. **Energy.** A GATT attribute table is transferred on connection; on a
+   CR2032, transactions every 12-20 ms sag the voltage faster than the cell
+   recovers, so fewer characteristics is cheaper. One characteristic per
+   writable entry is therefore the wrong shape.
+2. **Instead**: a single characteristic, all commands written to it, object id
+   in the payload, several commands per write. Extended advertising reaches
+   1650 bytes on BT 5.4, so do not design around BT 4.2 -- *"forget about the
+   outdated Bluez/Bleak"*.
+3. **And later**: *"It is not very clear why record indices should be
+   transmitted in a BLE beacon at all if you are establishing a connection."*
+
+### What actually answered him
+
+Not the energy argument. Gordon took that one -- seven years of selling
+CR2032 devices, customers at 7.5 ms intervals with 30+ characteristics, no such
+failure -- and asked what backed the claim.
+
+What ended the design question was **one line of `PROTOCOL.md` §2.1**: *the same
+object ID MAY appear several times*; `FF 02 1E 1E` is a device with two lamps,
+and an entry is identified by its position in the list. A single characteristic
+taking object-prefixed writes **cannot address the second lamp.** The write
+payload already carries the object id, so that variant saves no format and
+loses the addressing. It is also what version 1 did (D-048), which Gordon
+remembered independently and said in the thread before the owner did.
+
+The third objection was answered by turning it around: reading the declaration
+over a connection means connecting to *every* BTHome device to learn whether it
+has anything writable, and connecting again after each firmware change. In
+advertising, a receiver with nothing to write never connects at all -- which
+serves his own energy argument better than his proposal does.
+
+### Where it ended
+
+He answered that the behaviour described -- the table read once and then held
+by the host -- *"is not observed when using standard BT adapters and operating
+systems"*, only with custom adapter firmware, where the same transaction is
+*"hundreds of times shorter"*. That is a claim about BlueZ, not about the
+declaration: **the objection had moved off the thing being proposed.** The
+owner's ruling was not to reply -- *"Je ne vais pas répondre, dans ce cas"* --
+because answering would argue the quality of the host stack in front of the
+people who maintain it, with Gordon better placed for it either way.
+
+### Two things kept for next time
+
+- **A number needs its conditions attached.** The 1.7 s connection of D-049 was
+  quoted as a bench figure; it is through an **ESP32 Bluetooth proxy**, which
+  adds a hop. It is not the floor of a local adapter, and quoting it as one
+  invites exactly the answer it got.
+- **The cache claim is refutable from this repository, and the card was not
+  played.** BlueZ does hold the table: D-012 is a write vanishing silently
+  because BlueZ kept a *stale* cache across restarts of Home Assistant. Held in
+  reserve on purpose -- it rebuts a side claim at the cost of reopening a
+  settled thread.
+
+### The reusable part
+
+An engineering objection was met by a *specification* fact, and that is why it
+closed. Energy budgets are arguable, measurable both ways, and endless between
+two people with different hardware. **An addressing impossibility is not
+arguable**: either the second lamp has an address or it does not. When an
+objection proposes an alternative, the cheapest refutation is a case the
+alternative cannot express -- and it should be looked for before any
+measurement is quoted.
