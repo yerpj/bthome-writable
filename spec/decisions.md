@@ -5751,3 +5751,68 @@ arguable**: either the second lamp has an address or it does not. When an
 objection proposes an alternative, the cheapest refutation is a case the
 alternative cannot express -- and it should be looked for before any
 measurement is quoted.
+
+## D-102 -- a refused write was left sitting where the value belongs  [VERIFY]
+
+**Status:** 2026-10-15, found while building the screenshot device.
+
+§4.3: *"A readable writable characteristic returns the entry's current value."*
+It did not, after a refusal. On the nice!nano, entry 1 held `1e01ff02` -- the
+payload that had just been rejected for trailing bytes -- while the device's
+own state was `1e00`.
+
+### Why it is the same bug as D-092, one branch over
+
+Espruino stores what a central wrote into the characteristic's own value
+**after** `onWrite` returns, so anything published from inside the handler is
+destroyed. D-092 learned that and published the real value one turn of the
+event loop later -- **on the accepted path only.** The `catch` that reports a
+refusal to `onError` returned without publishing anything, so the refused bytes
+stayed.
+
+The fix is that same deferred publish in the rejection branch, four lines.
+
+### What it was worth
+
+On a plain device: a receiver that reads after a refused write is handed the
+value it was refused, which is the one answer guaranteed to be wrong. On a
+sealed device it is worse -- the bytes sitting there are a **write-direction**
+ciphertext, where §4.3 promises a read-direction one, so a careful receiver
+fails to authenticate and a careless one decrypts nonsense.
+
+Neither is a breach: §4.2 means the device applied nothing, and the write
+response already told the receiver it failed. §4.3 also forbids reading back
+merely to confirm a write (D-071). So the window is narrow -- a receiver that
+reads for its own reasons, shortly after a refusal.
+
+### How it is caught from now on
+
+`tools/reject_matrix.py` already wrote the four malformed payloads to a real
+device and checked the state did not move. It now also **reads the
+characteristic back after each one** and fails if the value changed. Before and
+after, on `E4:E8:3E:B2:5D:D1`:
+
+| | before | after |
+|---|---|---|
+| `1f01` wrong object id | read-back `1f01` | `1e00` |
+| `1e` cut short | read-back `1e` | `1e00` |
+| empty write | read-back **empty** | `1e00` |
+| `1e01ff02` trailing bytes | read-back `1e01ff02` | `1e00` |
+
+Four for four, both ways.
+
+### Why no unit test
+
+`handleWrite` is exported but needs the module's internal state and the radio,
+so the pure suites cannot reach it; they cover `parseWrite` and `decodeValue`,
+which were never wrong here. The defect lived in what happens *after* the
+decision, which only a real device shows. This is the case the bench tools
+exist for, and the guard belongs there rather than in a mock that would have
+agreed with the bug.
+
+### Still to do
+
+The module published in **EspruinoDocs** carries the defect: `modules/
+BTHomeWritable.js` there was merged on 2026-10-12, before this was found. A
+pull request updating it is owed, and the regenerated build is already in
+`espruino/dist/espruinodocs/`.

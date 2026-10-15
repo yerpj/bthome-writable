@@ -10,6 +10,12 @@ One BLE connection carries both the entry's characteristic and Espruino's consol
 so this writes each bad payload and reads back what the board printed, which is
 the rejection code the module raised.
 
+It also reads the characteristic itself after every refusal, because §4.3 says a
+read returns the entry's *current* value. Espruino stores what a central wrote
+after `onWrite` returns, so a refusal used to leave its own payload sitting
+there -- correct-looking to anyone who did not check, and on a sealed device a
+write-direction ciphertext where a read-direction one is promised (D-102).
+
     python -m tools.reject_matrix --address C8:80:32:AD:F7:B9
 
 The example sketch must be running with its `onError` hook, which prints
@@ -54,6 +60,17 @@ async def run(address: str, entry: int, state: str) -> int:
         before = await console.ask(state)
         print(f"{state} before: {before}\n")
 
+        # The value the entry holds, to compare against after each refusal.
+        # An entry without a `get` is not readable, and then there is nothing
+        # to check -- a property of the sketch, not a failure.
+        try:
+            held = await client.read_gatt_char(characteristic_uuid(entry))
+        except Exception:  # any read failure means the entry is not readable
+            held = None
+            print("entry is not readable; skipping the read-back check")
+        else:
+            print(f"entry holds {held.hex()}")
+
         for payload_hex, description, expected in CASES:
             console.buffer.clear()
             await client.write_gatt_char(
@@ -69,6 +86,18 @@ async def run(address: str, entry: int, state: str) -> int:
             shown = payload_hex or "(empty)"
             print(f"{'ok  ' if ok else 'FAIL'} {shown:<10} {description}")
             print(f"       expected {expected}, got {got}")
+
+            if held is not None:
+                now = await client.read_gatt_char(characteristic_uuid(entry))
+                if bytes(now) == bytes(held):
+                    print(f"       read-back still {now.hex()}")
+                else:
+                    failures += 1
+                    print(
+                        f"       FAIL: read-back is {now.hex()}, was "
+                        f"{held.hex()} -- §4.3 promises the current value",
+                        file=sys.stderr,
+                    )
 
         # A rejected write applies nothing at all.
         after = await console.ask(state)

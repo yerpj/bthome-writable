@@ -438,6 +438,11 @@ function handleWrite(k, pl) {
   try {
     value = parseWrite(pl, w);
   } catch (e) {
+
+
+
+
+    if (w.readable) setTimeout(() => { guarded(() => publishRead(w)); }, 0);
     if (st.onError) st.onError(e);
     return false;
   }

@@ -635,6 +635,13 @@ function handleWrite(k, pl) {
   try {
     value = parseWrite(pl, w);
   } catch (e) {
+    // The rejected bytes are still on their way into the characteristic's own
+    // value, for the reason the accepted path explains below -- and S4.3
+    // promises a read returns the entry's current value, not the one a
+    // receiver was refused. D-092 republished on the accepted path only, so a
+    // refusal left its own payload sitting there: on a sealed device, a
+    // write-direction ciphertext where a read-direction one is promised.
+    if (w.readable) setTimeout(() => { guarded(() => publishRead(w)); }, 0);
     if (st.onError) st.onError(e);
     return false;
   }
