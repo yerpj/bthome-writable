@@ -1,9 +1,9 @@
 {
   "Bluetooth-Devices/bthome-ble#146": {
-    "comments": 5,
+    "comments": 11,
     "state": "open",
     "title": "Add 2-way communication for acknowledgement and control?",
-    "updated": "2026-10-14T14:28:56Z",
+    "updated": "2026-10-15T11:18:38Z",
     "url": "https://github.com/Bluetooth-Devices/bthome-ble/issues/146",
     "why": "the thread that asked for this"
   },
@@ -27,16 +27,16 @@
     "comments": 0,
     "state": "open",
     "title": "feat: parse the writable entries object (0xFF)",
-    "updated": "2026-10-14T08:26:46Z",
+    "updated": "2026-10-14T17:05:06Z",
     "url": "https://github.com/Bluetooth-Devices/bthome-ble/pull/424",
     "why": "the parser (D-098)"
   },
   "ci": {
     "comments": 0,
     "state": "success",
-    "title": "9df5169 main",
-    "updated": "2026-10-14T14:34:40Z",
-    "url": "https://github.com/yerpj/bthome-writable/actions/runs/38581750365",
+    "title": "2eb0ff9 main",
+    "updated": "2026-10-14T19:36:05Z",
+    "url": "https://github.com/yerpj/bthome-writable/actions/runs/38625045809",
     "why": "our own CI, last run"
   },
   "espruino#8024": {
@@ -72,10 +72,10 @@
     "why": "the page corrections (merged)"
   },
   "home-assistant/bthome.io#82": {
-    "comments": 0,
+    "comments": 2,
     "state": "open",
     "title": "Add the writable objects declaration object (0xFF)",
-    "updated": "2026-10-14T14:22:16Z",
+    "updated": "2026-10-14T19:09:02Z",
     "url": "https://github.com/home-assistant/bthome.io/pull/82",
     "why": "the object id (D-098)"
   },
