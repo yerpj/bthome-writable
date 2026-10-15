@@ -1,9 +1,9 @@
 {
   "Bluetooth-Devices/bthome-ble#146": {
-    "comments": 11,
+    "comments": 24,
     "state": "open",
     "title": "Add 2-way communication for acknowledgement and control?",
-    "updated": "2026-10-15T11:18:38Z",
+    "updated": "2026-10-15T14:08:18Z",
     "url": "https://github.com/Bluetooth-Devices/bthome-ble/issues/146",
     "why": "the thread that asked for this"
   },
@@ -33,14 +33,14 @@
   },
   "ci": {
     "comments": 0,
-    "state": "success",
-    "title": "2eb0ff9 main",
-    "updated": "2026-10-14T19:36:05Z",
-    "url": "https://github.com/yerpj/bthome-writable/actions/runs/38625045809",
+    "state": "in_progress",
+    "title": "2c791c5 main",
+    "updated": "2026-10-15T14:07:44Z",
+    "url": "https://github.com/yerpj/bthome-writable/actions/runs/38748638560",
     "why": "our own CI, last run"
   },
   "espruino#8024": {
-    "comments": 36,
+    "comments": 38,
     "state": "open",
     "title": "bthome-writable, the design thread",
     "updated": "",
@@ -70,6 +70,14 @@
     "updated": "2026-10-12T12:50:13Z",
     "url": "https://github.com/espruino/EspruinoDocs/pull/763",
     "why": "the page corrections (merged)"
+  },
+  "espruino/EspruinoDocs#764": {
+    "comments": 0,
+    "state": "open",
+    "title": "BTHomeWritable: a refused write no longer sits where the value belongs",
+    "updated": "2026-10-15T14:08:22Z",
+    "url": "https://github.com/espruino/EspruinoDocs/pull/764",
+    "why": "the rejected-write fix (D-102)"
   },
   "home-assistant/bthome.io#82": {
     "comments": 2,
