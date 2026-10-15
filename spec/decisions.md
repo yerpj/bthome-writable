@@ -5838,3 +5838,52 @@ it in its own paragraph.
 Nothing about the protocol changed. What changed is that the sentence a
 reviewer needs is in the section a reviewer opens -- which is where the
 misreading started, since the objection linked straight to it.
+
+## D-104 -- extended advertising, as a lead rather than a finding  [VERIFY, not scheduled]
+
+**Status:** 2026-10-15. Noted because it came from the one place nobody was
+looking for good news: the objections on `bthome-ble#146`.
+
+### The claim, and whose it is
+
+@pvvx, arguing about scale, said in passing that his production Home Assistant
+setup runs **about 130 BTHome devices** and that *"all PHY options are used,
+including LE Long Range and extended BLE advertising"*. Earlier in the same
+thread: extended advertising reaches 1650 bytes, in fragments of at most 254,
+and *"BTHome reliably receives and processes packets of 254 bytes in size on a
+BT5.0+ adapter"*.
+
+Unverified here, and from an adversarial exchange. But it is a claim about his
+own deployment, which is the part of his testimony that costs him nothing to
+be honest about -- and it is the only part of the whole exchange that would
+*help* this project.
+
+### Why it would matter
+
+The declaration shares a **31-byte** legacy advertising payload with everything
+else the device says. That ceiling is not theoretical: `mixed-controls.js` had
+to drop the device name from its packet to fit 13 bytes of service data, because
+a nice!nano advertising its own name has room for 5 to 7 (D-046). Every entry
+costs a byte, so a declaration of twenty entries is not reachable today.
+
+If extended advertising carries BTHome service data through the receivers
+people actually run, that ceiling moves by two orders of magnitude, and three
+things change: a declaration can be long, the device can keep its name, and the
+advertising budget stops shaping what a device may offer.
+
+### What would have to be checked first, in this order
+
+1. **The receiving end.** Does Home Assistant deliver extended-advertising
+   BTHome service data -- through BlueZ on a BT5 adapter, and through an
+   ESPHome Bluetooth proxy? The proxy is the likelier limit, and it is what
+   this bench uses.
+2. **The sending end.** Can Espruino advertise on the extended/coded PHY at
+   all? Nothing in this repository touches it, `NRF.setAdvertising` is used
+   with legacy options only, and the answer may be board and firmware
+   dependent.
+3. **The cost.** Extended advertising is not free on a coin cell, which is the
+   argument its source was making in the first place.
+
+Only then is it worth asking whether anything in §2.1 should change. **Nothing
+does today**, and the proposal in front of BTHome deliberately fits in the
+legacy payload -- which is part of why it asks for so little.
