@@ -10,7 +10,7 @@ never advertised back.
 [![HACS: custom repository](https://img.shields.io/badge/HACS-custom%20repository-41BDF5.svg)](https://hacs.xyz/docs/faq/custom_repositories)
 [![CI](https://github.com/yerpj/bthome-writable/actions/workflows/ci.yml/badge.svg)](https://github.com/yerpj/bthome-writable/actions/workflows/ci.yml)
 
-![What it needs, and what then happens on the air](https://raw.githubusercontent.com/yerpj/bthome-writable/main/docs/figures/try-it.png)
+![A BTHome device with writable controls in Home Assistant](https://raw.githubusercontent.com/yerpj/bthome-writable/main/docs/screenshots/device-page.png)
 
 ## What you get in Home Assistant
 
@@ -62,6 +62,8 @@ version: installing without HACS, and what to do when a control misbehaves.
 > not yet assigned.
 
 ## How it works, and why
+
+![What it needs, and what then happens on the air](https://raw.githubusercontent.com/yerpj/bthome-writable/main/docs/figures/try-it.png)
 
 - [`docs/first-use-case.md`](docs/first-use-case.md) — the first working
   end-to-end demonstration, with diagrams, timings and what broke. Start here

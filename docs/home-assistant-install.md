@@ -20,6 +20,11 @@ Copy `custom_components/bthome_writable/` from this repository into your
 
 </details>
 
+Both integrations then sit side by side, and a device served by both
+appears once:
+
+![BTHome and BTHome Writable, installed side by side](https://raw.githubusercontent.com/yerpj/bthome-writable/main/docs/screenshots/integrations.png)
+
 ## Add your device
 
 You should not have to. A device advertising a writable declaration is
