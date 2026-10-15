@@ -197,6 +197,14 @@ One randomly generated 128-bit base; the second 16-bit group is `0000` for the
 service and the entry number *k*, in hexadecimal, for entry *k*. There is exactly
 one writable characteristic per entry.
 
+**The numbering is per device, not a registry.** Every device uses
+`2FAA0001-…` for its first writable entry, `2FAA0002-…` for its second, and so
+on; a hundred devices with one writable entry each all expose the same
+characteristic UUID and never collide, because GATT is scoped to a connection.
+A receiver reaches a particular device by connecting to its address, as it does
+for anything else on the air. Nothing is allocated anywhere, and a device's
+entry numbers mean nothing outside that device.
+
 **The second group is split.** `0001`–`0FFF` are entries and nothing else;
 `1000` and above are reserved for characteristics that belong to the protocol
 rather than to an entry. A declaration carries at most 255 entries (§2.1), so the

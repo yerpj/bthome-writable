@@ -5816,3 +5816,25 @@ The module published in **EspruinoDocs** carries the defect: `modules/
 BTHomeWritable.js` there was merged on 2026-10-12, before this was found. A
 pull request updating it is owed, and the regenerated build is already in
 `espruino/dist/espruinodocs/`.
+
+## D-103 -- §4.1 was read as a registry three times, so it now says it is not
+
+**Status:** 2026-10-15. A reader of `bthome-ble#146` linked §4.1 and wrote
+*"the current version proposes adding a thousand UUIDs"*, then *"dozens of
+corresponding characteristic IDs"*, then *"to send a command to switch number
+100, would it require 100 duplicate identifiers?"*
+
+Three readings, one mistake: the numbering was taken for a shared allocation
+rather than a per-device scheme. It is not. GATT is scoped to a connection, so
+every device uses `2FAA0001-…` for its first writable entry and a hundred
+devices never collide; a receiver reaches one by connecting to its address.
+
+**The section did not say so.** It explained the base, the entry number, the
+split of the second group and the size of the reserved range -- everything
+except the scope, which it treated as too obvious to state. Three misreadings
+by one competent reader is evidence that it is not obvious, so §4.1 now says
+it in its own paragraph.
+
+Nothing about the protocol changed. What changed is that the sentence a
+reviewer needs is in the section a reviewer opens -- which is where the
+misreading started, since the objection linked straight to it.
