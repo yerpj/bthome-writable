@@ -73,6 +73,13 @@ The declaration is one element of the BTHome service data:
 - The same object ID MAY appear several times: `FF 02 1E 1E` is a device with two
   writable lights. Instances are distinguished by entry number, which is also how
   a receiver numbers them in its user interface.
+- **Repetition is the price of that.** Thirty identical lights cost thirty bytes
+  to declare, because an entry *is* its position. Pairs of `<id><count>` would
+  compress it, at the cost of a form to parse and a number to derive; the
+  advertising payload runs out at around twenty-five entries either way, so the
+  packet is the ceiling long before the format is. If devices with many
+  identical controls turn out to exist, a compressed declaration wants its own
+  object ID rather than a reinterpretation of this one.
 - A declaration with no entries is legal and means "nothing writable"; a device
   SHOULD then omit it.
 

@@ -5887,3 +5887,38 @@ advertising budget stops shaping what a device may offer.
 Only then is it worth asking whether anything in §2.1 should change. **Nothing
 does today**, and the proposal in front of BTHome deliberately fits in the
 legacy payload -- which is part of why it asks for so little.
+
+## D-105 -- the one fair objection, and what it is owed
+
+**Status:** 2026-10-15. After a day of objections on `bthome-ble#146` that
+were answered with facts, the last one was right.
+
+Quoting §2.1 back at us: *"The same object ID MAY appear several times"* --
+then `FF n 1E 1E 1E ...` thirty times over. A device with thirty identical
+lights spends thirty bytes saying so, because an entry **is** its position.
+
+### Conceded, and why the design still stands
+
+Positional addressing buys a declaration with nothing to parse beyond a list
+of ids, and an entry number that needs no derivation. Pairs of `<id><count>`
+would compress it and cost both of those. The advertising payload runs out at
+roughly twenty-five entries either way, so the packet, not the format, is the
+ceiling -- and a device with thirty identical controls has an advertising
+problem before it has a declaration problem.
+
+If such devices turn out to exist, a compressed declaration wants **its own
+object ID**, not a reinterpretation of this one: the same bytes meaning two
+different things depending on a convention is how receivers break quietly.
+
+§2.1 now says all of this, for the same reason §4.1 now says the numbering is
+per device (D-103): the question was asked, so the section did not answer it.
+
+### Worth recording about the exchange itself
+
+Nine objections, one of them sound. Conceding that one plainly costs nothing
+and is the difference between defending a design and having one. It is also
+the note the thread now ends on, which is what a maintainer arriving late will
+read first.
+
+And the sound objection came after the unsound ones -- so the way to find it
+was to keep answering on facts rather than to stop at the tone.
