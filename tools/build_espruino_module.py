@@ -189,7 +189,7 @@ def shrink(source: str) -> str:
 
     text = "".join(out)
     # Collapse the blank runs the removed paragraphs leave behind.
-    text = re.sub(r"\n[ \t]*\n[ \t]*\n+", "\n\n", text)
+    text = re.sub(r"\n(?:[ \t]*\n){2,}", "\n\n", text)
     lines = [line.rstrip() for line in text.splitlines()]
     return "\n".join(lines).strip() + "\n"
 
