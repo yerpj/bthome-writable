@@ -168,7 +168,7 @@ front:
 | File | What it shows |
 | --- | --- |
 | `single-light.js` | The minimum: one writable LED. |
-| `all-platforms.js` | Every platform on one device: a switch, a number, a text and a dimmer's two buttons, each readable so Home Assistant shows real state rather than assumed. |
+| `mixed-controls.js` | A switch, a number and a text on one device, with a sensor beside them. Each entry is readable, so the switch is a toggle rather than an assumed state. |
 | `light-loop.js` | The LED plus the board's own light sensor, so a receiver sees the write had a *physical* effect rather than an echo. |
 | `three-lights.js` | Three objects sharing one BTHome ID, told apart by entry number. |
 | `button-light.js` | A light the board's own button also switches: readable characteristic, settings revision, `bw.changed()`. |
