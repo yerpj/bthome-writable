@@ -1,9 +1,9 @@
 {
   "Bluetooth-Devices/bthome-ble#146": {
-    "comments": 24,
+    "comments": 36,
     "state": "open",
     "title": "Add 2-way communication for acknowledgement and control?",
-    "updated": "2026-10-15T14:08:18Z",
+    "updated": "2026-10-15T16:54:27Z",
     "url": "https://github.com/Bluetooth-Devices/bthome-ble/issues/146",
     "why": "the thread that asked for this"
   },
@@ -24,28 +24,28 @@
     "why": "Shelly BLU range and interval"
   },
   "Bluetooth-Devices/bthome-ble#424": {
-    "comments": 0,
+    "comments": 1,
     "state": "open",
     "title": "feat: parse the writable entries object (0xFF)",
-    "updated": "2026-10-14T17:05:06Z",
+    "updated": "2026-10-15T15:20:39Z",
     "url": "https://github.com/Bluetooth-Devices/bthome-ble/pull/424",
     "why": "the parser (D-098)"
   },
   "ci": {
     "comments": 0,
     "state": "in_progress",
-    "title": "2c791c5 main",
-    "updated": "2026-10-15T14:07:44Z",
-    "url": "https://github.com/yerpj/bthome-writable/actions/runs/38748638560",
+    "title": "0a2fa98 main",
+    "updated": "2026-10-16T08:37:26Z",
+    "url": "https://github.com/yerpj/bthome-writable/actions/runs/38874922876",
     "why": "our own CI, last run"
   },
   "espruino#8024": {
-    "comments": 38,
+    "comments": 45,
     "state": "open",
     "title": "bthome-writable, the design thread",
     "updated": "",
     "url": "https://github.com/orgs/espruino/discussions/8024",
-    "why": "the design discussion (12 replies collapsed on the page)"
+    "why": "the design discussion (16 replies collapsed on the page)"
   },
   "espruino/EspruinoDocs#761": {
     "comments": 3,
@@ -73,9 +73,9 @@
   },
   "espruino/EspruinoDocs#764": {
     "comments": 0,
-    "state": "open",
+    "state": "merged",
     "title": "BTHomeWritable: a refused write no longer sits where the value belongs",
-    "updated": "2026-10-15T14:08:22Z",
+    "updated": "2026-10-15T14:11:41Z",
     "url": "https://github.com/espruino/EspruinoDocs/pull/764",
     "why": "the rejected-write fix (D-102)"
   },
