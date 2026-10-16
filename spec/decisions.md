@@ -5931,3 +5931,79 @@ read first.
 
 And the sound objection came after the unsound ones -- so the way to find it
 was to keep answering on facts rather than to stop at the tone.
+
+## D-106 -- the device rebuilds its advertisement once a second, and once per write  [VERIFY, waiting on @enaon]
+
+**Status:** 2026-10-16, measured. **Nothing is changed yet, on purpose:** the
+report came from @enaon, he is running a PPK2 against it, and his numbers
+should arrive before any fix does.
+
+### What he said
+
+On `espruino#8024`: *"I have noticed that the dimming action on my lamps is
+struggling every one sec, so I will do some measurements and report."*
+
+### What this bench found
+
+nice!nano `E4:E8:3E:B2:5D:D1`, `mixed-controls.js`, three readable entries, no
+bindkey. Measured over the console and by watching the BTHome packet id, which
+advances once per rebuild:
+
+| | |
+|---|---|
+| a burst of 250 writes, host side | median **15.0 ms**, no periodic pattern |
+| rebuilds during 100 writes | **112** -- one per accepted write |
+| rebuilds while idle | **17 in 17 s** -- one per advertising interval |
+| `bw.update()`, a rebuild alone | **38 ms** |
+| `bw.changed()`, rebuild plus three readable entries republished | **134 ms** |
+
+So the device spends 38 ms of its single thread every second doing nothing but
+rebuilding a packet whose contents have not changed, and another 38 ms for each
+write it accepts. A host sending a dimming burst every 16 ms asks for more work
+than the board can do, and the queue is the stutter.
+
+**It is invisible from the host**, which is why no tool here had seen it:
+Espruino acknowledges a GATT write *before* running `onWrite`, so every write
+still returns in 15 ms while the work piles up behind it.
+
+### Two separate causes, and only one is cheap to fix
+
+1. **`goFast()` from `handleWrite()`** rebuilds on every accepted write, even
+   when the device is already in fast mode and the interval therefore does not
+   change. A burst of a hundred writes pays for a hundred rebuilds to achieve
+   what the first one did.
+
+   ```js
+   if (st.advInterval === st.fastInterval) return;   // nothing to rebuild
+   ```
+
+   What is lost: a value that *is* advertised and that `set()` changed waits
+   for the next periodic rebuild instead of going out at once. Acceptable --
+   `bw.changed()` is already the documented way for a device to announce a
+   change of its own, and a writable value is never advertised anyway.
+
+2. **`setInterval(refreshAdvertising, st.interval)`** rebuilds once per
+   advertising interval, forever, whether or not anything changed. With
+   `interval: 1000` that is literally "every one sec". Spacing it out is the
+   larger win and the one not to take alone: the BTHome packet id advances on
+   each rebuild, and receivers use it to tell a new reading from a repeat. That
+   is observable behaviour for every BTHome receiver, not just ours, so **rule
+   2 applies and it goes through Gordon.**
+
+### Scope, since it was asked
+
+This is the Espruino device module and its published copy, and nothing else.
+`bthome.io#82` asks for an object id and describes the declaration's format;
+`bthome-ble#424` parses bytes rather than producing them; the Home Assistant
+integration is the receiver. `PROTOCOL.md` prescribes no rebuild cadence and
+says nothing about the packet id beyond reserving it.
+
+### What could not be measured here
+
+The sealed case, which is the one that matters most: a rebuild on a device with
+a bindkey also re-seals with AES-CCM. This nice!nano has **no `AES` object at
+all** -- an encrypted sketch dies with `Uncaught ReferenceError: "AES" is not
+defined` -- and `AESCCM`'s fallback still needs `AES.encrypt`, since it covers
+"AES without AES_CCM" (D-095) rather than "no AES". A Puck.js can answer this,
+and it is worth answering: if a rebuild costs 38 ms in clear, it costs more
+sealed, every second.
