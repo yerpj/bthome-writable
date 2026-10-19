@@ -6213,3 +6213,28 @@ The examples that give the battery `interval: 300000` get the whole saving. So
 the fix does not make an advertisement cheap; it stops paying for one that did
 not change.
 
+### Offered upstream, 2026-10-19
+
+**[EspruinoDocs#765](https://github.com/espruino/EspruinoDocs/pull/765)** --
+`modules/BTHomeWritable.js` and its page, one commit on
+`yerpj:bthomewritable-rebuild-on-change` cut from upstream master. 72 additions,
+34 deletions across two files.
+
+@gfwilliams had already reached the same conclusion from the other side, and
+named the cause before the measurement did: *"This may actually be a
+misunderstanding of the original LLM - thinking that it needs to call
+setAdvertising in order to advertise. In reality you only need to call it once
+and it does the rest in the background."* He also gave the argument that the
+packet id's cadence is not merely wasteful but wrong -- *"it might even hurt
+(for instance in the case where we have an event we're broadcasting)"*: a
+repeated event broadcast carrying a fresh packet id is a duplicate no receiver
+can filter. That case is stronger than the current-draw one and is now in the
+pull request body.
+
+The diff carries one thing that is not the fix: eleven comment opening
+sentences, shortened. The generator publishes the first sentence of each block
+comment, so that is how the module stayed inside the 22 000-byte budget rather
+than raising it. The body says so, in the paragraph before last, because a
+reviewer meeting unexplained comment churn is a reviewer looking for a second
+change.
+

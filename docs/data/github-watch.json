@@ -33,19 +33,19 @@
   },
   "ci": {
     "comments": 0,
-    "state": "in_progress",
-    "title": "0a2fa98 main",
-    "updated": "2026-10-16T08:37:26Z",
-    "url": "https://github.com/yerpj/bthome-writable/actions/runs/38874922876",
+    "state": "success",
+    "title": "07c0c43 main",
+    "updated": "2026-10-19T14:33:31Z",
+    "url": "https://github.com/yerpj/bthome-writable/actions/runs/39270032075",
     "why": "our own CI, last run"
   },
   "espruino#8024": {
-    "comments": 45,
+    "comments": 49,
     "state": "open",
     "title": "bthome-writable, the design thread",
     "updated": "",
     "url": "https://github.com/orgs/espruino/discussions/8024",
-    "why": "the design discussion (16 replies collapsed on the page)"
+    "why": "the design discussion (20 replies collapsed on the page)"
   },
   "espruino/EspruinoDocs#761": {
     "comments": 3,
@@ -78,6 +78,14 @@
     "updated": "2026-10-15T14:11:41Z",
     "url": "https://github.com/espruino/EspruinoDocs/pull/764",
     "why": "the rejected-write fix (D-102)"
+  },
+  "espruino/EspruinoDocs#765": {
+    "comments": 0,
+    "state": "open",
+    "title": "BTHomeWritable: rebuild the advertisement when something changes",
+    "updated": "2026-10-19T16:12:42Z",
+    "url": "https://github.com/espruino/EspruinoDocs/pull/765",
+    "why": "the rebuild-on-change fix (D-106)"
   },
   "home-assistant/bthome.io#82": {
     "comments": 2,

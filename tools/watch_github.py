@@ -40,6 +40,7 @@ WATCHLIST: tuple[tuple[str, str, int, str], ...] = (
     ("espruino/EspruinoDocs", "pulls", 762, "BTHomeWritable (merged)"),
     ("espruino/EspruinoDocs", "pulls", 763, "the page corrections (merged)"),
     ("espruino/EspruinoDocs", "pulls", 764, "the rejected-write fix (D-102)"),
+    ("espruino/EspruinoDocs", "pulls", 765, "the rebuild-on-change fix (D-106)"),
     ("yerpj/bthome-writable", "issues", 1, "@enaon, AES-CCM on a board without AES"),
     ("yerpj/bthome-writable", "issues", 2, "@enaon, ON-OFF-ON"),
 )
