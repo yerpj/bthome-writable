@@ -6288,3 +6288,31 @@ asks for changes to #765, it goes in then, as `getTime()*1000` at the three
 call sites in the radio half (the pure half takes `now` as an argument, so the
 tests are unaffected).
 
+### Confirmed on @enaon's chip, over USB, 2026-10-19
+
+The other nice!nano -- `CD:F5:77:3A:B2:16`, the one with the SSD1306, which the
+owner offered for measurement -- has `AES` without `AES_CCM`, which is
+@enaon's path, and a USB cable, which the first nice!nano's measurements did
+not have. `docs/measurements.md` §8 has the table. What it adds:
+
+- **a sealed rebuild is 90-91 ms on an nRF52840** against 20 ms plaintext, so
+  AES-CCM from JavaScript is ~70 ms of it -- 3.5x the rest;
+- **0 rebuilds in 30 s with nothing connected to the radio at all**, which the
+  Puck could only approximate, since asking it anything meant connecting to it;
+- **0 rebuilds for 100 writes arriving over the air** while the counter was
+  read over the cable.
+
+And a cross-check that matters more than any of them: @enaon measured 26-29 ms
+per rebuild before the fix on this chip, attributing 8.5 ms to the declaration
+and the sort. Both are now computed at `setup()`, and this board rebuilds in
+**20 ms** -- which is 26-29 minus 8.5. His number and ours are the same number.
+
+**A bench artifact, recorded so it is not rediscovered as a regression.**
+Espruino moves its console to Bluetooth as soon as a central connects, so a
+burst counted over USB needs `USB.setConsole(true)`. Pinned that way, the same
+hundred writes took 400 ms each rather than 15: the link falls to a slower
+connection interval when the console is not on it. It does not touch the
+rebuild counts, but it invalidates any latency measured in that configuration
+-- and it is worth following up, because a receiver writing several entries in
+one connection is not an Espruino console either.
+

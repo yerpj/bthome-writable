@@ -501,6 +501,39 @@ subtracted: **`Date.now()` costs 240 us a call, `getTime()` 162 us.** Raised by
 @enaon. At one call per tick it is 0.008% of the thread, which is why the module
 still calls `Date.now()`.
 
+### The same thing on a nice!nano, over the cable
+
+`CD:F5:77:3A:B2:16`, nRF52840, 2v29.396, `AES` but no `AES_CCM` -- @enaon's
+chip and @enaon's cipher path. Measured with a bench sketch holding his
+configuration: one voltage entry at five minutes, one writable light, 1 s
+interval, bindkey and counter report. **The console is on USB here**, so the
+device could be asked what it was doing while nothing at all was connected to
+its radio -- which is what "idle" was supposed to mean on the Puck and could
+not quite be.
+
+| | |
+|---|---|
+| one rebuild, plaintext | **20 ms** |
+| one rebuild, sealed | **90-91 ms** |
+| 30 s idle, sealed, nothing connected | **0 rebuilds** |
+| 25 s idle, plaintext | **0 rebuilds** |
+| 100 writes over the air, counted over USB | **0 rebuilds** |
+
+So AES-CCM from JavaScript is **~70 ms of the 90**, three and a half times the
+rest of the rebuild, on the faster of the two chips. And the plaintext figure
+cross-checks @enaon's profile: he measured 26-29 ms before the fix, of which he
+attributed 8.5 ms to the declaration and the sort, which are now computed at
+`setup()`. 26-29 minus 8.5 is 18-21, and this board rebuilds in 20.
+
+**One bench artifact worth knowing.** Espruino moves its console to Bluetooth
+the moment a central connects, so counting rebuilds during a burst needs
+`USB.setConsole(true)` to keep the console on the cable. With the console
+pinned that way, the same hundred writes took **400 ms each** instead of 15:
+the link runs at a slower connection interval when Espruino's console is not
+using it. Rebuild counts are unaffected, but no latency measured with the
+console pinned to USB means anything -- and it is a lead worth following for a
+receiver that writes several entries in one connection.
+
 ### Reproducing it
 
 The three scripts live in the session scratchpad rather than in `tools/`: they
