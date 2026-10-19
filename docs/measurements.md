@@ -425,6 +425,74 @@ integration: nothing here can make a device grey out faster.
 
 ---
 
+## 8. What rebuilding the advertisement costs, and what the fix removes
+
+**Puck.js `C8:80:32:AD:F7:B9`, 2026-10-19**, after the three D-106 fixes. This
+board has `AES` but no `AES_CCM`, which is @enaon's configuration exactly: the
+`AESCCM` module's JavaScript fallback over the hardware block cipher. It is
+therefore the first board here that could measure the sealed case at all.
+
+Rebuilds are counted on the device, by wrapping `NRF.setAdvertising` from the
+console, because a scanner's duplicate filtering hides most packets from the
+host.
+
+### One rebuild
+
+| | |
+|---|---|
+| plaintext, packet id + illuminance + declaration | **22 ms** |
+| sealed, same packet | **133-142 ms** |
+
+So **sealing is six times the rest of the rebuild**, and at a 1 s interval a
+sealed device that rebuilds every second spends 13% of its single thread doing
+it. That is the shape of @enaon's +135 uA.
+
+### Idle, nothing connected
+
+| | |
+|---|---|
+| `single-light.js`, battery with no interval | **11 rebuilds in 20 s** |
+| the same entry at `interval: 300000` | **0 rebuilds in 25 s** |
+| `encrypted-light.js`, illuminance at `interval: 0` | **27 rebuilds in 25 s** |
+| the same entry at `interval: 300000` | **0 rebuilds in 25 s** |
+
+Before the fix all four would have been one per advertising interval: 20, 25,
+25, 25.
+
+**The saving depends on the advertised values being stable, which is worth
+saying plainly.** `E.getBattery()` on a CR2032 returns 61 then 62 then 61; at
+1% resolution that is a real change, and a real change is a real packet. An
+entry read every tick on a noisy sensor therefore still rebuilds about half the
+time -- correctly, since its data moved. The examples that give the battery
+`interval: 300000` get the whole saving; `single-light.js` does not, because it
+gives its battery no interval at all.
+
+### A burst of writes
+
+| | |
+|---|---|
+| 100 plaintext writes in 1.78 s | **2 rebuilds**, median 15.0 ms per write |
+| 50 sealed writes in 0.72 s | **0 rebuilds**, median 13.8 ms per write |
+
+Measured before the fix: **112 rebuilds for 100 writes**. Sealed, those 56
+rebuilds a 50-write burst would have triggered are 7.5 s of CPU queued behind
+0.72 s of writes -- which is the dimming stutter @enaon reported, and which
+never showed in the write latency because Espruino acknowledges a GATT write
+before running `onWrite`.
+
+The two plaintext rebuilds are the connection itself (the advertising rate
+changes, which is a real change) and one tick where the battery reading moved.
+The sealed burst arrived while the device was already advertising fast, so not
+even that one was needed.
+
+### Reproducing it
+
+The three scripts live in the session scratchpad rather than in `tools/`: they
+patch the running sketch from the console, which is a measurement technique
+rather than something to ship. `bw.plan().ordered[n].readInterval` is writable
+from the console, which is how the stable case was measured without
+redeploying.
+
 ## Reproducing any of this
 
 Most of the tools above take `--address`; `tools.regression` and

@@ -6185,8 +6185,31 @@ so the generator ships the short half -- which is what the guard's own message
 asks for. 21 917 now, and only 83 bytes of headroom, so the next change here
 pays this bill again.
 
-**Not yet measured on hardware.** The expectation is 1 rebuild per burst instead
-of 112, no idle rebuilds at all on a device whose advertised values are static,
-and @enaon's 235/370 uA falling back towards his 45. That is what the message to
-him promises, and `docs/measurements.md` is where it goes.
+### Measured, 2026-10-19, on the Puck
+
+`docs/measurements.md` §8 has it all. The headlines, and the surprise:
+
+| | before | after |
+|---|---|---|
+| 100 plaintext writes | 112 rebuilds | **2** |
+| 50 sealed writes | ~56 rebuilds | **0** |
+| 25 s idle, stable advertised value | 25 rebuilds | **0** |
+| one rebuild, plaintext / sealed | 22 ms / **133-142 ms** | unchanged |
+
+**The sealed rebuild is six times the plaintext one**, which nothing here could
+measure before: the nice!nano has no `AES` at all, while this Puck.js has `AES`
+without `AES_CCM` -- @enaon's configuration exactly, the `AESCCM` module's
+JavaScript fallback over the hardware block cipher. At a 1 s interval a sealed
+device was spending 13% of its one thread rebuilding an identical packet, and a
+50-write burst queued 7.5 s of CPU behind 0.72 s of writes. That is his stutter,
+and it never showed in write latency because Espruino acknowledges a write
+before running `onWrite` (median 13.8 ms, sealed, unchanged by any of this).
+
+**The saving depends on the advertised values being stable, and that deserves
+saying out loud.** `E.getBattery()` on a CR2032 reads 61, 62, 61; at 1%
+resolution that is a real change and therefore a real packet. `single-light.js`,
+which gives its battery no interval, still rebuilt 11 times in 20 s -- correctly.
+The examples that give the battery `interval: 300000` get the whole saving. So
+the fix does not make an advertisement cheap; it stops paying for one that did
+not change.
 
