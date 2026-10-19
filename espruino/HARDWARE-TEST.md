@@ -62,7 +62,8 @@ Expected, with `<pid>` incrementing and `<batt>` your battery level:
 ```
 
 - `40` — BTHome v2, unencrypted.
-- `00 <pid>` — packet id, changes every interval.
+- `00 <pid>` — packet id, which moves when something in the packet changes,
+  not on every interval (D-106).
 - `01 <batt>` — battery.
 - `FF 01 1E` — the declaration, last in the service data: a count of one,
   then one entry, `0x1E`

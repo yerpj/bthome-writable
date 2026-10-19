@@ -38,6 +38,9 @@ const EXPECTED = {
     // 40 | 00 01 | 01 5a | 05 a8 61 00 | ff 01 1e
     packet: "400001015a05a86100ff011e",
     pin: "LED2",
+    // Its light sensor measures what its own write did, which is the whole
+    // point of the example -- and now the thing that asks for a rebuild.
+    mirrors: true,
   },
 };
 
@@ -95,6 +98,11 @@ function run(source, storedFiles) {
   let characteristics = null;
   let serviceUuid = null;
 
+  /* What the fake sensors read. Mutable, because a rebuild now depends on a
+   * reading having moved: a test that cannot move one cannot reach the case
+   * (D-106). */
+  const sensors = { battery: BATTERY, light: LIGHT_LEVEL };
+
   const storage = fakeStorage(storedFiles);
   const context = {
     console: { log() {} },
@@ -141,8 +149,11 @@ function run(source, storedFiles) {
       },
       getAddress: () => "c8:80:32:ad:f7:b9",
     },
-    E: { getBattery: () => BATTERY },
-    Puck: { light: () => LIGHT_LEVEL },
+    E: { getBattery: () => sensors.battery },
+    // Physical, like the example it serves: the light sensor reads brighter
+    // when the green LED is on, so a write to the light really does move an
+    // advertised value.
+    Puck: { light: () => (pins["LED2"] ? sensors.light * 2 : sensors.light) },
     LED1: "LED1",
     LED2: "LED2",
     LED3: "LED3",
@@ -213,6 +224,7 @@ function run(source, storedFiles) {
       }
     },
     pins,
+    sensors,
     get characteristics() {
       return characteristics;
     },
@@ -271,26 +283,34 @@ for (const name of BUNDLES) {
     assert.equal(result.pins[expected.pin], false);
   });
 
-  test(`${name}: every write republishes at once`, () => {
-    /* Advertising fast repeats the packet the device already has, so anything a
-     * write changed that *is* advertised -- a sensor measuring the effect --
-     * would otherwise wait for the next scheduled rebuild, which runs at the
-     * idle interval. Measured at 18 s on a 10 s interval before this, against
-     * one second for the write itself (D-050). The second write is the one that
-     * matters: by then the device is already advertising fast, which is exactly
-     * when the old code skipped the rebuild. */
+  test(`${name}: a write republishes what it changed, and nothing else`, () => {
+    /* Anything a write changed that *is* advertised -- a sensor measuring the
+     * effect -- must not wait for the next schedule: measured at 18 s on a 10 s
+     * interval before that was fixed, against one second for the write itself
+     * (D-050). But a write that moved nothing advertised has nothing to
+     * rebuild, and rebuilding anyway cost a packet per write (D-106).
+     *
+     * The second write is where the two part company. By then the device is
+     * already advertising fast, so the rate cannot ask for a rebuild: only a
+     * moved reading can. */
     const result = run(load(name));
     const light = result.characteristics["2FAA0001-3B0B-4B1A-9E2A-B4C2952E62F2"];
 
     const before = result.advertised.length;
     light.onWrite({ data: [0x1e, 0x01] });
-    assert.equal(result.advertised.length, before + 1);
+    assert.equal(result.advertised.length, before + 1, "the rate moved, if nothing else");
     light.onWrite({ data: [0x1e, 0x00] });
-    assert.equal(result.advertised.length, before + 2);
-    // A rebuilt packet, not a repeat: the packet id moves every time.
+    assert.equal(
+      result.advertised.length,
+      before + (expected.mirrors ? 2 : 1),
+      expected.mirrors
+        ? "the light sensor moved with it, so the packet is rebuilt"
+        : "nothing advertised moved, so the radio keeps repeating"
+    );
+    // Whatever was published is a rebuilt packet, not a repeat.
     assert.notEqual(
-      hex(result.advertised[before + 1]),
-      hex(result.advertised[before])
+      hex(result.advertised[result.advertised.length - 1]),
+      hex(result.advertised[before - 1])
     );
   });
 
@@ -311,15 +331,21 @@ for (const name of BUNDLES) {
     assert.notEqual(result.pins[expected.pin], true);
   });
 
-  test(`${name}: schedules a periodic refresh of the advertised values`, () => {
-    /* Without it the packet is built once at setup and never again: sensor
-     * values freeze at their boot readings and the packet id never changes,
-     * which is what a receiver uses to tell a fresh advertisement from a
-     * repeat. Caught on hardware, where four consecutive captures all carried
-     * packet id 1. */
+  test(`${name}: the periodic tick rebuilds only when a reading moved`, () => {
+    /* There has to be a tick at all: without one the packet is built at setup
+     * and never again, and sensor values freeze at their boot readings.
+     *
+     * But it rebuilds only when a reading has moved. BTHome's own page says the
+     * packet id "should be increased on every change in data", that a receiver
+     * "should only process the advertisement if the packet id is different
+     * compared to the previous one", and that this "allows you to send multiple
+     * advertisements that are exactly the same". Rebuilding every interval
+     * instead cost ~29 ms of the one thread every second, re-sealed with
+     * AES-CCM when encrypted, and left a receiver unable to tell a new reading
+     * from a repeat (D-106). */
     const result = run(load(name));
 
-    assert.equal(result.timers.length, 1, "setup should schedule one refresh");
+    assert.equal(result.timers.length, 1, "setup should schedule one tick");
     /* Against the interval the bundle itself just advertised at, not a number
      * written here: an expectation that repeats a value living in the example
      * goes stale the day the example changes, and this one did. */
@@ -327,7 +353,16 @@ for (const name of BUNDLES) {
 
     const before = result.advertised.length;
     result.timers[0].fn();
-    assert.equal(result.advertised.length, before + 1);
+    assert.equal(
+      result.advertised.length,
+      before,
+      "nothing moved: the radio repeats the packet it holds"
+    );
+
+    if (!expected.mirrors) return; // nothing this example reads can move here
+    result.sensors.light = 0.5;
+    result.timers[0].fn();
+    assert.equal(result.advertised.length, before + 1, "a moved reading is worth a packet");
     assert.notEqual(
       hex(result.advertised[before]),
       hex(result.advertised[before - 1])
@@ -341,6 +376,24 @@ for (const name of BUNDLES) {
     assert.doesNotMatch(load(name), /advertise:\s*\[\s*SERVICE_UUID/);
   });
 }
+
+test("a burst of writes rebuilds the packet once, not once per write", () => {
+  /* 112 rebuilds for 100 writes, measured on a nice!nano: each one ~29 ms of
+   * the single thread, re-sealed with AES-CCM on an encrypted device, and the
+   * host never sees it because Espruino acknowledges a write before running
+   * onWrite. @enaon reported it as a dimming burst "struggling every one sec"
+   * (D-106).
+   *
+   * The first write moves the advertising rate, which is a real change. The
+   * rest change nothing this device advertises, so there is nothing to
+   * rebuild. */
+  const result = run(load("single-light-standalone.js"));
+  const light = result.characteristics["2FAA0001-3B0B-4B1A-9E2A-B4C2952E62F2"];
+
+  const before = result.advertised.length;
+  for (let i = 0; i < 20; i++) light.onWrite({ data: [0x1e, i % 2] });
+  assert.equal(result.advertised.length, before + 1, "one rebuild for twenty writes");
+});
 
 test("light-loop puts the sensor and the actuator on different LEDs", () => {
   /* Puck.light() reads through the red LED, so an actuator on LED1 would be

@@ -6145,3 +6145,48 @@ decrypted and parsed as usual rather than treated as a replay.
 appears in the worked example at §5, and no cadence is prescribed. Nothing in
 the protocol has to change -- this is the module's behaviour, not the wire
 format's.
+
+### Applied, 2026-10-19
+
+All three, in `espruino/BTHomeWritable.js` and its generated copy.
+
+**1. `goFast()` rebuilds only when the rate changes**, and returns whether it
+did. `handleWrite()` calls `tick()` when it did not, so a write that moved an
+advertised value still goes out at once and a write that moved nothing costs
+nothing. The `force` re-read the first draft added was dropped: the behaviour
+D-050 protects comes from that sensor having `interval: 0`, which the tick
+honours anyway.
+
+**2. The plan computes what the plan fixes.** `p.decl` holds the declaration's
+bytes and `p.objs` the object list in final order -- with the sensors in it *as
+themselves*, so a new reading lands in the object the packet is built from, and
+with the packet id and the settings revision as two one-byte objects that are
+overwritten per packet. `buildServiceData` now takes those declaration bytes
+instead of the entry ids. A rebuild no longer sorts, re-encodes the declaration
+or allocates an object per entry.
+
+**3. `tick()` replaces `refreshAdvertising` on the interval timer.** It re-reads
+the entries that are due, compares the *encoded bytes*, and rebuilds only if
+one moved. `readSensor()` is where the comparison lives, which is also why it is
+exported: two readings that encode the same are the same advertisement.
+
+Tests: 246 pass (was 243). The two that stated the old contract were rewritten
+-- a tick with nothing moved must now publish *nothing*, and a write republishes
+only what it changed -- and the bundle harness gained mutable fake sensors,
+because a test that cannot move a reading cannot reach the case. New: a burst of
+twenty writes rebuilds once, the declaration and order are settled at plan time,
+and a re-read reports movement rather than being assumed.
+
+**The size guard caught the first draft**, which is the point of having it. The
+published copy went from 21 761 to 23 489 bytes against a 22 000 budget. Nothing
+was raised: the assembly was folded back into `buildServiceData`, the `force`
+parameter went, and the long first sentences of eleven block comments were split
+so the generator ships the short half -- which is what the guard's own message
+asks for. 21 917 now, and only 83 bytes of headroom, so the next change here
+pays this bill again.
+
+**Not yet measured on hardware.** The expectation is 1 rebuild per burst instead
+of 112, no idle rebuilds at all on a device whose advertised values are static,
+and @enaon's 235/370 uA falling back towards his 45. That is what the message to
+him promises, and `docs/measurements.md` is where it goes.
+

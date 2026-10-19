@@ -1,7 +1,9 @@
 /*
-Module for making BTHome objects writable: the device lists, in its BTHome
-advertising, the object types it accepts writes for, and serves each one on its
-own GATT characteristic. Writes are validated by the write response.
+Module for making BTHome objects writable.
+
+The device lists, in its BTHome advertising, the object types it accepts writes
+for, and serves each one on its own GATT characteristic. Writes are validated
+by the write response.
 
 https://github.com/yerpj/bthome-writable  (protocol: spec/PROTOCOL.md, v2)
 
@@ -135,9 +137,10 @@ function encodeDeclaration(ids) {
   return [DECL_ID, ids.length].concat(ids);
 }
 
-/* Assemble the service data. `entryIds` null means no declaration. Throws
-   rather than truncate (S2.4): a dropped entry would renumber characteristics. */
-function buildServiceData(info, objs, entryIds, budget) {
+/* Assemble the service data. `decl` null means no declaration; otherwise it is
+   the declaration's bytes, built once by planPacket (D-106). Throws rather
+   than truncate (S2.4): a dropped entry would renumber characteristics. */
+function buildServiceData(info, objs, decl, budget) {
   if (budget === undefined) budget = BUDGET;
   const b = [info];
   for (let i = 0; i < objs.length; i++) {
@@ -145,16 +148,15 @@ function buildServiceData(info, objs, entryIds, budget) {
     const v = objs[i].value;
     for (let j = 0; j < v.length; j++) b.push(v[j]);
   }
-  if (entryIds) {
-    const d = encodeDeclaration(entryIds);
-    for (let i = 0; i < d.length; i++) b.push(d[i]);
-  }
+  if (decl) for (let i = 0; i < decl.length; i++) b.push(decl[i]);
   if (b.length > budget) throw err("capacity_exceeded", `service data needs ${b.length} bytes, ${budget} available`);
   return b;
 }
 
-/* Parse a write for one entry, {id, length} or {id, variable:true}, and return
-   its value bytes. Strict on purpose: a write carries exactly one object (S4.2). */
+/* Parse a write for one entry and return its value bytes.
+
+   The entry is {id, length} or {id, variable:true}. Strict on purpose: a write
+   carries exactly one object (S4.2). */
 function parseWrite(pl, w) {
   if (!pl.length) throw err("truncated", "empty write");
   // The desync guard: a receiver still holding a layout this firmware no longer
@@ -247,9 +249,10 @@ function stableSortByObjectId(items) {
   return s;
 }
 
-/* Work out the packet and the writable entries once, at setup - not at write
-   time: a device that discovers it does not fit while advertising is a device
-   in the field. */
+/* Work out the packet and the writable entries once, at setup.
+
+   Not at write time: a device that discovers it does not fit while advertising
+   is a device in the field. */
 function planPacket(entries, enc, defRead, encrypted, limit) {
   if (defRead === undefined) defRead = 0;
   if (limit === undefined) limit = BUDGET;
@@ -292,33 +295,51 @@ function planPacket(entries, enc, defRead, encrypted, limit) {
     // rather than at the first advertisement, as S2.4 requires.
     budget : limit - (encrypted ? ENC_OVERHEAD : 0)
   };
+  /* What the plan fixes, computed once (D-106). The declaration's bytes and
+     the order the objects go out in are both decided here and cannot change
+     until the next setup(); @enaon measured 8.5 ms of every rebuild spent
+     deriving them again. The sensors already carry {id, value}, so they go
+     into the list as themselves: a new reading lands in the same object the
+     packet is built from. The packet id and the revision are two objects whose
+     one byte is overwritten per packet. */
+  p.decl = writable.length ? encodeDeclaration(p.entryIds) : null;
+  p.pkt = { id:PKT_ID, value:[0] };
+  p.rev = readable ? { id:REV_ID, value:[0] } : null;
+  p.objs = stableSortByObjectId([p.pkt].concat(p.ordered).concat(p.rev ? [p.rev] : []));
   p.serviceDataLength = renderServiceData(p, 0, null, null, 0, 0).length;
   return p;
 }
 
-/* Service data for one advertisement. `enc` null reuses the values captured at
-   plan time, which is how the capacity check runs with no device state. */
+/* Service data for one advertisement.
+
+   Built from the object list and the declaration bytes the plan fixed. `enc`
+   null reuses the values already captured: that is how the capacity check runs
+   with no device state, and how a rebuild that follows readAdvertised() avoids
+   calling every get() twice. */
 function renderServiceData(p, pid, enc, entries, now, revision) {
   if (now === undefined) now = 0;
-  const objs = [{ id:PKT_ID, value:[pid & 255] }];
-  for (let i = 0; i < p.ordered.length; i++) {
+  p.pkt.value[0] = pid & 255;
+  if (p.rev) p.rev.value[0] = (revision || 0) & 255;
+  for (let i = 0; enc !== null && i < p.ordered.length; i++) {
     const it = p.ordered[i];
-    // Reuse the last reading until this entry's interval elapses. The packet
-    // still goes out every advertising interval; what this skips is get(),
-    // which on some sensors is the expensive part.
-    if (enc === null || (it.readInterval && now - it.lastRead < it.readInterval)) {
-      objs.push({ id:it.id, value:it.value });
-      continue;
-    }
-    const e = entries[it.entryIndex];
-    const b = enc(e, e.get());
-    if (b[0] !== it.id) throw err("layout_drift", `entry ${it.entryIndex} now encodes as 0x${b[0].toString(16)}, was 0x${it.id.toString(16)}`);
-    it.value = b.slice(1);
-    it.lastRead = now;
-    objs.push({ id:it.id, value:it.value });
+    // Reuse the last reading until this entry's interval elapses. What this
+    // skips is get(), which on some sensors is the expensive part.
+    if (!(it.readInterval && now - it.lastRead < it.readInterval)) readSensor(it, enc, entries, now);
   }
-  if (p.settingsRevision) objs.push({ id:REV_ID, value:[(revision || 0) & 255] });
-  return buildServiceData(p.info, stableSortByObjectId(objs), p.writable.length ? p.entryIds : null, p.budget);
+  return buildServiceData(p.info, p.objs, p.decl, p.budget);
+}
+
+/* Read one advertised entry and keep its bytes. Returns whether they moved,
+   which is what now decides whether the packet is rebuilt at all (D-106). */
+function readSensor(it, enc, entries, now) {
+  const e = entries[it.entryIndex];
+  const b = enc(e, e.get());
+  if (b[0] !== it.id) throw err("layout_drift", `entry ${it.entryIndex} now encodes as 0x${b[0].toString(16)}, was 0x${it.id.toString(16)}`);
+  it.lastRead = now;
+  let moved = it.value.length !== b.length - 1;
+  for (let i = 0; !moved && i < it.value.length; i++) moved = it.value[i] !== b[i + 1];
+  if (moved) it.value = b.slice(1);
+  return moved;
 }
 
 /* ===== DIVIDER: everything below owns the radio ========================== */
@@ -520,10 +541,12 @@ function openWrite(pl) {
   return out;
 }
 
-/* Encode one object via the upstream BTHome module, whose tables are local to
-   getAdvertisement() and not exported - so the only way to reuse them rather
-   than duplicate them is to encode a one-object advertisement and take the
-   object back out. Its packetId side effect is undone: we own the packet id. */
+/* Encode one object via the upstream BTHome module.
+
+   Its tables are local to getAdvertisement() and not exported, so the only way
+   to reuse them rather than duplicate them is to encode a one-object
+   advertisement and take the object back out. Its packetId side effect is
+   undone: we own the packet id. */
 function encodeOne(e, v) {
   const BTHome = require("BTHome"); // lazily, so this file loads under Node
   const n = BTHome.packetId;
@@ -532,10 +555,11 @@ function encodeOne(e, v) {
   return adv[0xFCD2].slice(3);
 }
 
-/* Rebuild and publish sensors, settings revision and declaration. */
-function refreshAdvertising() {
+/* Rebuild and publish sensors, settings revision and declaration. `cached`
+   skips the sensor reads, for a caller that has just done them itself. */
+function refreshAdvertising(cached) {
   st.packetId = (st.packetId + 1) & 255;
-  let sd = renderServiceData(st.plan, st.packetId, encodeOne, st.entries, Date.now(), st.revision);
+  let sd = renderServiceData(st.plan, st.packetId, cached ? null : encodeOne, st.entries, Date.now(), st.revision);
   if (st.key) sd = sealAdvertising(sd);
   // whenConnected: without it the device goes silent exactly when a receiver
   // most wants to hear it.
@@ -561,7 +585,38 @@ function refreshAdvertising() {
   }
 }
 
-/* What a read of entry `w` returns: its object, sealed when encrypted (S4.3). */
+/* Re-read the advertised entries that are due.
+
+   Says whether any of their bytes moved. A sensor measuring what a write just
+   did has interval 0, which is how its reading still goes out at once
+   (D-050). */
+function readAdvertised(now) {
+  const ord = st.plan.ordered;
+  let moved = false;
+  for (let i = 0; i < ord.length; i++) {
+    const it = ord[i];
+    if (it.readInterval && now - it.lastRead < it.readInterval) continue;
+    if (readSensor(it, encodeOne, st.entries, now)) moved = true;
+  }
+  return moved;
+}
+
+/* The periodic rebuild (D-106). BTHome's own page says the packet id "should
+   be increased on every change in data", that a receiver "should only process
+   the advertisement if the packet id is different compared to the previous
+   one", and that this "allows you to send multiple advertisements that are
+   exactly the same". So a packet whose bytes have not moved is left for the
+   radio to repeat and the packet id stays where it is. Rebuilding on every
+   interval instead cost ~29 ms of the one thread every second -- re-sealed
+   with AES-CCM on an encrypted device, which @enaon measured at +135 uA -- and
+   it defeated the deduplication the packet id exists for. */
+function tick() {
+  if (readAdvertised(Date.now())) refreshAdvertising(true);
+}
+
+/* What a read of entry `w` returns.
+
+   Its object, sealed when the device is encrypted (S4.3). */
 function readValue(w) {
   const e = st.entries[w.entryIndex];
   const obj = e.id !== undefined ? [w.id].concat(e.get()) : encodeOne(e, e.get());
@@ -575,29 +630,35 @@ function publishRead(w) {
   NRF.updateServices(svc);
 }
 
-/* Advertise fast while someone is plainly interacting, from connect until
-   fastTimeout after disconnect. A central can only begin a connection when it
-   catches an advertising event, so the idle interval taxes the first write of
-   a burst (D-013, D-024).
+/* Advertise fast while someone is plainly interacting.
 
-   Always rebuilds the packet, not only when the rate changes. Advertising fast
-   only makes the radio repeat the packet it already has: a sensor reflecting
-   what a write just did -- a lamp's own light reading, a position, a level --
-   would otherwise wait for the next scheduled rebuild, which runs at the idle
-   interval. Measured before this: at a 10 s interval, effects took 18 s to show
-   in Home Assistant while the write itself had landed in one (D-050). */
-/* Run a reaction to a connection without letting it throw into the Bluetooth
-   stack's own callback. Rebuilding the advertising can fail -- the radio may
-   refuse the packet -- and there is nothing up there prepared to catch it;
-   `onError` is where a device's own code hears about it. */
+   From connect until fastTimeout after disconnect. A central can only begin a
+   connection when it catches an advertising event, so the idle interval taxes
+   the first write of a burst (D-013, D-024).
+
+   Rebuilds the packet only when the rate actually changes, and says whether it
+   did. Advertising fast only makes the radio repeat the packet it already has,
+   so a device already in fast mode has nothing to rebuild -- and rebuilding
+   anyway cost a packet per write: 112 rebuilds for 100 writes, measured, which
+   is what made a dimming burst stutter (D-106). What a write changed and does
+   advertise still goes out at once: handleWrite() re-reads the advertised
+   entries itself, which is the half of D-050 that mattered. */
+/* Run a reaction to a connection without letting it throw.
+
+   The Bluetooth stack's own callback is where it would land, and rebuilding
+   the advertising can fail -- the radio may refuse the packet -- with nothing
+   up there prepared to catch it; `onError` is where a device's own code hears
+   about it. */
 function guarded(fn) {
   try { fn(); } catch (e) { if (st && st.onError) st.onError(e); }
 }
 
 function goFast() {
   if (st.fastTimer !== undefined) { clearTimeout(st.fastTimer); st.fastTimer = undefined; }
+  if (st.advInterval === st.fastInterval) return false;
   st.advInterval = st.fastInterval;
   refreshAdvertising();
+  return true;
 }
 
 function goIdleAfterTimeout() {
@@ -640,16 +701,19 @@ function handleWrite(k, pl) {
   // value the receiver asked for rather than the one the device kept (D-092).
   if (w.readable) setTimeout(() => { guarded(() => publishRead(w)); }, 0);
   // A write means a receiver is plainly here, and its next command should not
-  // wait out the idle interval -- even if the connect event was missed. This
-  // also republishes at once, so anything the write changed that *is*
-  // advertised goes out now rather than at the next scheduled rebuild.
-  try { goFast(); }
+  // wait out the idle interval -- even if the connect event was missed. And
+  // anything the write changed that *is* advertised goes out now rather than
+  // at the next schedule: the entries are re-read here, and the packet is
+  // rebuilt if their bytes moved or if goFast() has not already done it.
+  try { if (!goFast()) tick(); }
   catch (e) { if (st.onError) st.onError(e); }  // a refused packet must not escape into onWrite
   return true;
 }
 
-/* The radio clamps anything outside 20..10000 silently, which is the kind of
-   thing that costs an afternoon. Refuse it here, where we can name the option. */
+/* The radio clamps anything outside 20..10000 silently.
+
+   Which is the kind of thing that costs an afternoon, so refuse it here, where
+   we can name the option. */
 function checkInterval(name, v) {
   if (v < 20 || v > 10000) throw err("interval_out_of_range", `${name} is ${v}ms; the radio accepts 20 to 10000`);
   return v;
@@ -732,10 +796,11 @@ function setup(opts) {
     NRF.setServices(svcs);
   }
   refreshAdvertising();
-  // Without this the packet is built once and never again: sensor values freeze
-  // at boot and the packet id never moves.
+  // Without this the packet is built once and never again: sensor values would
+  // freeze at their boot readings. The tick rebuilds only when one of them has
+  // moved (D-106).
   if (st.timer !== undefined) clearInterval(st.timer);
-  st.timer = setInterval(refreshAdvertising, st.interval);
+  st.timer = setInterval(tick, st.interval);
   // Once per module load, not once per setup(). `st` is rebuilt by every
   // setup() call, so this flag cannot live in it -- and a device being
   // developed on is a device whose setup() runs again and again, each run
@@ -748,7 +813,9 @@ function setup(opts) {
   return exports;
 }
 
-/* Re-read every sensor and re-advertise, without waiting for the next interval. */
+/* Re-read every sensor and re-advertise now.
+
+   Without waiting for the next interval, and whether or not anything moved. */
 function update() { refreshAdvertising(); }
 
 /* A writable value changed without a write - a knob, a button, a schedule.
@@ -766,7 +833,7 @@ function setAdvertisingInterval(ms) {
   const ord = st.plan.ordered;
   for (let i = 0; i < ord.length; i++) if (ord[i].inheritsInterval) ord[i].readInterval = st.interval;
   if (st.timer !== undefined) clearInterval(st.timer);
-  st.timer = setInterval(refreshAdvertising, st.interval);
+  st.timer = setInterval(tick, st.interval);
   if (st.fastTimer === undefined && st.advInterval !== st.fastInterval) {
     st.advInterval = st.interval;
     refreshAdvertising();
@@ -774,8 +841,11 @@ function setAdvertisingInterval(ms) {
   return st.interval;
 }
 
-/* Change how long the device keeps advertising fast after a disconnect, without
-   re-running setup(). The counterpart of setAdvertisingInterval: the fast window
+/* Change how long the fast window lasts.
+
+   Without re-running setup(), and after a disconnect: the device keeps
+   advertising fast for this long. The counterpart of setAdvertisingInterval:
+   the fast window
    trades battery for the cost of the *next* command, and the only way to choose
    either well is to try values against a real receiver. Measuring what the idle
    interval costs also needs it -- a measurement has to wait this window out
@@ -810,6 +880,7 @@ exports.writableSpec = writableSpec;
 exports.stableSortByObjectId = stableSortByObjectId;
 exports.planPacket = planPacket;
 exports.renderServiceData = renderServiceData;
+exports.readSensor = readSensor;
 exports.handleWrite = handleWrite;
 exports.counterIsAhead = counterIsAhead;
 exports.COUNTER_WINDOW = CTR_WINDOW;

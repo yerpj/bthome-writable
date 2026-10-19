@@ -294,6 +294,45 @@ test("each sensor can be read on its own schedule", () => {
   assert.equal(reads.battery, 1, "and read again once the minute is up");
 });
 
+test("a re-read says whether the bytes moved", () => {
+  /* What decides a rebuild (D-106): the tick re-reads the advertised entries,
+   * and only a reading that actually moved is worth a packet and a new packet
+   * id. The comparison is on the encoded bytes, not on the value, because the
+   * bytes are what a receiver sees -- two readings that encode the same are
+   * the same advertisement. */
+  let value = 90;
+  const entries = [{ type: "battery", get: () => value }];
+  const plan = bw.planPacket(entries, fakeEncodeOne);
+  const item = plan.ordered[0];
+
+  assert.equal(bw.readSensor(item, fakeEncodeOne, entries, 1000), false);
+  value = 90.4; // rounds to the same byte
+  assert.equal(bw.readSensor(item, fakeEncodeOne, entries, 2000), false);
+  value = 91;
+  assert.equal(bw.readSensor(item, fakeEncodeOne, entries, 3000), true);
+  assert.equal(bytesToHex(bw.renderServiceData(plan, 1, null)), "400001015b");
+});
+
+test("the declaration and the object order are settled at plan time", () => {
+  /* 8.5 ms of every rebuild went on deriving them again, and neither can
+   * change until the next setup() (D-106). */
+  const entries = [
+    { type: "battery", get: () => 90 },
+    { type: "light", set: noop },
+    { type: "temperature", set: noop, get: () => 21 },
+  ];
+  const plan = bw.planPacket(entries, fakeEncodeOne);
+
+  assert.deepEqual(plan.decl, [0xff, 0x02, 0x1e, 0x02]);
+  assert.deepEqual(
+    plan.objs.map((o) => o.id),
+    [0x00, 0x01, 0x65],
+    "packet id, the battery, then the settings revision"
+  );
+  // The sensor goes into the list as itself, so a new reading needs no copy.
+  assert.equal(plan.objs[1], plan.ordered[0]);
+});
+
 test("a cached reading still goes out in every packet", () => {
   const entries = [{ type: "battery", interval: 60000, get: () => 90 }];
   const plan = bw.planPacket(entries, fakeEncodeOne);

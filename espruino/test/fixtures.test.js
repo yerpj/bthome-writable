@@ -45,6 +45,13 @@ function entryIds(fixture) {
   return fixture.declaration ? fixture.declaration.entries.map((e) => parseInt(e, 16)) : null;
 }
 
+/* The declaration's bytes, which buildServiceData now takes ready-made -- the
+ * plan builds them once rather than on every packet (D-106). */
+function declBytes(fixture) {
+  const ids = entryIds(fixture);
+  return ids ? bw.encodeDeclaration(ids) : null;
+}
+
 /* The spec the device holds for entry `k`, as its setup would derive it. */
 function specFor(fixture, access) {
   const id = parseInt(fixture.declaration.entries[access.entry - 1], 16);
@@ -68,7 +75,7 @@ for (const fixture of FIXTURES) {
     const built = bw.buildServiceData(
       parseInt(fixture.device_info_byte, 16),
       sensorObjects(fixture),
-      entryIds(fixture)
+      declBytes(fixture)
     );
     assert.equal(bytesToHex(built), fixture.service_data);
   });
@@ -83,14 +90,21 @@ for (const fixture of FIXTURES) {
 }
 
 test("declaration-not-last cannot be produced: the codec always appends it", () => {
-  const built = bw.buildServiceData(0x40, [{ id: 0x01, value: [97] }], [0x1e]);
+  const built = bw.buildServiceData(
+    0x40,
+    [{ id: 0x01, value: [97] }],
+    bw.encodeDeclaration([0x1e])
+  );
   assert.deepEqual(built.slice(-3), [bw.DECLARATION_OBJECT_ID, 1, 0x1e]);
 });
 
 test("forbidden-entry is refused when built through the codec", () => {
+  /* The declaration's bytes are built once, at plan time, so this is where the
+   * refusal now lands (D-106). It is still refused before anything reaches the
+   * air, which is what the fixture is for. */
   const fixture = FIXTURES.find((f) => f.violates === "forbidden_entry");
   assert.throws(
-    () => bw.buildServiceData(0x40, sensorObjects(fixture), entryIds(fixture)),
+    () => declBytes(fixture),
     (error) => error.code === "forbidden_entry"
   );
 });
@@ -98,7 +112,12 @@ test("forbidden-entry is refused when built through the codec", () => {
 test("capacity-overflow is refused rather than truncated", () => {
   const fixture = FIXTURES.find((f) => f.violates === "capacity_exceeded");
   assert.throws(
-    () => bw.buildServiceData(0x40, sensorObjects(fixture), entryIds(fixture)),
+    () =>
+      bw.buildServiceData(
+        0x40,
+        sensorObjects(fixture),
+        declBytes(fixture)
+      ),
     (error) => error.code === "capacity_exceeded"
   );
 });
