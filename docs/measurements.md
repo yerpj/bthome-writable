@@ -485,6 +485,22 @@ changes, which is a real change) and one tick where the battery reading moved.
 The sealed burst arrived while the device was already advertising fast, so not
 even that one was needed.
 
+### What it saved, measured by someone else
+
+@enaon ran a PPK2 against the fix on his own nice!nano, bindkey and counter
+report, 1 s interval: **~235 uA before, ~50 uA after**, against a baseline of
+~45 uA with the module not loaded at all. His variant that keeps the bytes and
+patches the counter came out at ~85 uA. His conclusion, which agrees with the
+profile above: the cost was the reconstruction of the payload, not the call to
+`NRF.setAdvertising`.
+
+### Two clocks
+
+2000 iterations on the Puck, with the interpreter's own 209 us of loop overhead
+subtracted: **`Date.now()` costs 240 us a call, `getTime()` 162 us.** Raised by
+@enaon. At one call per tick it is 0.008% of the thread, which is why the module
+still calls `Date.now()`.
+
 ### Reproducing it
 
 The three scripts live in the session scratchpad rather than in `tools/`: they

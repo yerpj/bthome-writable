@@ -6238,3 +6238,53 @@ than raising it. The body says so, in the paragraph before last, because a
 reviewer meeting unexplained comment churn is a reviewer looking for a second
 change.
 
+### @enaon's PPK2 verdict, 2026-10-19 -- 235 uA to ~50
+
+He measured the fix rather than taking it on trust, which is the whole reason
+this was worth waiting for:
+
+| | |
+|---|---|
+| before, bindkey and counter report, 1 s | **~235 uA** |
+| option 1, do not rebuild when nothing changed | **~50 uA** |
+| option 2, inject the counter into the stored payload | **~85 uA** |
+| his own baseline, without this module at all | ~45 uA |
+
+So the module now costs about **5 uA** at idle on his board, against 190. And
+his conclusion is the one that matters for anyone reading the fix: *"for sure
+the cost is not so much calling NRF.setAdvertiing, but the reconstruction of
+the payload."*
+
+That is exactly what his own profile had said -- `NRF.setAdvertising` was 3.5 ms
+of 26-29 -- and it is why the fix has three parts rather than one: option 1
+skips the reconstruction, and the precomputed declaration and object order make
+the reconstruction cheaper when it does have to happen. His option 2 (keep the
+bytes, patch the counter) is the one that cannot work sealed, and his own
+numbers put it at 85 uA against 50 for not rebuilding at all.
+
+He offered a fix of his own and held it back -- *"I do have a fx if you like,
+but I think it is best to do it all with one llm"* -- then, an hour later:
+*"Super, PPK2 test passed :)"*
+
+### `getTime()` against `Date.now()`, measured on the Puck
+
+His closing note: *"getTime() is faster than Date() (~13%)"*. Measured here,
+2000 iterations, loop overhead subtracted:
+
+| | per call |
+|---|---|
+| `Date.now()` | **240 us** |
+| `getTime()` | **162 us** |
+
+He is right, and by more than 13% once the interpreter's own 209 us of loop
+overhead is taken out -- which is also why his figure was 13%: in a loop, the
+loop dominates.
+
+**Not changed, and not in #765.** The module now calls it once per tick and
+once per rebuild, so 78 us per second is 0.008% of the thread: it would be
+churn in an open pull request for something no instrument on this bench can
+see. It is written down here for the next time that file is opened -- if Gordon
+asks for changes to #765, it goes in then, as `getTime()*1000` at the three
+call sites in the radio half (the pure half takes `now` as an argument, so the
+tests are unaffected).
+
