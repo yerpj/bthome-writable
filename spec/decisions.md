@@ -6103,8 +6103,45 @@ write, and the queue is the stutter.
 1. `goFast()`: the one-line guard. Nothing observable changes.
 2. Precompute the declaration bytes and the object order at `start()`. Nothing
    observable changes.
-3. The periodic rebuild, and with it the packet-id cadence: **Gordon**. The
-   question to put to him is narrow -- may a BTHome device leave the radio
-   repeating an unchanged packet, and advance the packet id only when something
-   changes? -- and @enaon has now asked it independently, which is the time to
-   ask it.
+3. The periodic rebuild, and with it the packet-id cadence: **BTHome's own
+   specification already answers it, and in @enaon's favour** -- see below. It
+   still goes past Gordon, since the module lives in his repository, but as a
+   finding with a citation rather than an open question.
+
+### What BTHome says about the packet id -- checked, 2026-10-19
+
+The question looked like a semantic one for Gordon. It is not: it is settled on
+<https://bthome.io/format/>, which is the normative page.
+
+- *"The `packet id` is optional and can be used to filter duplicate data."*
+- *"should be increased on every change in data"*
+- *"BTHome receivers should only process the advertisement if the `packet id`
+  is different compared to the previous one."*
+- *"This allows you to send multiple advertisements that are exactly the
+  same."*
+
+So BTHome's rule is **change-driven, not interval-driven**, repeating an
+identical advertisement is explicitly a thing a device may do, and the page
+even calls the field *"often not needed"*. **Our per-interval advance is the
+deviation**, and it defeats the deduplication the field exists for: a receiver
+cannot tell a new reading from a repeat, because every repeat arrives with a
+fresh number.
+
+The reference implementation agrees. `bthome_ble/parser.py`,
+`_skip_old_or_duplicated_advertisement`: a packet id equal to the last one is
+discarded as a duplicate -- *unless* more than **4 seconds** have passed, in
+which case it is processed anyway. That is the behaviour a repeating device
+wants: its advertisements are deduplicated while they are repeats, and still
+processed every few seconds. Home Assistant's availability tracking is not
+affected either way, since it counts advertisements received, not payloads the
+parser accepted.
+
+**And the sealed case is safe.** `_check_encryption_counter` warns and skips
+only on a *decreasing* counter (`new < last`, and only above 100). A repeated
+sealed packet carries the *same* counter, which is not decreasing, so it is
+decrypted and parsed as usual rather than treated as a replay.
+
+`PROTOCOL.md` says nothing about any of this: `0x00` is reserved at §2.1 and
+appears in the worked example at §5, and no cadence is prescribed. Nothing in
+the protocol has to change -- this is the module's behaviour, not the wire
+format's.
