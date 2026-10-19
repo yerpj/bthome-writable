@@ -5932,11 +5932,11 @@ read first.
 And the sound objection came after the unsound ones -- so the way to find it
 was to keep answering on facts rather than to stop at the tone.
 
-## D-106 -- the device rebuilds its advertisement once a second, and once per write  [VERIFY, waiting on @enaon]
+## D-106 -- the device rebuilds its advertisement once a second, and once per write  [VERIFY, his numbers are in]
 
-**Status:** 2026-10-16, measured. **Nothing is changed yet, on purpose:** the
-report came from @enaon, he is running a PPK2 against it, and his numbers
-should arrive before any fix does.
+**Status:** 2026-10-16, measured here; **2026-10-19, measured by @enaon from the
+other end** -- current, not latency -- and his figures agree with these. What is
+agreed to change, and what still is not, is at the end of this entry.
 
 ### What he said
 
@@ -6007,3 +6007,104 @@ defined` -- and `AESCCM`'s fallback still needs `AES.encrypt`, since it covers
 "AES without AES_CCM" (D-095) rather than "no AES". A Puck.js can answer this,
 and it is worth answering: if a rebuild costs 38 ms in clear, it costs more
 sealed, every second.
+
+### @enaon's numbers, 2026-10-19
+
+Two posts on `espruino#8024`. The first, 2026-10-15, is current drawn on a
+nice!nano running his own lamp script -- a PIR and a touch button included,
+which he says account for some 25 uA of each total:
+
+| | |
+|---|---|
+| without this module, advertising interval 1.5 s | **~45 uA** |
+| with it: bindkey and counter report, 1 s, battery plus one writable light | **~370 uA** |
+| the same without a bindkey | **~235 uA** |
+
+The second, 2026-10-19, profiles `refreshAdvertising()` with `getTime()`
+checkpoints, one writable light and one battery entry at `readInterval`
+300000, nothing connected:
+
+| | |
+|---|---|
+| `buildServiceData` | 14 ms |
+| `stableSortByObjectId` | 5 ms |
+| `encodeDeclaration` | 3.5 ms |
+| `NRF.setAdvertising` | 3.5 ms |
+| **per rebuild** | **~26-29 ms** |
+
+He confirms in passing that the read cache works: the battery value is re-read
+every five minutes, so the ~22 ms of JavaScript re-assembles a byte array that
+is **identical** to the one it built a second earlier.
+
+**It reconciles with this bench.** 38 ms here for three entries against his
+26-29 for two is the same measurement. And 29 ms/s at the ~3.5 mA an nRF52
+draws with the CPU running is about **100 uA**, which is roughly half of the
++190 uA he measures unsealed -- the rest being a larger packet and a shorter
+interval.
+
+**It also answers what could not be measured here.** The bindkey adds +135 uA
+over the same configuration, which is about 40 ms of CPU per second: on a board
+without `AES_CCM`, re-sealing from JavaScript costs *more than the whole rest
+of the rebuild*. The sealed case is the expensive one, as suspected, and now by
+a measured factor rather than an assumption.
+
+One caveat on his method, worth saying to him rather than about him: his
+reference runs at a 1.5 s interval and the measurement at 1 s, so the
+comparison moves two things at once. At equal intervals the gap would be
+smaller.
+
+### His two proposals, and where the second one breaks
+
+He arrived independently at cause 2 above -- *"if nothing changed, do nothing.
+Don't rebuild and don't advance the packet id"* -- and named the same reserve
+unprompted: *"this changes the packet-id cadence, which every BTHome receiver
+can observe -- that is the open question"*. So the blocker is not the
+implementation, it is BTHome's own semantics, and **rule 2 still sends it to
+Gordon**.
+
+His second proposal is to keep the built service data and patch only the
+packet-id byte before re-setting it: ~4.5 ms/s instead of ~29. In clear that
+works, and the byte is easy to find -- our packet is `[info, 0x00, pid, ...]`,
+so index 2.
+
+**It cannot work on a sealed device, which is his own configuration.** The
+packet id sits inside the ciphertext, the MIC covers it, and the nonce carries
+the counter that has to advance: there is no byte to patch, the packet has to
+be re-sealed. His proposal 2 therefore removes the 22 ms of JavaScript for
+devices in clear and does **nothing** for his 370 uA. For a sealed device only
+proposal 1 saves anything.
+
+### The part that needs nobody's permission
+
+Of his 26-29 ms, **8.5 ms recompute constants**:
+
+- `encodeDeclaration(p.entryIds)` -- `entryIds` is fixed when the plan is made,
+  so `FF n id...` is the same byte string every time, and the `FORBIDDEN` loop
+  is re-run over it for nothing.
+- `stableSortByObjectId` -- the multiset of object ids is identical on every
+  call, so the order is too. It is an insertion sort, O(n^2), over a result
+  known at plan time.
+
+Precomputing both at `start()` changes **no advertised byte**, introduces **no
+cache to invalidate** (the plan only changes at startup) and removes about a
+third of the cost. That is strictly safer than his proposal 2, whose full form
+-- caching the whole packet -- needs invalidating on `set()`, on `changed()`,
+on a revision bump and on each elapsed `readInterval`.
+
+### What his analysis does not see
+
+Only the periodic rebuild. **Cause 1 -- `goFast()` rebuilding on every accepted
+write, 112 rebuilds for 100 writes -- is absent from it**, and it is the one
+that explains the symptom he reported first: a dimming burst pays a rebuild per
+write, and the queue is the stutter.
+
+### So, the plan
+
+1. `goFast()`: the one-line guard. Nothing observable changes.
+2. Precompute the declaration bytes and the object order at `start()`. Nothing
+   observable changes.
+3. The periodic rebuild, and with it the packet-id cadence: **Gordon**. The
+   question to put to him is narrow -- may a BTHome device leave the radio
+   repeating an unchanged packet, and advance the packet id only when something
+   changes? -- and @enaon has now asked it independently, which is the time to
+   ask it.
