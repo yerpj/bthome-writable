@@ -201,3 +201,76 @@ def test_declaration_survives_encrypted_advertising() -> None:
     values = {k.key: v.native_value for k, v in entities.items()}
     assert values["battery"] == 97
     assert values["light"] is True
+
+
+BINDKEY = bytes.fromhex("231d39c1d7cc1ab1aee224cd096db932")
+
+
+def sealed(counter: int, packet_id: int = 9, battery: int = 97) -> bytes:
+    """One sealed advertisement, as the Espruino module builds it (§5.1)."""
+    from cryptography.hazmat.primitives.ciphers.aead import AESCCM
+
+    plaintext = (
+        Obj(0x00, bytes([packet_id])).encode()
+        + Obj(0x01, bytes([battery])).encode()
+        + Obj(0x1E, bytes([1])).encode()
+        + declaration(0x1E).encode()
+    )
+    ctr = counter.to_bytes(4, "little")
+    nonce = (
+        bytes.fromhex(MAC.replace(":", ""))
+        + bytes.fromhex("d2fc")
+        + bytes([0x41])
+        + ctr
+    )
+    encrypted = AESCCM(BINDKEY, tag_length=4).encrypt(nonce, plaintext, None)
+    return bytes([0x41]) + encrypted[:-4] + ctr + encrypted[-4:]
+
+
+def test_the_same_sealed_advertisement_repeated_is_not_a_replay() -> None:
+    """P2's premise, checked against the receiver rather than argued (D-108).
+
+    Changing only the advertising rate republishes the bytes already on air:
+    same packet id, same encryption counter, same MIC. BTHome's format says
+    that is allowed -- *"this allows you to send multiple advertisements that
+    are exactly the same"* -- and a receiver that treated an unchanged counter
+    as a replay would have made P2 unshippable, silently, on encrypted devices
+    only. `bthome-ble` is the receiver Home Assistant uses, so it is the one
+    that has to say so.
+    """
+    payload = sealed(counter=4321)
+    device = BTHomeBluetoothDeviceData(bindkey=BINDKEY)
+
+    for attempt in range(3):
+        update = device.update(make_service_info(payload))
+        entities = {**update.entity_values, **update.binary_entity_values}
+        values = {k.key: v.native_value for k, v in entities.items()}
+        assert device.bindkey_verified, f"the key stopped verifying on repeat {attempt}"
+        assert values["battery"] == 97
+        assert values["light"] is True
+        assert values["packet_id"] == 9, "the same packet, said again"
+
+
+def test_a_counter_that_goes_backwards_is_what_the_library_refuses() -> None:
+    """The rule that does exist, so the test above is not mistaken for luck.
+
+    `_check_encryption_counter` refuses a *decreasing* counter at or above 100
+    and nothing else, which is exactly the shape §5.2 was written against: the
+    device never lets its counter fall, and a rate change does not move it at
+    all.
+    """
+    device = BTHomeBluetoothDeviceData(bindkey=BINDKEY)
+    device.update(make_service_info(sealed(counter=5000, battery=97)))
+    assert device.encryption_counter == 5000
+
+    # Skipped, not raised: the parser catches its own ValueError and keeps the
+    # last good advertisement, so what a caller sees is stale data rather than
+    # an error -- which is why §5.2 makes the device's counter the thing that
+    # must never fall, and why P2 leaves it alone instead of reusing it.
+    update = device.update(make_service_info(sealed(counter=4000, battery=42)))
+    assert device.encryption_counter == 5000, "the backwards counter was taken"
+    values = {
+        k.key: v.native_value
+        for k, v in {**update.entity_values, **update.binary_entity_values}.items()
+    }
+    assert values["battery"] == 97, "the refused advertisement's value got through"

@@ -6695,3 +6695,170 @@ Watching `lastRead` on the nano for 75 s, with the die temperature at `interval:
 **P3** — `interval: null`, an entry the device polls itself. Unchanged from
 D-107: a public API addition, three lines of code, a paragraph of page, and a
 wider surface for @gfwilliams to maintain. Not mine to add.
+
+---
+
+## D-110 — P3 is Gordon's to rule on, not ours to write  [DECISION]
+
+**Status:** 2026-10-20, ruled by the owner. **P3 is deferred, and it is deferred
+to a conversation, not to a free slot.** Nothing of it is implemented, and
+nothing should be until @gfwilliams has answered.
+
+### The ruling, as given
+
+> *"P3 doit être exposé à Gordon, il donnera son avis sur le principe et sur
+> l'éventuel moyen d'implémentation. J'imagine qu'on pourrait aussi avoir un
+> truc du genre `interval: 'onlyNow'` ou `interval: 'atAdvertisingRate'`, sur le
+> principe, syntaxe à reformuler bien sûr. Laisse donc P3 pour une discussion
+> ultérieure."*
+
+Two things are being asked of him, and they are separate: **the principle** —
+should an entry be able to say that it is never polled, that the device will
+announce it? — and **the means**, which is where his own module's idioms decide
+what the option should look like.
+
+### Why it needs him rather than a flag
+
+Rule 1 of CLAUDE.md puts `[DECISION]` items with the owner, and this one goes a
+step further: it is a public API addition to a module @gfwilliams maintains and
+has not agreed to. Every other change in D-106, D-108 and D-109 was behaviour
+behind an existing option. P3 adds vocabulary, and vocabulary is the part of a
+module a maintainer lives with.
+
+### What the vocabulary question actually is
+
+Today `interval` on an entry already carries three meanings, which is the
+discussion's real subject:
+
+| written | means |
+|---|---|
+| `interval: 30000` | read at most every 30 s |
+| absent | inherit the advertising interval, and follow `setAdvertisingInterval()` |
+| `interval: 0` | read at **every** wake, which is what D-050 needs for a sensor measuring the effect of a write |
+
+P3 would add a fourth — *never poll me* — and `null` is the obvious spelling and
+the worst one: it is what a forgotten variable looks like. The owner's own
+suggestion is to say it in words instead, `'onlyNow'` or
+`'atAdvertisingRate'`, and he says himself the wording wants rework. Noted here
+for the discussion rather than settled: strings would also let `0`'s meaning be
+spelled out instead of inferred, which is the part a reviewer trips on.
+
+### What to carry into the thread
+
+* the principle: event-driven entries, which is the Espruino idiom —
+  `setWatch`, an accelerometer interrupt, a schedule — against this module's
+  current assumption that everything advertised is polled;
+* that a device whose every entry were declared that way would hold **no timer
+  at all**, which is the end of the road D-109 started down;
+* the cost side, honestly: P1 bought nothing on a current meter (§9), and
+  there is no reason to expect P3 to buy more. It buys the right shape for a
+  device that already wakes for its own reasons;
+* the three existing meanings of `interval` above, because whatever is added
+  has to live with them;
+* and that the implementation is three lines, so the discussion is about the
+  surface, not the work.
+
+### Not now
+
+No branch, no flag, no `[DECISION]` constant to be switched on later: a flagged
+half-implementation of a public option is worse than none, because the next
+person reads it as settled. D-107's P3 paragraph and this entry are the whole of
+it until he replies.
+
+---
+
+## D-111 — the chain test: Home Assistant in the loop  [VERIFY]
+
+**Status:** 2026-10-20, written and run on commit `06a3da0` at the owner's
+request: *"Pour P1 et P2, je veux que tu établisse un scénario de test crédible
+comprenant aussi HA, pour avoir toute la chaîne, qualifiée."*
+`tools/chain_test.py`, `docs/chain-test.md`, `docs/measurements.md` §12.
+
+### Why the device was not enough
+
+D-108 and D-109 changed *when the module publishes* and *when it reads*. Half of
+each claim belongs to the receiver:
+
+* P2 republishes the bytes already on air for a rate change -- same packet id,
+  same encryption counter. A receiver that read an unchanged counter as a replay
+  would have broken encrypted devices only, and silently.
+* P1 reads each entry on its own schedule. A device that woke correctly but
+  stopped reading would look healthy on the console and go stale in Home
+  Assistant.
+
+`tools.regression` answers *does a command arrive, and when*. Neither of the
+above is that question.
+
+### The eight checks
+
+| | asserts | catches |
+|---|---|---|
+| A | the integration is loaded, every entity of both devices exists and is not `unavailable` | a config entry that failed to return; zero-config broken |
+| B | the `interval: 0` illuminance reaches HA at the advertising rate: >= 10 reports in 30 s, no gap over 5 s | P1 scheduling the fast entry wrongly, or not at all |
+| C | the 300 s battery reaches HA once or twice in 320 s, 280-340 s apart if twice | P1 reading a slow entry far too often -- @gfwilliams' objection, at the far end of the chain |
+| D | a command lands and is acknowledged on both boards | the write path, both kinds of entity |
+| E | a write through HA moves what HA measures: the illuminance follows the light | the closed loop, through HA rather than a private BLE link |
+| F | ten commands in a row all arrive and the tenth is what stands | @enaon's dimming burst, now that `handleWrite` publishes once |
+| G | the fast window opening and closing is invisible | P2's republication mistaken for new or corrupt data |
+| H | Home Assistant logged nothing about any of it | everything else, cheaply |
+
+**B and C together are P1 seen from outside**: one self-arming timer serving a
+one-second entry and a five-minute one, each at its own rate, on one device.
+
+### The sealed half, where the bench cannot reach
+
+The bench's Home Assistant has no encrypted device configured -- no config entry
+carries a bindkey, and creating one needs the config flow -- so P2's sealed
+claim is qualified in the suite instead, against the library Home Assistant
+actually parses with (`tools/tests/test_bthome_ble_tolerance.py`):
+
+* **the same sealed advertisement three times over** keeps verifying and keeps
+  its values. `bthome-ble` accepts a repetition whose counter has not moved,
+  which is what P2 depends on;
+* **a counter that goes backwards** is what it does refuse, and it refuses by
+  *skipping the advertisement and keeping the last good one* -- a warning and
+  stale data, not an exception. Worth having written down: that is the failure
+  P2 had to avoid, and it would have been invisible.
+
+### The run
+
+**Every check passed, first time, exit 0** -- `the chain is qualified`. The figures worth keeping: the `interval: 0` illuminance reported **11 times in 30 s** and **140 times** across the 320 s window; the 300 s battery **once** in that same window; ten commands in a row **10/10 delivered**, median 0.38 s; the closed loop **75 lx off against 540 lx on**, an uncovered Puck and still a factor of seven; **15 reports across the fast window closing**, nothing unavailable; and **nothing new in the log**. `docs/measurements.md` §12 has the output.
+
+### Two things it found before it had finished
+
+**1. `tools.ha_probe` was reporting an unread log as a clean one.** `/api/error_log`
+is gone in Home Assistant 2026.7 and answers 404; `ha_probe` caught the
+`HTTPError` and printed `nothing`, which reads as *the log is clean*. Every "Log
+lines mentioning ... : nothing" this project has printed since that release
+meant *nothing was read*. The chain test now reads `system_log/list` over the
+WebSocket, and `ha_probe` says the endpoint is gone instead of implying a clean
+log.
+
+**2. Home Assistant had logged two malformed advertisements attributed to these
+boards**, both having lost the `0xFF` declaration byte, which makes
+`bthome-ble` read the rest as objects and warn that object ids are out of order:
+
+```
+Espruino b216 B216: ... payload: 000d0279ff009005
+Puck.js f7b9 F7B9:  ... payload: 00e201530528d30001001e
+```
+
+What the boards actually advertise was captured at the same time and parses
+cleanly, in ascending order, with the declaration last:
+
+```
+nano  400010026009ff0153      -> packet id 16, temperature 24.0, declaration [0x53]
+puck  400041015305d4d200ff011e -> packet id 65, battery 83, illuminance 539.72, declaration [0x1e]
+```
+
+The Puck's logged payload differs from a real one in **exactly one byte** --
+`ff` where the declaration starts, read as `01` -- and the nano's loses four.
+The module cannot produce either: the declaration's bytes and its position are
+computed once by `setup()` and never touched again (D-106), and both captures
+show them intact.
+
+A three-minute passive scan from this host counted **174 advertisements from the two boards and none malformed** (`tools.adv_health`, written for this). The same scan is worth keeping for another reason: the nano advertised **57 times with one single payload**, its die temperature not having moved, which is D-106 and D-109 seen from outside. The chain test's own run logged **no repeat** of the two warnings either.
+
+So this is recorded as **a receive-path observation, not a module defect**, and
+the chain test's check H is what will say whether it recurs. If H ever fails
+with that warning, capture the advertisement before suspecting the module.

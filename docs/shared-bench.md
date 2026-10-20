@@ -21,8 +21,9 @@ it back. Ask the owner to pull the cell. This cost an hour the first time. Home 
 
 ## Anything that talks to Home Assistant needs two environment variables
 
-`tools.regression`, `tools.ha_bench`, `tools.ha_probe` and the latency sweeps
-read `HA_URL` and `HA_TOKEN` from the environment and fail without them. No
+`tools.regression`, `tools.chain_test`, `tools.ha_bench`, `tools.ha_probe` and
+the latency sweeps read `HA_URL` and `HA_TOKEN` from the environment and fail
+without them. No
 document said so until 2026-10-05, which made every command block below look
 like it would work from a clean shell.
 

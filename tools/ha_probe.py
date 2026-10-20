@@ -101,18 +101,27 @@ def main() -> int:
         print(f"... and {len(matches) - 40} more")
 
     heading(f"Log lines mentioning {needle!r} or bluetooth")
+    missing = False
     try:
         log = str(call("/api/error_log", url, token))
     except HTTPError:
-        log = ""
+        # Gone in 2026.7, which this swallowed into a confident "nothing" --
+        # a log that was never read reading as a clean log (D-111).
+        log, missing = "", True
     lines = [
         line
         for line in log.splitlines()
         if needle in line.lower() or "bluetooth" in line.lower()
     ]
+    if missing:
+        print(
+            "/api/error_log answers 404 on this Home Assistant: nothing was "
+            "read. Use `tools.chain_test`, which reads system_log over the "
+            "WebSocket."
+        )
     for line in lines[-30:]:
         print(line)
-    if not lines:
+    if not lines and not missing:
         print("nothing")
 
     return 0

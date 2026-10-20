@@ -30,7 +30,10 @@ python -m tools.bench_lock release
 ```
 
 Exit status is 0 when nothing regressed and 1 when something did, so it can gate
-a release. About three minutes per device.
+a release. Its companion is [`chain-test.md`](chain-test.md), which asks the
+other half of the question -- not *does a command arrive* but *does a value
+still arrive, and is a repeated advertisement harmless* -- with Home Assistant
+in the loop. About three minutes per device.
 
 ## What it measures
 

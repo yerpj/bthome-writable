@@ -772,6 +772,80 @@ nobody should expect to see it on a PPK2.
 
 `tools.regression` against the `7b9cb57` baseline, P1 deployed to both boards: **"no regression" on both**, thirteen of the fourteen checks plain `ok`. The write itself is 35.8 ms on the Puck -- the baseline figure to the tenth -- and 43.3 on the nano against 43.5. The one flag is a *fast* one: the nano's first-command 90th percentile came in at 4.176 s against a 14.993 s baseline, which the tool is built to question rather than celebrate (D-054, a proxy reusing a link looks exactly like this). The nano also delivered 0.958 of its commands rather than 1.000, inside the 0.900 the check allows. Both belong to the first-command spread section 9 recorded as unexplained; neither touches the read timer.
 
+## 12. The chain, with Home Assistant in it
+
+**2026-10-20, commit `06a3da0`** -- P1 and P2 both in, both boards redeployed
+from it. `tools.chain_test`, described in [`chain-test.md`](chain-test.md),
+which says what each check asserts and what it would catch. The procedure is
+there; this is what it answered.
+
+```
+the chain, end to end
+  ok   A  the integration is loaded                   bthome_writable
+  ok   A  every entity of both devices is there       5 entities
+       nothing to change -- the bench was already prepared, which usually means an earlier run did not finish; it will be left exactly as found
+  watching the fast entry for 30 s ...
+  ok   B  interval 0 arrives at the advertising rate  11 reports in 30 s, median gap 2.2 s, worst 4.4 s
+  ok   D  a command lands on the puck                 3.63 s, write 36 ms
+  ok   D  a command lands on the nano                 2.09 s, write 42 ms
+  ok   E  a write through HA moves what HA measures   75 lx off, 540 lx on, difference +465 against 16 needed (noise 3.7)
+  ok   F  ten commands in a row all arrive            10/10 delivered, median 0.38 s
+  ok   F  and the last one is what stands             switch.bureau_mobilesensf7b9_light is off, expected off
+  ok   G  the fast window closing is invisible        15 reports across it, now 75.58 lx
+  ok   G  and the writable entity did not go unavailable switch.bureau_mobilesensf7b9_light is off
+  waiting 165 s more for the five-minute entry ...
+  ok   C  interval 300000 arrives every five minutes  1 reports in 320 s
+       the same device reported its one-second entry 140 times in that window: one timer, two cadences
+       the nano's 30 s die temperature reported 0 times -- it is published only when the reading moves (D-106), so few or none is correct on a board sitting still
+  ok   H  nothing new in Home Assistant's log         0 new or repeated entries, none about this
+
+the chain is qualified
+```
+
+### What the two cadences look like from Home Assistant
+
+Checks B and C are P1 from the far end of the chain, and they are the figures
+worth keeping: on one device, with one self-arming timer, Home Assistant is
+told about the `interval: 0` illuminance at the advertising rate and about the
+300 s battery every five minutes. Neither entry disturbs the other, which is
+the whole of what @gfwilliams asked for in `espruino#8024`.
+
+### What the radio shows next to it
+
+A three-minute passive scan from this host, taken the same evening, counting
+every advertisement from both boards:
+
+| | advertisements in 180 s | distinct payloads |
+|---|---|---|
+| Puck.js, `light-loop.js` (illuminance at `interval: 0`) | 117 | 61 |
+| nice!nano, `oled-text.js` (die temperature at 30 s) | 57 | **1** |
+
+The nano advertised **fifty-seven times with one single packet**: its die
+temperature did not move, so nothing was rebuilt and the radio repeated what it
+held. That is D-106 and D-109 together, seen from outside the device, and it is
+also why Home Assistant had not been told anything new about that entry for
+seventeen minutes -- correctly.
+
+### The malformed advertisements, and where they are not from
+
+Home Assistant's own log held two payloads attributed to these boards that had
+lost the `0xFF` declaration byte, which makes `bthome-ble` read the rest as
+objects and warn that object ids are out of order (D-111 has the lines). What
+the boards really advertise was captured at the same time:
+
+```
+nano  400010026009ff0153        packet id 16, temperature 24.0, declaration [0x53]
+puck  400041015305d4d200ff011e  packet id 65, battery 83, illuminance 539.72, declaration [0x1e]
+```
+
+Both parse cleanly, in ascending object id order, declaration last, with no
+warning. The Puck's logged payload differs from a real one in exactly one byte.
+And of the **174 advertisements** counted in the scan above, through this host's
+adapter, **none was malformed**.
+
+So the damage is in a receive path, not in the module -- and not in this host's.
+Recorded rather than explained: check H is what will say whether it recurs.
+
 ## Reproducing any of this
 
 Most of the tools above take `--address`; `tools.regression` and

@@ -72,6 +72,11 @@ version: installing without HACS, and what to do when a control misbehaves.
   measured, with the command that produces it again: response time against
   advertising interval, write and rejection timings, advertising budgets per
   board, text limits, the cost of encryption on the device.
+- [`docs/chain-test.md`](docs/chain-test.md) — the scenario that qualifies the
+  whole chain with Home Assistant in it: eight checks from an advertisement
+  reaching an entity to a burst of commands reaching the device, and what each
+  one would catch. Its narrower companion is
+  [`docs/regression.md`](docs/regression.md), the latency and delivery guard.
 - [`spec/PROTOCOL.md`](spec/PROTOCOL.md) — the protocol. Normative.
 - [`spec/decisions.md`](spec/decisions.md) — every resolved question, with the
   measurement or the ruling that resolved it.
