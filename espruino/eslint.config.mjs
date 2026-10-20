@@ -18,8 +18,6 @@ export default [
         exports: "writable",
         console: "readonly",
         getTime: "readonly",
-        setInterval: "readonly",
-        clearInterval: "readonly",
         setTimeout: "readonly",
         clearTimeout: "readonly",
         digitalWrite: "readonly",

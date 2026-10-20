@@ -113,8 +113,12 @@ function run(source, storedFiles) {
     clearInterval(handle) {
       if (handle !== undefined) timers.splice(handle - 1, 1);
     },
+    /* `name` is how a test tells the two timeouts the module holds apart: the
+     * read timer is the named `tick`, the return to idle and the deferred
+     * republications are arrows. Before D-109 the read timer was a
+     * setInterval, which needed no telling apart. */
     setTimeout(fn, ms) {
-      timeouts.push({ fn, ms });
+      timeouts.push({ fn, ms, name: fn.name });
       return timeouts.length;
     },
     clearTimeout(handle) {
@@ -192,6 +196,10 @@ function run(source, storedFiles) {
   return {
     storage,
     advertised,
+    /* The pending read timer, or undefined: at most one is ever armed. */
+    get reads() {
+      return timeouts.filter((t) => !t.cancelled && t.name === "tick").pop();
+    },
     options,
     timers,
     timeouts,
@@ -236,6 +244,19 @@ function run(source, storedFiles) {
     },
     context,
   };
+}
+
+/* The read timer's delay, to within the clock.
+
+   schedule() reads the clock again after the entries have been read, so the
+   delay it arms is the slack less however long that took -- 4 ms on the device,
+   where a 30 100 ms deadline measured 30 104 between reads. Asserting it to the
+   millisecond made this suite fail about one run in ten. */
+function about(actual, expected, label) {
+  assert.ok(
+    Math.abs(actual - expected) <= 50,
+    `${label}: ${actual} should be within 50 ms of ${expected}`
+  );
 }
 
 function hex(bytes) {
@@ -353,14 +374,16 @@ for (const name of BUNDLES) {
      * from a repeat (D-106). */
     const result = run(load(name));
 
-    assert.equal(result.timers.length, 1, "setup should schedule one tick");
+    const wake = result.reads;
+    assert.ok(wake, "setup should arm one read timer");
     /* Against the interval the bundle itself just advertised at, not a number
      * written here: an expectation that repeats a value living in the example
-     * goes stale the day the example changes, and this one did. */
-    assert.equal(result.timers[0].ms, result.options[0].interval);
+     * goes stale the day the example changes, and this one did. Plus the slack
+     * D-109 adds, so that the wake lands after the deadline rather than on it. */
+    about(wake.ms, result.options[0].interval + 100, "the armed wake");
 
     const before = result.advertised.length;
-    result.timers[0].fn();
+    wake.fn();
     assert.equal(
       result.advertised.length,
       before,
@@ -369,7 +392,7 @@ for (const name of BUNDLES) {
 
     if (!expected.mirrors) return; // nothing this example reads can move here
     result.sensors.light = 0.5;
-    result.timers[0].fn();
+    result.reads.fn();
     assert.equal(result.advertised.length, before + 1, "a moved reading is worth a packet");
     assert.notEqual(
       hex(result.advertised[before]),
@@ -458,7 +481,8 @@ test("it stays fast for a while after the receiver goes away, then relaxes", () 
   // Still fast: the disconnect only arms a timer.
   assert.ok(result.options[result.options.length - 1].interval < idle);
 
-  const pending = result.timeouts.filter((t) => !t.cancelled);
+  // Not the read timer, which D-109 also holds as a timeout.
+  const pending = result.timeouts.filter((t) => !t.cancelled && t.name !== "tick");
   assert.equal(pending.length, 1, "one pending return-to-idle");
   pending[0].fn();
 
@@ -638,11 +662,108 @@ test("the advertising interval can be changed without re-running setup", () => {
    * rebuild timer, since in BTHome terms they are the same thing. */
   const result = run(load("light-loop-standalone.js"));
   result.options.length = 0;
-  result.timers.length = 0;
 
   assert.equal(result.context.bw.setAdvertisingInterval(750), 750);
   assert.equal(result.options[result.options.length - 1].interval, 750);
-  assert.equal(result.timers[result.timers.length - 1].ms, 750);
+  // The illuminance in this example has interval 0 -- read on every packet --
+  // so the next wake follows the new advertising interval (D-109).
+  about(result.reads.ms, 750 + 100, "the armed wake");
+});
+
+/* --- the read timer wakes for a reason, or not at all (D-109) ------------- */
+
+test("an entry at five minutes does not wake the device every second", () => {
+  /* @gfwilliams, merging #765: "`interval` is 1000, so it still wakes up every
+   * 1000ms, just to run `tick` which does nothing 299 out of 300 times". It
+   * does not any more: the wake is armed from whatever falls due soonest. */
+  const result = run(load("single-light-standalone.js"));
+  result.context.bw.setup({
+    advertise: [{ type: "battery", interval: 300000, get: () => 61 }],
+    interval: 1000,
+  });
+
+  about(result.reads.ms, 300000 + 100, "one wake per five minutes, not 300");
+});
+
+test("a device with nothing to read holds no timer at all", () => {
+  /* Its advertising never changes by itself -- there is nothing in it that
+   * could -- so a timer could only ever confirm that. */
+  const result = run(load("single-light-standalone.js"));
+  result.context.bw.setup({
+    advertise: [{ type: "light", set: () => {} }],
+    interval: 1000,
+  });
+
+  assert.equal(result.reads, undefined, "no read timer");
+});
+
+test("setup() twice leaves one read timer armed, not two", () => {
+  /* `st` is rebuilt by every setup() call, so the previous run's timer handle
+   * has to be taken before the assignment. The clearInterval() that used to do
+   * it read the *new* state and so cleared nothing: a device being developed on
+   * accumulated a timer per setup(), each one calling into whatever state was
+   * current. Found by the test below, which expected no timer and found one. */
+  const result = run(load("single-light-standalone.js"));
+  result.context.bw.setup({
+    advertise: [{ type: "battery", interval: 7000, get: () => 61 }],
+    interval: 1000,
+  });
+
+  const armed = result.timeouts.filter((t) => !t.cancelled && t.name === "tick");
+  assert.equal(armed.length, 1, "one read timer");
+  about(armed[0].ms, 7100, "the new entry's, not the old one's");
+});
+
+test("each wake arms the next one from where the reads landed", () => {
+  const result = run(load("single-light-standalone.js"));
+  result.context.bw.setup({
+    advertise: [{ type: "battery", interval: 4000, get: () => 61 }],
+    interval: 1000,
+  });
+
+  const first = result.reads;
+  about(first.ms, 4100, "the first wake");
+  first.fn();
+  const second = result.reads;
+  assert.notEqual(second, first, "a new timer, not the spent one");
+  about(second.ms, 4100, "armed again for the same entry");
+});
+
+test("the soonest of several entries is what sets the wake", () => {
+  const result = run(load("single-light-standalone.js"));
+  result.context.bw.setup({
+    advertise: [
+      { type: "battery", interval: 300000, get: () => 61 },
+      { type: "temperature", interval: 30000, get: () => 21 },
+      { type: "illuminance", interval: 0, get: () => 12 },
+    ],
+    interval: 2000,
+  });
+
+  // The illuminance asks to be read on every packet, so it is the soonest and
+  // the advertising interval is its period (D-050).
+  about(result.reads.ms, 2100, "the soonest entry's wake");
+});
+
+test("a write rearms the read timer rather than leaving it to drift", () => {
+  const result = run(load("light-loop-standalone.js"));
+  const uuid = Object.keys(result.characteristics)[0];
+  const before = result.reads;
+
+  result.characteristics[uuid].onWrite({ data: [0x1e, 0x01] });
+
+  const after = result.reads;
+  assert.notEqual(after, before, "the write re-read the entries, so the wake moved");
+  about(after.ms, result.options[0].interval + 100, "the rearmed wake");
+});
+
+test("bw.update() rearms it as well", () => {
+  const result = run(load("single-light-standalone.js"));
+  const before = result.reads;
+
+  result.context.bw.update();
+
+  assert.notEqual(result.reads, before);
 });
 
 test("the fast window can be changed without re-running setup", () => {

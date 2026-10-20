@@ -6590,3 +6590,108 @@ owner's instruction, and D-107's description of both still stands. The one thing
 worth carrying into that discussion: P1's case is correctness, and §9's
 measurement says it is worth nothing on an instrument. It should be offered as
 tidiness, which is also how it should be written — not as a power fix.
+
+---
+
+## D-109 — P1: the device wakes when something is due, or not at all  [DECISION]
+
+**Status:** 2026-10-20, ruled by the owner (*"Fais P1"*) and implemented the
+same day, after D-108 shipped P2. P3 is still open and untouched.
+`docs/measurements.md` §11 has the figures, such as they are.
+
+### What it replaces
+
+`setInterval(tick, st.interval)`, installed by `setup()` and re-installed by
+`setAdvertisingInterval()`, which was the module's only periodic consumer.
+@gfwilliams' objection, written while merging #765:
+
+> *"`interval` is 1000, so it still wakes up every 1000ms, just to run `tick`
+> which does nothing 299 out of 300 times, because it checks lastRead against
+> `battery.interval`? IMO the best thing to do would be to have
+> `readAdvertised` return the minimum time until the next thing needs
+> updating."*
+
+### What was built
+
+Two functions and a constant, in front of `tick()`:
+
+* `nextDue(now)` — the milliseconds until the soonest advertised entry falls
+  due, or **null** when no entry ever does. An entry with `interval: 0` is read
+  at every wake (D-050), so for scheduling it counts as the advertising
+  interval, which is the rate the old `setInterval` gave it.
+* `schedule()` — clears any armed timer and arms `setTimeout(tick, wait +
+  READ_SLACK)`, or arms nothing at all when `nextDue` is null.
+* `READ_SLACK = 100` — @gfwilliams' number. A timer that fires a hair early
+  finds nothing due, publishes nothing and arms itself again for a
+  millisecond's time: two wakes where one would do.
+
+`tick()` now ends with `schedule()`, which is what makes the chain
+self-sustaining and also covers `handleWrite()`, which calls `tick()`. The
+other four callers are `setup()`, `update()`, `changed()` and
+`setAdvertisingInterval()` — every path that re-reads an entry or changes an
+interval re-arms the wake, because `lastRead` has moved under it.
+
+**The cost, stated plainly:** an advertised entry is re-read at its own interval
+plus up to 100 ms. The page says so.
+
+**Not copied from his sketch**, which he called hacky himself: it takes the
+`max` of the waits where the earliest deadline is the `min`, and its
+`(now - lastRead) - readInterval` has the sign the wrong way round. The idea is
+his; these two are typos in a forum post and reproducing them would have been a
+poor way to thank him.
+
+### What P1 is worth, and what it is not
+
+Nothing a current meter can see, and that is measured, not assumed: §9 weighed
+40 empty wakes at **−0.3 ms** over 2 697 interpreted loop iterations, which puts
+an empty wake under 10 µs, and @enaon's PPK2 bounds everything P1 could recover
+inside the **5 µA** between the fixed module and an unloaded board.
+
+So it ships as what it is: the right shape. A device with nothing to read now
+holds no timer, a battery at five minutes is read at five minutes rather than
+inspected three hundred times, and `readAdvertised` is no longer asked a
+question whose answer was known before it was called. Offering it to @enaon as
+a power fix would be offering a number this bench cannot produce — and he has
+said twice what he needs, so the honest thing is to say which of the two
+proposals had the number.
+
+### A bug found on the way in
+
+`setup()` never disarmed the previous run's timers. The line that looked like it
+did — `if (st.timer !== undefined) clearInterval(st.timer)` — ran *after* `st`
+had been replaced by the new state object, where `timer` is always `undefined`,
+so it cleared nothing. A device whose `setup()` ran twice kept both timers, each
+calling into whatever state was current; D-088 fixed exactly this for the
+connect handlers and missed it here.
+
+Both handles are now taken before the assignment, the pending return to idle
+included — a timer belonging to a connection to a device that no longer exists.
+Found by a new test that expected no timer and found one, which is the argument
+for writing the test that should trivially pass.
+
+### The cadence, on hardware
+
+Watching `lastRead` on the nano for 75 s, with the die temperature at `interval: 30000` inside a 1000 ms advertising interval: **31 000 ms between reads before P1, 30 104 after**. The fixed tick was the less exact of the two, which nobody expected -- a 30 s deadline inspected once a second is only noticed at the first tick past it, so the quantisation was a whole advertising interval where P1's slack is a known 100 ms. Reads still happen, three in the window either way. `docs/measurements.md` §11.
+
+### No regression
+
+* **260 node tests** (253 before: six for P1, one for the timer leak), **292
+  pytest**, `eslint` clean. The test harness now records a timeout's function
+  name, which is how a test tells the read timer from the return to idle — the
+  read timer used to be a `setInterval` and needed no telling apart.
+* Two existing tests were rewritten rather than deleted: the parameterised
+  *"the periodic tick rebuilds only when a reading moved"* now takes the armed
+  wake instead of the interval handle and expects `interval + 100`, and *"it
+  stays fast for a while after the receiver goes away"* now ignores the read
+  timer when it counts pending timeouts.
+* The published module is **23 353 bytes** against the 24 000 of D-108, which
+  is why that budget was raised first.
+* `eslint`'s Espruino globals lost `setInterval` and `clearInterval`: nothing in
+  the module or the examples calls either any more.
+* `tools.regression` on both boards against the `7b9cb57` baseline: **"no regression"** twice, thirteen of fourteen checks plain `ok`, the write itself 35.8 ms on the Puck and 43.3 on the nano. The exception is a *fast* outlier the tool flags on principle (nano first-command p90 4.176 s against 14.993) plus a 0.958 delivery rate on the nano, inside the 0.900 allowed.
+
+### Still open
+
+**P3** — `interval: null`, an entry the device polls itself. Unchanged from
+D-107: a public API addition, three lines of code, a paragraph of page, and a
+wider surface for @gfwilliams to maintain. Not mine to add.

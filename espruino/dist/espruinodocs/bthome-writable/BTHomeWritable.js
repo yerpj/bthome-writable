@@ -224,6 +224,8 @@ function readSensor(it, enc, entries, now) {
 let st = null;
 let listening = false; // whether NRF connect/disconnect handlers are attached
 
+const READ_SLACK = 100; /* ms added to every scheduled read (D-109). */
+
 const CTR_FILE = ".bwctr"; // the persisted counter high-water marks
 const CTR_STRIDE = 64; // persist every this many accepted writes, not each one
 const CTR_WINDOW = 0x80000000; /* how far ahead a write counter may jump (S5.3). */
@@ -416,11 +418,32 @@ function readAdvertised(now) {
   return moved;
 }
 
+/* How long until the next advertised entry falls due, in milliseconds. */
+function nextDue(now) {
+  const ord = st.plan.ordered;
+  let wait = null;
+  for (let i = 0; i < ord.length; i++) {
+    const due = ord[i].lastRead + (ord[i].readInterval || st.interval) - now;
+    if (wait === null || due < wait) wait = due;
+  }
+  return wait;
+}
+
+/* Arm the read timer for the next entry that falls due, or leave none armed. */
+function schedule() {
+  if (st.timer !== undefined) { clearTimeout(st.timer); st.timer = undefined; }
+  const wait = nextDue(getTime() * 1000);
+  if (wait === null) return;
+  st.timer = setTimeout(tick, (wait > 0 ? wait : 0) + READ_SLACK);
+}
+
 /* The periodic rebuild (D-106). */
 function tick() {
-  if (!readAdvertised(getTime() * 1000)) return false;
-  refreshAdvertising(true);
-  return true;
+  const moved = readAdvertised(getTime() * 1000);
+  if (moved) refreshAdvertising(true);
+
+  schedule();
+  return moved;
 }
 
 /* What a read of entry `w` returns. */
@@ -507,6 +530,11 @@ function setup(opts) {
   const iv = checkInterval("interval", opts.interval || 2000);
   const key = toKey(opts.bindkey);
   const marks = key ? loadMarks() : { w: 0, a: 0 };
+  /* Disarm the previous run's timers before `st` is replaced, because that is the only moment their handles still exist. */
+  if (st) {
+    if (st.timer !== undefined) clearTimeout(st.timer);
+    if (st.fastTimer !== undefined) clearTimeout(st.fastTimer);
+  }
   st = {
     entries : entries,
     key : key,
@@ -530,6 +558,7 @@ function setup(opts) {
     counterReport : opts.counterReport === true && key !== null,
     whenConnected : opts.whenConnected !== false,
     onError : opts.onError || null,
+
     timer : undefined,
     fastTimer : undefined,
     advInterval : iv,
@@ -561,8 +590,7 @@ function setup(opts) {
   }
   refreshAdvertising();
 
-  if (st.timer !== undefined) clearInterval(st.timer);
-  st.timer = setInterval(tick, st.interval);
+  schedule();
 
   if (!listening) {
     NRF.on("connect", () => guarded(onConnect));
@@ -573,7 +601,7 @@ function setup(opts) {
 }
 
 /* Re-read every sensor and re-advertise now. */
-function update() { refreshAdvertising(); }
+function update() { refreshAdvertising(); schedule(); }
 
 /* A writable value changed without a write - a knob, a button, a schedule. */
 function changed() {
@@ -581,6 +609,7 @@ function changed() {
   st.revision = (st.revision + 1) & 255;
   st.plan.writable.forEach(w => { if (w.readable) publishRead(w); });
   refreshAdvertising();
+  schedule();
 }
 
 /* Change the advertising interval without re-running setup(). */
@@ -588,8 +617,8 @@ function setAdvertisingInterval(ms) {
   st.interval = checkInterval("interval", ms);
   const ord = st.plan.ordered;
   for (let i = 0; i < ord.length; i++) if (ord[i].inheritsInterval) ord[i].readInterval = st.interval;
-  if (st.timer !== undefined) clearInterval(st.timer);
-  st.timer = setInterval(tick, st.interval);
+
+  schedule();
   if (st.fastTimer === undefined && st.advInterval !== st.fastInterval) {
     st.advInterval = st.interval;
     republishRate();

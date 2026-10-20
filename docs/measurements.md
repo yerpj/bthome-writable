@@ -728,6 +728,50 @@ Both first-command medians came in *faster* than a baseline recorded this
 morning -- the same wide spread section 9 recorded as unexplained, falling the
 other way for once. Delivery and connect-without-a-retry were 1.0 on both.
 
+## 11. What P1 changed: the read cadence, and nothing on a meter
+
+**nice!nano `CD:F5:77:3A:B2:16` over its cable, 2026-10-20**, running
+`examples/oled-text.js`: one advertised entry, the die temperature, at
+`interval: 30000`, inside an advertising interval of 1000 ms. The only thing
+that differs between the two runs is the module in Storage.
+
+P1 is @gfwilliams' proposal: no fixed timer, each wake armed from whatever entry
+falls due soonest. Section 9 had already measured what that saves -- 40 empty
+wakes cost −0.3 ms, an empty wake is under 10 µs, and @enaon's PPK2 bounds the
+whole of it inside 5 µA -- so this run was not asked for a current figure. It
+was asked whether the device still reads on time, which is what P1 could break,
+by watching `lastRead` on the device for 75 s.
+
+| time between two reads of a 30 s entry | |
+|---|---|
+| before P1, the fixed 1 s tick | **31 000 ms**, twice |
+| after P1 | **30 104 ms**, twice |
+
+**The fixed tick was the less exact of the two, which was not expected.** A
+30 000 ms deadline inspected every 1000 ms is only noticed at the first tick
+*past* it, so the entry was re-read every 31 s -- the deadline quantised up to a
+whole advertising interval. P1's own slack is 100 ms, fixed and known, and -- by the
+same arithmetic rather than by a second measurement -- it is the quantisation
+that grew with the advertising interval: this same entry on the module's default
+2000 ms interval would have been re-read every 32 s.
+
+So the 100 ms the page admits to is not a cost against what it replaces. It is a
+tenth of what the quantisation was already taking here.
+
+### What was not measured, deliberately
+
+No current figure, and no wake count. A wake that finds nothing due does nothing
+observable from the console, and the console cannot wrap `setInterval` or
+`setTimeout` to count one -- Espruino refuses to let a builtin be shadowed
+(section 9). The claim that a battery at five minutes now causes one wake per
+five minutes rather than three hundred is a claim about the code, checked by
+unit tests on the scheduler rather than by an instrument, and section 9 is why
+nobody should expect to see it on a PPK2.
+
+### Non-regression
+
+`tools.regression` against the `7b9cb57` baseline, P1 deployed to both boards: **"no regression" on both**, thirteen of the fourteen checks plain `ok`. The write itself is 35.8 ms on the Puck -- the baseline figure to the tenth -- and 43.3 on the nano against 43.5. The one flag is a *fast* one: the nano's first-command 90th percentile came in at 4.176 s against a 14.993 s baseline, which the tool is built to question rather than celebrate (D-054, a proxy reusing a link looks exactly like this). The nano also delivered 0.958 of its commands rather than 1.000, inside the 0.900 the check allows. Both belong to the first-command spread section 9 recorded as unexplained; neither touches the read timer.
+
 ## Reproducing any of this
 
 Most of the tools above take `--address`; `tools.regression` and

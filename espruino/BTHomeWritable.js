@@ -347,6 +347,10 @@ function readSensor(it, enc, entries, now) {
 let st = null;
 let listening = false; // whether NRF connect/disconnect handlers are attached
 
+const READ_SLACK = 100; /* ms added to every scheduled read (D-109).
+
+   @gfwilliams' number. See schedule(): it buys a wake that finds work. */
+
 const CTR_FILE = ".bwctr"; // the persisted counter high-water marks
 const CTR_STRIDE = 64; // persist every this many accepted writes, not each one
 const CTR_WINDOW = 0x80000000; /* how far ahead a write counter may jump (S5.3).
@@ -633,6 +637,47 @@ function readAdvertised(now) {
   return moved;
 }
 
+/* How long until the next advertised entry falls due, in milliseconds.
+
+   Null when none ever does: a device whose advertised values are all static,
+   or one that advertises nothing but its declaration and what it accepts. It
+   then holds no read timer at all.
+
+   An entry with interval 0 is read at every wake (D-050), so for scheduling it
+   counts as the advertising interval -- which is the rate the old setInterval
+   gave it, and the same packet it still goes out in. */
+function nextDue(now) {
+  const ord = st.plan.ordered;
+  let wait = null;
+  for (let i = 0; i < ord.length; i++) {
+    const due = ord[i].lastRead + (ord[i].readInterval || st.interval) - now;
+    if (wait === null || due < wait) wait = due;
+  }
+  return wait;
+}
+
+/* Arm the read timer for the next entry that falls due, or leave none armed.
+
+   @gfwilliams' proposal, and his reason for it: with `interval: 1000` and a
+   battery at `interval: 300000`, a fixed interval timer woke 300 times to do
+   something once, and the 299 other wakes only established that there was
+   nothing to do (espruino#8024, D-109). What replaces it is this, re-armed by
+   every wake from whatever is due soonest.
+
+   The 100 ms of slack is his too. A timer that fires a hair early finds
+   nothing due, publishes nothing and arms itself again for a millisecond's
+   time -- two wakes where one would have done. An entry is therefore re-read
+   at its own interval plus about 100 ms, which is *less* than it cost before:
+   a deadline inspected once per advertising interval was only noticed at the
+   first wake past it, and a 30 s entry measured 31 000 ms between reads where
+   it now measures 30 104 (docs/measurements.md S11). */
+function schedule() {
+  if (st.timer !== undefined) { clearTimeout(st.timer); st.timer = undefined; }
+  const wait = nextDue(getTime() * 1000);
+  if (wait === null) return;
+  st.timer = setTimeout(tick, (wait > 0 ? wait : 0) + READ_SLACK);
+}
+
 /* The periodic rebuild (D-106). BTHome's own page says the packet id "should
    be increased on every change in data", that a receiver "should only process
    the advertisement if the packet id is different compared to the previous
@@ -644,11 +689,16 @@ function readAdvertised(now) {
    it defeated the deduplication the packet id exists for.
 
    Says whether it published, so that a caller which also wants the advertising
-   rate changed can publish once rather than twice (D-108). */
+   rate changed can publish once rather than twice (D-108). Arms the next wake
+   itself (D-109), which is why handleWrite() and the timer can both call it. */
 function tick() {
-  if (!readAdvertised(getTime() * 1000)) return false;
-  refreshAdvertising(true);
-  return true;
+  const moved = readAdvertised(getTime() * 1000);
+  if (moved) refreshAdvertising(true);
+  // Before returning, and whether or not anything moved: a wake that found
+  // nothing is still a wake, and the next one is computed from where the reads
+  // actually landed.
+  schedule();
+  return moved;
 }
 
 /* What a read of entry `w` returns.
@@ -779,6 +829,18 @@ function setup(opts) {
   const iv = checkInterval("interval", opts.interval || 2000);
   const key = toKey(opts.bindkey);
   const marks = key ? loadMarks() : { w: 0, a: 0 };
+  /* Disarm the previous run's timers before `st` is replaced, because that is
+     the only moment their handles still exist. A device being developed on is
+     a device whose setup() runs again and again (D-088), and each run used to
+     leave the one before it holding a live timer that went on calling into the
+     new state -- a second read timer on the old entry's schedule, and a return
+     to idle for a connection that belonged to a device that no longer exists.
+     The clearInterval() this replaces read `st.timer` after the assignment
+     below, where it is always undefined, so it had never cleared anything. */
+  if (st) {
+    if (st.timer !== undefined) clearTimeout(st.timer);
+    if (st.fastTimer !== undefined) clearTimeout(st.fastTimer);
+  }
   st = {
     entries : entries,
     key : key,
@@ -809,6 +871,7 @@ function setup(opts) {
     counterReport : opts.counterReport === true && key !== null,
     whenConnected : opts.whenConnected !== false,
     onError : opts.onError || null,
+    // A timeout, re-armed by every wake, not a fixed interval (D-109).
     timer : undefined,
     fastTimer : undefined,
     advInterval : iv,
@@ -845,10 +908,10 @@ function setup(opts) {
   }
   refreshAdvertising();
   // Without this the packet is built once and never again: sensor values would
-  // freeze at their boot readings. The tick rebuilds only when one of them has
-  // moved (D-106).
-  if (st.timer !== undefined) clearInterval(st.timer);
-  st.timer = setInterval(tick, st.interval);
+  // freeze at their boot readings. The wake rebuilds only when one of them has
+  // moved (D-106), and there is no wake at all unless something is due
+  // (D-109).
+  schedule();
   // Once per module load, not once per setup(). `st` is rebuilt by every
   // setup() call, so this flag cannot live in it -- and a device being
   // developed on is a device whose setup() runs again and again, each run
@@ -864,7 +927,7 @@ function setup(opts) {
 /* Re-read every sensor and re-advertise now.
 
    Without waiting for the next interval, and whether or not anything moved. */
-function update() { refreshAdvertising(); }
+function update() { refreshAdvertising(); schedule(); }
 
 /* A writable value changed without a write - a knob, a button, a schedule.
    Bumps the settings revision so receivers read it again (S3.2). */
@@ -873,6 +936,7 @@ function changed() {
   st.revision = (st.revision + 1) & 255;
   st.plan.writable.forEach(w => { if (w.readable) publishRead(w); });
   refreshAdvertising();
+  schedule();
 }
 
 /* Change the advertising interval without re-running setup(). */
@@ -880,8 +944,9 @@ function setAdvertisingInterval(ms) {
   st.interval = checkInterval("interval", ms);
   const ord = st.plan.ordered;
   for (let i = 0; i < ord.length; i++) if (ord[i].inheritsInterval) ord[i].readInterval = st.interval;
-  if (st.timer !== undefined) clearInterval(st.timer);
-  st.timer = setInterval(tick, st.interval);
+  // Re-armed, not just re-installed: this is also the interval an entry
+  // inherits and the one an `interval: 0` entry is read at.
+  schedule();
   if (st.fastTimer === undefined && st.advInterval !== st.fastInterval) {
     st.advInterval = st.interval;
     republishRate();
