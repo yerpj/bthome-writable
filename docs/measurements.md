@@ -826,6 +826,24 @@ held. That is D-106 and D-109 together, seen from outside the device, and it is
 also why Home Assistant had not been told anything new about that entry for
 seventeen minutes -- correctly.
 
+### The same run after the audit fixes, on `be0158f`
+
+D-114 changed `handleWrite()`, `setup()`, `update()` and what the timer calls,
+so the hardware checks were taken again from the top: both boards redeployed
+from that commit, then the chain test, then `tools.regression` on each.
+
+**Chain test: every check passed again.** What moved, all in the right
+direction: the first command on the Puck came in at 0.82 s against 3.63, the
+burst of ten at a 0.29 s median against 0.38, and the illuminance arrived 12
+times in 30 s against 11. The closed loop read 77 lx off against 545 on. Across
+the 320 s window the one-second entry reported **149 times and the five-minute
+entry once**, which is the same two-cadence result as before.
+
+**Regression: fourteen checks, all plain `ok`, "no regression" on both.** The
+write itself is 36.1 ms on the Puck and 43.2 on the nano, against a 35.8/43.5
+baseline. Delivery came back 1.000 on both, so the 0.958 the nano showed earlier
+in the evening did not recur.
+
 ### The malformed advertisements, and where they are not from
 
 Home Assistant's own log held two payloads attributed to these boards that had
