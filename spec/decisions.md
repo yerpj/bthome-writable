@@ -6316,3 +6316,23 @@ rebuild counts, but it invalidates any latency measured in that configuration
 -- and it is worth following up, because a receiver writing several entries in
 one connection is not an Espruino console either.
 
+### Merged, 2026-10-20
+
+**[EspruinoDocs#765](https://github.com/espruino/EspruinoDocs/pull/765) is
+merged**, by @gfwilliams, at 08:02 UTC, as `4c7d712` -- one commit, two files,
+the branch as offered. No review comment, no requested change, no question: the
+body carried the diagnosis he had made himself and the numbers @enaon had
+measured, so there was nothing left to ask. Sixteen hours from his comment to
+the merge.
+
+So `modules/BTHomeWritable.js` on espruino.com is now the corrected module, and
+the published copy under `espruino/dist/espruinodocs/bthome-writable/` is byte
+for byte what upstream holds -- the invariant
+`tools/tests/test_espruinodocs_module.py` checks is also, now, a statement
+about the live page.
+
+**What this does to the deferred `getTime()` change.** The condition written
+above -- *if Gordon asks for changes to #765, it goes in then* -- never
+happened, so the micro-change is still unmade and now needs no coordination: it
+rides on whatever next opens that file, and it will not get a pull request of
+its own. 78 us per second does not justify asking a maintainer to read a diff.

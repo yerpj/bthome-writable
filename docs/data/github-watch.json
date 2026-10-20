@@ -34,9 +34,9 @@
   "ci": {
     "comments": 0,
     "state": "success",
-    "title": "22e0960 main",
-    "updated": "2026-10-19T17:06:37Z",
-    "url": "https://github.com/yerpj/bthome-writable/actions/runs/39291311660",
+    "title": "e64cfbf main",
+    "updated": "2026-10-20T07:20:03Z",
+    "url": "https://github.com/yerpj/bthome-writable/actions/runs/39385816471",
     "why": "our own CI, last run"
   },
   "espruino#8024": {
@@ -81,9 +81,9 @@
   },
   "espruino/EspruinoDocs#765": {
     "comments": 1,
-    "state": "open",
+    "state": "merged",
     "title": "BTHomeWritable: rebuild the advertisement when something changes",
-    "updated": "2026-10-19T16:59:46Z",
+    "updated": "2026-10-20T08:02:02Z",
     "url": "https://github.com/espruino/EspruinoDocs/pull/765",
     "why": "the rebuild-on-change fix (D-106)"
   },
