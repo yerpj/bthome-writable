@@ -6336,3 +6336,108 @@ above -- *if Gordon asks for changes to #765, it goes in then* -- never
 happened, so the micro-change is still unmade and now needs no coordination: it
 rides on whatever next opens that file, and it will not get a pull request of
 its own. 78 us per second does not justify asking a maintainer to read a diff.
+
+## D-107 -- what to do about the timer and the rate switch  [DECISION]
+
+**Status:** 2026-10-20, both proposals measured on hardware before being
+written, neither implemented. `docs/measurements.md` SS9 has the figures. What
+needs the owner is at the end.
+
+### Where they come from
+
+EspruinoDocs#765 merged at 08:02 on 2026-10-20, and @gfwilliams merged it while
+saying he still did not like it:
+
+> *"`interval` is 1000, so it still wakes up every 1000ms, just to run `tick`
+> which does nothing 299 out of 300 times, because it checks lastRead against
+> `battery.interval`? IMO the best thing to do would be to have
+> `readAdvertised` return the minimum time until the next thing needs
+> updating."*
+
+@enaon agreed, from the position he has held throughout: *"This is what
+deepseek implemented in my tests. But I did explain that I need it to save
+every uA possible, because we are on a battery powered microcontroler."*
+
+He is right about the arithmetic. `examples/oled-text.js` ships with
+`interval: 1000` and a temperature entry at `interval: 30000`, so twenty-nine
+wakes in thirty find nothing due.
+
+### P1 -- schedule the next wake instead of polling
+
+Replace `setInterval(tick, st.interval)` with a `setTimeout` that `tick()`
+re-arms from the earliest `lastRead + readInterval`, and install none at all
+when no advertised entry has anything to read. Three cases must survive:
+`interval: 0` (a sensor mirroring a write, D-050) counts as `st.interval` for
+scheduling but is still read at every wake, or its due time is zero and the
+device spins; `inheritsInterval` stays as it is; and his *"maybe we actually
+check for +100 here"* is worth having, so two entries due 80 ms apart cost one
+wake rather than two.
+
+His own sketch takes the maximum rather than the minimum and has the sign of
+`(now - lastRead) - readInterval` inverted -- he labelled it *"Quick hacky
+example"*, so this is a note to the implementer, not a remark to make to him.
+
+**What it is worth: nothing measurable.** Forty empty wakes cost -0.3 ms
+against no timer at all, which is this instrument's noise; an empty wake is
+under ~10 us of CPU. And @enaon's own PPK2 bounds it from the other side -- the
+fixed module idles at ~50 uA against ~45 with it not loaded, so the whole of
+what P1 could recover lives inside that 5 uA.
+
+It is still the right thing to do. A timer that wakes to decide it has nothing
+to do is a timer that should not have been set, and on a board where something
+else is also waking the chip, 1 Hz of avoidable wakes is 1 Hz of avoidable
+interference. But it must not be offered as an efficiency fix, because no
+instrument here can show the gain.
+
+### P2 -- stop rebuilding the packet to change the advertising rate
+
+`goFast()` and the expiry inside `goIdleAfterTimeout()` both call
+`refreshAdvertising()`, which reads every due sensor, re-encodes, re-seals and
+advances the packet id -- to change `opts.interval`. Keeping the bytes of the
+last rebuild (`st.lastData`) and handing them back to `NRF.setAdvertising` with
+the new options does the same job.
+
+| | plaintext | sealed |
+|---|---|---|
+| a rebuild | 21.6 ms | **92.3 ms** |
+| the same bytes published again | 2.3 ms | **3.0 ms** |
+| one connect/disconnect cycle, today | 3 rebuilds | 2 rebuilds |
+
+So a sealed device spends **184 ms of its one thread per connection** on this,
+and P2 takes it to 6. It is legitimate under BTHome: republishing identical
+bytes with the packet id and the counter unchanged is the case the format
+explicitly allows (*"allows you to send multiple advertisements that are
+exactly the same"*), and a counter that does not move cannot trip
+`bthome-ble`'s `_check_encryption_counter`.
+
+It also simplifies `handleWrite`: the `if (!goFast()) tick()` of D-106 exists
+only because `goFast()` sometimes rebuilt. With P2 it becomes
+`republishRate(); tick();`, and `tick()` rebuilds only if a reading moved.
+
+**This is the one with a number.** It is also the one neither of them asked
+for.
+
+### P3 -- `interval: null`, so a device can poll nothing at all
+
+Even with P1, an entry with no `interval` is read at the advertising rate. The
+Espruino idiom is the opposite: wake on an event. `interval: null` would mean
+*never poll this, I will call `bw.update()` myself* -- from a `setWatch`, an
+accelerometer interrupt, a schedule -- and a device whose every entry is
+declared that way would hold no timer at all.
+
+### What needs the owner
+
+1. **`interval: null` is a public API addition** (rule 1): three lines of code,
+   a paragraph of page, and a wider surface for @gfwilliams to maintain. Not
+   mine to add.
+2. **The size budget.** The module is 21 917 bytes against the 22 000 this
+   project set itself, so P1 and P2 together do not fit. The budget is ours,
+   not Espruino's, and `docs/measurements.md` now has the argument for moving
+   it: the reviewer reads 22 kB, the chip receives the minified ~14, and QOA --
+   the next largest module -- receives 15.2. Recommendation: raise it to 24 000
+   and rewrite the docstring's comparison, rather than cut a fourth round of
+   comments out of a module whose comments are the only thing defending a
+   provisional object ID to a reviewer.
+3. **Order.** P2 first, alone, with the measurement; then P1 as tidiness, said
+   plainly as tidiness; then P3 if it is wanted. The `getTime() * 1000` of
+   D-106 rides on whichever opens the file first.

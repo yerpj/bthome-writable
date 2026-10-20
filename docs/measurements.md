@@ -542,6 +542,115 @@ rather than something to ship. `bw.plan().ordered[n].readInterval` is writable
 from the console, which is how the stable case was measured without
 redeploying.
 
+## 9. What the two follow-up proposals are worth
+
+**nice!nano `CD:F5:77:3A:B2:16` over its cable, 2026-10-20**, 2v29.396, `AES`
+without `AES_CCM`. Measured with the module exactly as EspruinoDocs#765 merged
+it, before writing a line of the proposals, because a proposal that cannot show
+its gain is a proposal that should not be offered. Plaintext figures are
+`examples/oled-text.js` (die temperature at 30 s, a writable text entry, 9 bytes
+of service data); sealed ones are a bench sketch in @enaon's configuration
+(voltage at 300 s, a writable light, bindkey, counter report, 17 bytes).
+
+Two proposals are on the table, both from `espruino#8024` after the merge:
+
+* **P1, @gfwilliams'**: *"have readAdvertised return the minimum time until the
+  next thing needs updating"* -- because with `interval: 1000` and an entry at
+  `interval: 300000` the timer wakes 300 times to act once.
+* **P2, this bench's**: stop rebuilding the packet when only the advertising
+  *rate* changes -- `goFast()` and the fast window expiring both call
+  `refreshAdvertising()` to alter one field of the advertising options.
+
+### One empty wake of the interval timer
+
+Espruino will not let the console shadow a builtin: after `setInterval = f`,
+`""+setInterval` still prints `function () { [native code] }` and the module's
+own call is unaffected. The timer cannot be wrapped, so it was weighed instead
+-- a fixed computation run while the timer fires at a known rate, then again
+with every timer cleared. That also counts the part a JavaScript wrapper could
+never see: the interpreter leaving its idle loop.
+
+The advertised entry keeps its 30 s interval throughout, so every wake measured
+here is a wake that found nothing to do.
+
+| 2 697 interpreted loop iterations, median of five | |
+|---|---|
+| timer at 1000 ms (0.8 wakes inside the bench) | 789.6 ms |
+| timer at 20 ms (**40** wakes inside the bench) | 802.3 ms |
+| `clearInterval()`, no timer at all | 802.6 ms |
+
+So forty empty wakes cost **-0.3 ms**: nothing, below this instrument's noise.
+An empty wake is under ~10 us of CPU, and the 1 s run came out *faster* than no
+timer at all, which says the same thing twice.
+
+The other end of the bound is @enaon's PPK2: the fixed module idles at ~50 uA
+against ~45 with it not loaded at all. **Everything P1 could possibly recover is
+inside that 5 uA**, wakes, timer bookkeeping and all.
+
+A by-product worth keeping: the interpreter costs **297 us per iteration** of a
+one-statement loop on this board. That is why `Date.now()` at 240 us looked
+expensive in D-106 -- it is cheaper than the loop that calls it.
+
+### A rebuild, against handing the radio the bytes it already has
+
+| | plaintext, 9 B | sealed, 17 B |
+|---|---|---|
+| a rebuild -- `bw.update()`, mean of five | **21.6 ms** | **92.3 ms** |
+| the same bytes published again | **2.3 ms** | **3.0 ms** |
+
+`NRF.setAdvertising` itself is 2.2 ms of that, measured separately inside the
+wrapper. Everything above it -- reading the due entries, encoding each object,
+sealing, framing -- is **19 ms plaintext and 89 ms sealed**, and none of it is
+needed to change an advertising interval.
+
+### What one connect/disconnect cycle spends today
+
+Counted over the cable with the fast window shortened to 3 s, so nothing of
+ours was connected while the count was read.
+
+| | rebuilds |
+|---|---|
+| plaintext, connect + disconnect + window expiry | **3** |
+| sealed, same cycle | **2** |
+
+Two of them are `goFast()` and the window expiring. The plaintext third was a
+tick whose die temperature had genuinely moved, which is the module working
+correctly. So a sealed device spends **184 ms of its single thread per
+connection** to change one field of `opts`, and a plaintext one 43 ms.
+
+An unplanned confirmation of the same thing: a 30 s sealed idle count, taken
+with nothing connected, came back as **1 rebuild** rather than 0 -- the 30 s
+fast window from the *deployment's own* disconnect expiring inside the
+measurement window. The cost is paid once per connection whether or not
+anything was written.
+
+### So
+
+**P2 is worth 89 ms of a sealed device's thread per connection and can be shown
+on an instrument. P1 is correctness and tidiness, not power** -- it is right
+(Gordon is not wrong that 299 wakes in 300 do nothing), and it buys at most a
+fraction of 5 uA. Offering it as an efficiency fix would be offering a number
+this bench cannot produce.
+
+### The bench, as left on 2026-10-20
+
+* the integration on the bench was **six files and one version behind**
+  (`0.0.1` against the repository's `0.1.0`); it is now byte for byte the
+  repository, and Home Assistant was restarted onto it;
+* the nano boots `examples/oled-text.js` from flash again, the Puck boots
+  `examples/light-loop.js`, both with the current modules in Storage;
+* the regression baseline was re-recorded on commit `7b9cb57` -- the previous
+  one was from 2026-09-21, before D-102 and D-106 -- and **a second run against
+  it passes every check on both devices**;
+* the write itself has not moved in a month: **35.8 then 36.0 ms** on the Puck,
+  **43.5 then 43.3 ms** on the nano. First-command medians are 1.5-2x
+  September's (3.2 s and 5.1 s against 1.7 s and 2.5 s) with the same spread
+  reappearing in the verification run (2.5 s and 3.8 s), so the cause is in
+  catching an advertisement, not in the module. Unexplained, and recorded as
+  unexplained; the September figures remain in `git log -p` on this file;
+* the ESP32 proxy's config entry and the OLED automation were found **already
+  disabled** by an earlier campaign, not by this one, and were left as found.
+
 ## Reproducing any of this
 
 Most of the tools above take `--address`; `tools.regression` and
