@@ -94,7 +94,7 @@ def directory(name: str) -> Path:
     raise KeyError(name)
 
 
-BUDGET = 24_000
+BUDGET = 25_000
 """Not a technical limit -- a social one, and the one that matters at review time.
 
 EspruinoDocs serves module JavaScript from two directories, both published at
@@ -114,6 +114,13 @@ Raised from 22 000 in D-108, where it had left 83 bytes of headroom and two
 accepted proposals to fit into them. The alternative was a fourth round of
 comment cutting, and the comments are what defend a provisional object ID to a
 maintainer who has not agreed to it yet. On the device they weigh nothing.
+
+Raised again, to 25 000, in D-114: an audit found six defects and their fixes
+are code, not prose. What was paid first: 474 bytes recovered by shortening the
+sentences those fixes publish -- the generator publishes the first sentence of
+each block comment, and three of them had grown into paragraphs -- and one
+redundant line. The 176 bytes left are the fixes themselves, and the comparison
+above has not moved.
 
 The floor is 18 364 bytes, the code with every comment removed. There is no fat
 to find: `setup()` is 2 kB, the packet planner 1.5 kB, the write codec 1 kB,

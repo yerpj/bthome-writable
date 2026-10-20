@@ -423,7 +423,10 @@ function nextDue(now) {
   const ord = st.plan.ordered;
   let wait = null;
   for (let i = 0; i < ord.length; i++) {
-    const due = ord[i].lastRead + (ord[i].readInterval || st.interval) - now;
+    const it = ord[i];
+    /* A clock that moved backwards leaves lastRead in the future. */
+    if (it.lastRead > now) it.lastRead = now;
+    const due = it.lastRead + (it.readInterval || st.interval) - now;
     if (wait === null || due < wait) wait = due;
   }
   return wait;
@@ -434,7 +437,18 @@ function schedule() {
   if (st.timer !== undefined) { clearTimeout(st.timer); st.timer = undefined; }
   const wait = nextDue(getTime() * 1000);
   if (wait === null) return;
-  st.timer = setTimeout(tick, (wait > 0 ? wait : 0) + READ_SLACK);
+  st.timer = setTimeout(wake, (wait > 0 ? wait : 0) + READ_SLACK);
+}
+
+/* What the timer calls, so that a wake always arms the next one. */
+function wake() {
+  try {
+    tick();
+  } catch (e) {
+
+    if (st.onError) st.onError(e);
+    st.timer = setTimeout(wake, st.interval + READ_SLACK);
+  }
 }
 
 /* The periodic rebuild (D-106). */
@@ -498,7 +512,14 @@ function handleWrite(k, pl) {
     if (st.onError) st.onError(e);
     return false;
   }
-  st.entries[w.entryIndex].set(decodeValue(value, w));
+  try {
+    st.entries[w.entryIndex].set(decodeValue(value, w));
+  } catch (e) {
+    /* The device's own set() threw. */
+    if (w.readable) setTimeout(() => { guarded(() => publishRead(w)); }, 0);
+    if (st.onError) st.onError(e);
+    return false;
+  }
 
   if (w.readable) setTimeout(() => { guarded(() => publishRead(w)); }, 0);
 
@@ -531,11 +552,7 @@ function setup(opts) {
   const key = toKey(opts.bindkey);
   const marks = key ? loadMarks() : { w: 0, a: 0 };
   /* Disarm the previous run's timers before `st` is replaced, because that is the only moment their handles still exist. */
-  if (st) {
-    if (st.timer !== undefined) clearTimeout(st.timer);
-    if (st.fastTimer !== undefined) clearTimeout(st.fastTimer);
-  }
-  st = {
+  const next = {
     entries : entries,
     key : key,
     mac : key ? macBytes() : null,
@@ -565,6 +582,12 @@ function setup(opts) {
 
     lastSd : null
   };
+  /* Only now, because everything above can throw (D-114). */
+  if (st) {
+    if (st.timer !== undefined) clearTimeout(st.timer);
+    if (st.fastTimer !== undefined) clearTimeout(st.fastTimer);
+  }
+  st = next;
   /* Claim the stride now rather than when the counter reaches it. */
   if (key) saveMarks();
   if (st.plan.writable.length) {
@@ -588,20 +611,27 @@ function setup(opts) {
 
     NRF.setServices(svcs);
   }
-  refreshAdvertising();
-
-  schedule();
-
-  if (!listening) {
-    NRF.on("connect", () => guarded(onConnect));
-    NRF.on("disconnect", () => guarded(goIdleAfterTimeout));
-    listening = true;
+  try {
+    refreshAdvertising();
+  } finally {
+    /* Even when the radio refused that packet. */
+    schedule();
+    if (!listening) {
+      NRF.on("connect", () => guarded(onConnect));
+      NRF.on("disconnect", () => guarded(goIdleAfterTimeout));
+      listening = true;
+    }
   }
   return exports;
 }
 
 /* Re-read every sensor and re-advertise now. */
-function update() { refreshAdvertising(); schedule(); }
+function update() {
+  const ord = st.plan.ordered;
+  for (let i = 0; i < ord.length; i++) ord[i].lastRead = 0;
+  refreshAdvertising();
+  schedule();
+}
 
 /* A writable value changed without a write - a knob, a button, a schedule. */
 function changed() {

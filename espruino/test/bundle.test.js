@@ -103,6 +103,7 @@ function run(source, storedFiles) {
    * (D-106). */
   const sensors = { battery: BATTERY, light: LIGHT_LEVEL };
 
+  let clock = Date.now();
   const storage = fakeStorage(storedFiles);
   const context = {
     console: { log() {} },
@@ -114,7 +115,7 @@ function run(source, storedFiles) {
       if (handle !== undefined) timers.splice(handle - 1, 1);
     },
     /* `name` is how a test tells the two timeouts the module holds apart: the
-     * read timer is the named `tick`, the return to idle and the deferred
+     * read timer is the named `wake`, the return to idle and the deferred
      * republications are arrows. Before D-109 the read timer was a
      * setInterval, which needed no telling apart. */
     setTimeout(fn, ms) {
@@ -153,9 +154,11 @@ function run(source, storedFiles) {
       },
       getAddress: () => "c8:80:32:ad:f7:b9",
     },
-    // Espruino's own clock, in seconds: the module uses it rather than
-    // Date.now(), which costs 240 us a call against 162 (D-106).
-    getTime: () => Date.now() / 1000,
+    /* Espruino's own clock, in seconds: the module uses it rather than
+     * Date.now(), which costs 240 us a call against 162 (D-106). Held still
+     * and moved by hand, so that a test can say what the device's clock did --
+     * including going backwards, which froze every read (D-114). */
+    getTime: () => clock / 1000,
     E: { getBattery: () => sensors.battery },
     // Physical, like the example it serves: the light sensor reads brighter
     // when the green LED is on, so a write to the light really does move an
@@ -196,9 +199,13 @@ function run(source, storedFiles) {
   return {
     storage,
     advertised,
+    /* Move the device's clock, in milliseconds. Negative goes backwards. */
+    shiftClock(ms) {
+      clock += ms;
+    },
     /* The pending read timer, or undefined: at most one is ever armed. */
     get reads() {
-      return timeouts.filter((t) => !t.cancelled && t.name === "tick").pop();
+      return timeouts.filter((t) => !t.cancelled && t.name === "wake").pop();
     },
     options,
     timers,
@@ -482,7 +489,7 @@ test("it stays fast for a while after the receiver goes away, then relaxes", () 
   assert.ok(result.options[result.options.length - 1].interval < idle);
 
   // Not the read timer, which D-109 also holds as a timeout.
-  const pending = result.timeouts.filter((t) => !t.cancelled && t.name !== "tick");
+  const pending = result.timeouts.filter((t) => !t.cancelled && t.name !== "wake");
   assert.equal(pending.length, 1, "one pending return-to-idle");
   pending[0].fn();
 
@@ -709,7 +716,7 @@ test("setup() twice leaves one read timer armed, not two", () => {
     interval: 1000,
   });
 
-  const armed = result.timeouts.filter((t) => !t.cancelled && t.name === "tick");
+  const armed = result.timeouts.filter((t) => !t.cancelled && t.name === "wake");
   assert.equal(armed.length, 1, "one read timer");
   about(armed[0].ms, 7100, "the new entry's, not the old one's");
 });
@@ -888,6 +895,148 @@ test("turning the counter report on adds a characteristic past every entry", () 
   );
 });
 
+
+/* --- what an audit found, and what it would have cost (D-114) ------------- */
+
+test("a reading that throws does not stop the device reading for ever", () => {
+  /* The worst of the lot. Under setInterval an exception in the wake was
+   * survivable: the timer fired again regardless. A timeout that re-arms
+   * itself from inside the work does not, so one throw -- a sensor not ready,
+   * a packet the radio refused -- stopped every future read, silently, while
+   * the radio went on repeating the last packet. */
+  const result = run(load("single-light-standalone.js"));
+  const seen = [];
+  let broken = false;
+
+  result.context.bw.setup({
+    advertise: [
+      {
+        type: "battery",
+        get: () => {
+          if (broken) throw new Error("sensor not ready");
+          return 61;
+        },
+      },
+    ],
+    interval: 1000,
+    onError: (e) => seen.push(e.message),
+  });
+
+  const first = result.reads;
+  broken = true;
+  result.shiftClock(1100); // the entry falls due, so the wake really reads
+  first.fn();
+
+  assert.deepEqual(seen, ["sensor not ready"], "onError is told");
+  assert.notEqual(result.reads, first, "and another wake is armed");
+  about(result.reads.ms, 1100, "retried at the advertising interval");
+});
+
+test("a setup() that throws leaves the running device alone", () => {
+  /* The new state is built before the old one's timers are disarmed, because
+   * everything in it can throw: a packet that does not fit, an entry without a
+   * length, an interval out of range. Disarming first left a device that was
+   * working with no timer at all, still advertising, frozen. */
+  const result = run(load("single-light-standalone.js"));
+  const armed = result.reads;
+  const entries = result.context.bw.plan().entryIds;
+
+  assert.throws(
+    () =>
+      result.context.bw.setup({
+        advertise: [{ id: 0x3a, set: () => {} }], // no length, and not variable
+        interval: 1000,
+      }),
+    (error) => error.code === "writable_without_length"
+  );
+
+  assert.equal(result.reads, armed, "the old timer is still the armed one");
+  assert.deepEqual(result.context.bw.plan().entryIds, entries, "and the old plan stands");
+});
+
+test("a clock that moves backwards does not stop the reads", () => {
+  /* `getTime()` is the wall clock. A setTime() or an RTC resynchronising
+   * leaves lastRead in the future, where nothing is ever due again and the
+   * next wake is armed for the length of the jump. */
+  const result = run(load("single-light-standalone.js"));
+  const idle = result.options[0].interval;
+
+  result.reads.fn(); // an ordinary wake, which stamps lastRead
+  result.shiftClock(-900000); // a quarter of an hour backwards
+  result.reads.fn();
+
+  about(result.reads.ms, idle + 100, "one interval away, not one jump away");
+});
+
+test("a set() that throws is reported, not thrown into the Bluetooth stack", () => {
+  /* Espruino has already acknowledged the write, so onError is the only place
+   * a device's own failure can show. It was not being told: the exception went
+   * up into the stack's own onWrite callback, taking the re-read with it and
+   * leaving the characteristic holding the bytes the central wrote (D-092). */
+  const result = run(load("single-light-standalone.js"));
+  const seen = [];
+
+  result.context.bw.setup({
+    advertise: [
+      {
+        type: "light",
+        get: () => false,
+        set: () => {
+          throw new Error("bus busy");
+        },
+      },
+    ],
+    interval: 1000,
+    onError: (e) => seen.push(e.message),
+  });
+
+  const uuid = Object.keys(result.characteristics)[0];
+  assert.doesNotThrow(() => result.characteristics[uuid].onWrite({ data: [0x1e, 0x01] }));
+  assert.deepEqual(seen, ["bus busy"]);
+});
+
+test("a refused first packet still leaves a device that reads", () => {
+  /* The fallback packet exists so that a device whose advertising was refused
+   * can still be found and connected to (D-022, D-029). It was only half the
+   * job: setup() threw before arming the timer, so the device that could be
+   * reached would never read a sensor again. */
+  const result = run(load("single-light-standalone.js"));
+  result.refuse((payload) => payload.length > 4);
+
+  assert.throws(
+    () =>
+      result.context.bw.setup({
+        advertise: [{ type: "battery", get: () => 61 }],
+        interval: 1000,
+      }),
+    (error) => error.code === "advertising_rejected"
+  );
+
+  assert.ok(result.reads, "a read timer is armed anyway");
+  assert.equal(typeof result.handlers.connect, "function", "and a connection is still handled");
+});
+
+test("bw.update() re-reads every sensor, not only the ones that are due", () => {
+  /* It publishes with a new packet id, which is what tells a receiver the data
+   * is new. Skipping the entries whose interval had not elapsed meant
+   * publishing values it had not re-read, under an id that says they are
+   * fresh: worse than not publishing at all. */
+  const result = run(load("single-light-standalone.js"));
+  let battery = 90;
+
+  result.context.bw.setup({
+    advertise: [{ type: "battery", interval: 300000, get: () => battery }],
+    interval: 1000,
+  });
+
+  const before = result.advertised.length;
+  battery = 42;
+  result.context.bw.update();
+
+  assert.equal(result.advertised.length, before + 1, "it published");
+  const last = result.advertised[result.advertised.length - 1];
+  assert.ok(last.includes(42), `expected the value it just read, got ${hex(last)}`);
+});
 
 /* --- the safety net, and the stack we subscribe to (D-088) ----------------- */
 

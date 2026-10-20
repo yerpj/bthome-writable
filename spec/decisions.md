@@ -6960,3 +6960,104 @@ a page about the proposal, and whether it is one page or two — the switch, and
 then everything else.
 
 Nothing else changes: P1, P2, the budget and the chain test are unaffected.
+
+---
+
+## D-114 — what a neutral audit of the module found  [VERIFY]
+
+**Status:** 2026-10-20. The owner asked for an independent pass over
+`espruino/BTHomeWritable.js`: *"Demande à un agent neutre de rapidement auditer
+le module pour voir si des bugs s'y trouveraient."* It was given the file, the
+runtime's constraints and the protocol, and none of this session's conclusions.
+It came back with ten findings. **All ten hold**; every mechanism below was
+re-read in the source before being accepted.
+
+### Two of them were introduced the same day, by D-109
+
+**A wake that threw stopped the device reading for ever.** `setInterval` fired
+again whatever `tick()` did; a `setTimeout` that re-arms itself from inside the
+work does not, and `schedule()` is the last thing `tick()` runs. So any
+exception on the way -- a sensor not ready, a `get()` of its own, a packet the
+radio refuses, a text entry that outgrew the packet after boot -- left no timer
+armed at all. Silently: `onError` was never told, and the radio went on
+repeating the last packet, so a receiver saw a healthy device whose values never
+moved again. Fixed with `wake()`, which is what the timer calls now: it reports
+to `onError` and re-arms at the advertising interval, which is the rate the
+fixed timer retried at. Not sooner, or a sensor that throws every time becomes
+a busy loop, its `lastRead` never having moved.
+
+**A `setup()` that threw disarmed the device that was running.** D-109 took the
+old timers' handles before `st` was replaced, which was right, but did it
+*before* building the new state -- and that state is built by `planPacket()`,
+which refuses a packet that does not fit, an entry without a length, an interval
+out of range. The old device then kept its plan and lost its timers: still
+advertising, frozen, until some later `setup()` happened to succeed. The new
+state is now built into a local first, and the swap happens only once it exists.
+
+### One it made worse
+
+**A clock that moves backwards** -- `setTime()`, an RTC resynchronising --
+leaves `lastRead` in the future, where nothing is ever due. Under the fixed
+timer that cost one interval of reads; under D-109 the wake is armed for the
+length of the jump, measured at **910 100 ms** for a 900 s step. `nextDue()` now
+treats a `lastRead` in the future as read now, so the next read is one interval
+away rather than one jump.
+
+### Three that were already there, and ship in the same PR
+
+* **A `set()` that throws escaped into the Bluetooth stack.** The device's own
+  handler was called outside `handleWrite`'s `try`, so a busy bus or an absent
+  display took `goFast()` and the re-read with it, told `onError` nothing, and
+  left the characteristic holding the bytes the central wrote: exactly the state
+  D-092 exists to prevent, and on a sealed device a write-direction ciphertext
+  where S4.3 promises the current value.
+* **A refused first packet left a device that could be reached but not used.**
+  `publish()`'s fallback keeps the device findable (D-022, D-029), but
+  `setup()` threw before arming the timer or subscribing to the radio, so it
+  would never read a sensor again nor react to a connection. Both now sit in a
+  `finally`, and the error still reaches the caller.
+* **`update()` did not re-read every sensor**, which is what its own
+  documentation promises. `renderServiceData` skips an entry whose interval has
+  not elapsed, so `update()` published a packet carrying values it had not read,
+  under a *new packet id* -- which is precisely what tells a receiver the data
+  is fresh. Worse than publishing nothing. It now clears `lastRead` first.
+
+### Four left open, deliberately
+
+They are older than this work and none of them is reachable by accident:
+
+1. **A second `setup()` with no writable entry** leaves the previous run's
+   characteristics and their `onWrite` in place, with a captured `w` that the
+   new plan no longer has. A write then throws a `TypeError` in the error path
+   itself (`w.readable`), which escapes. `handleWrite` is not robust to an
+   absent `w`.
+2. **`writableSpec` probes the encoder** with `enc(e,1)` and `enc(e,2)` and
+   assumes "id plus scaled value". `{type:"dimmer_event"}` yields `scale: 258`
+   and turns a write of `3c 02 05` into `set(4.97)`; `{type:"raw"}` yields
+   `id: 0x01`, battery. Both are meant to be declared by `id`, and
+   `button_event` says so by throwing, but these two pass.
+3. **`toKey()` does not check the length of an array bindkey.** `[1,2,3]` is
+   accepted, and every receiver then reports a key that is not at fault --
+   the false diagnosis D-088 was written to remove.
+4. **`advMark` is not kept inside 32 bits.** `noteAdvCounter` does
+   `counter + ADV_STRIDE` without `>>> 0`, unlike the write counter, and each
+   `setup()` claims a stride of 10^6. After about 4295 of them the mark passes
+   2^32 while the counter on the wire wraps to a value it has already used:
+   nonce reuse under the same key, and a counter that *decreases*, which
+   `bthome-ble` refuses. 4295 boots is long for a product and not long for a
+   board being developed on.
+
+### What it cost in bytes, and what was paid
+
+The six fixes took the published module to 24 705, over the 24 000 of D-108.
+**474 bytes were recovered first** by shortening the sentences they publish:
+the generator publishes the first sentence of each block comment, and three of
+mine had grown into paragraphs. One redundant `clearTimeout` went too. The
+budget was then raised to **25 000** for the 176 bytes that remain, which are
+the fixes themselves. The guard fired, which is what it is for.
+
+### How it was checked
+
+Six tests, one per fix, in `espruino/test/bundle.test.js`, and the fake board
+gained a clock a test can move backwards. 269 node tests, 294 pytest, lint and
+format clean.
