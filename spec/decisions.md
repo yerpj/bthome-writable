@@ -6862,3 +6862,69 @@ A three-minute passive scan from this host counted **174 advertisements from the
 So this is recorded as **a receive-path observation, not a module defect**, and
 the chain test's check H is what will say whether it recurs. If H ever fails
 with that warning, capture the advertisement before suspecting the module.
+
+---
+
+## D-112 — a tutorial page, because the reference page already exists  [DECISION]
+
+**Status:** 2026-10-20, written at the owner's request and awaiting his review
+before anything is offered to @gfwilliams.
+
+### What was asked, and what was found
+
+> *"Certains modules ont leur propre page explicative sur Espruino, avec lien
+> vers le module js, petit exemple etc. Propose moi une page du genre, je
+> voudrais la soumettre en même temps à Gordon."*
+
+The page of that kind **already exists and is already merged**:
+`espruino/espruinodocs/BTHomeWritable.md`, 11 kB, upstream since 12 October,
+live at `/BTHomeWritable` once the site next rebuilds. It is a module reference
+-- options, methods, the packet budget, the notes -- and it is the right shape
+for `modules/`.
+
+What EspruinoDocs keeps separately, and what this project did not have, is a
+**tutorial**: `tutorials/*.md`, somebody being walked through building one
+thing. Two BTHome tutorials are already there -- *BTHome Setup* (2 920 bytes)
+and *BTHome Door Sensor* (2 693) -- and they set the family, the length and the
+tone: second person, one job, the whole sketch in a single block, links out
+rather than explanations in.
+
+### What was written
+
+`espruino/espruinodocs/tutorials/BTHome Light Switch.md`, 5.3 kB, for
+`/BTHome+Light+Switch`: a Puck.js LED switched from Home Assistant, what the
+console prints, what the device page looks like, then the same device offering
+a setpoint and a line of text. One screenshot, in the sibling folder named
+exactly as the page, which is what every illustrated page upstream does.
+
+It is longer than the two BTHome tutorials for one reason worth keeping: it has
+to say that the object id is a proposal and that receiving it needs the HACS
+integration. Hiding that would make the page a trap.
+
+**The code on it is not written for the page.** It is `examples/single-light.js`
+with the repository's long comments traded for a reader's short ones, and
+`espruino/test/tutorial.test.js` lifts the JS block straight out of the markdown
+and runs it against the real module: setup advertises `4000010161ff011e`, the
+console prints `writable entries: 30` exactly as the page promises, and a write
+of `1E 01` lights LED1. A page's code is the easiest thing in this repository to
+leave behind, because nothing imports it -- D-089 is the same lesson, about a
+comment that described an upstream module as it had been months earlier.
+
+The numbers on the page are this bench's: **36 ms** for the write itself on a
+Puck.js, about **half a second** for a command when the device has just been
+used and **one to five seconds** when it has been idle (§1, and the regression
+baseline of 2026-10-20).
+
+### For the owner
+
+1. **The title and the slug.** *BTHome Light Switch* sits next to *BTHome Door
+   Sensor* and *BTHome Setup* deliberately. If @gfwilliams would rather have
+   *BTHome Writable* or something naming the module, that is his tree.
+2. **The screenshot** shows a device with three controls -- light, setpoint,
+   text -- taken from this bench on 15 October, under the *More than a switch*
+   heading rather than next to the minimal sketch, so that what it shows is
+   what the text beside it describes.
+3. **When to offer it.** It can ride the next pull request with P1 and P2, or
+   go on its own. Riding the same PR means one review of three files instead of
+   two reviews; going alone means the module changes are not held up by a
+   discussion about prose.
