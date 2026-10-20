@@ -53,7 +53,10 @@ budget, what a rejected write looks like -- because that is where EspruinoDocs
 keeps it.
 """
 
-TUTORIALS = {"BTHome Light Switch.md": "bthome-writable"}
+TUTORIALS: dict[str, str] = {}
+# Empty while "BTHome Light Switch.md" is set aside (D-113). The page and its
+# test stay in espruino/espruinodocs/tutorials/, out of the pull request, until
+# its content has been clarified.
 """Tutorial pages, which go to `tutorials/` upstream rather than `modules/`.
 
 EspruinoDocs keeps the two apart: `modules/X.md` is a module's reference,

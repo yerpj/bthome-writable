@@ -53,8 +53,10 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 from dataclasses import dataclass, field
 import datetime as dt
+import itertools
 import os
 import statistics as st
 import sys
@@ -210,7 +212,7 @@ class Watch:
                     self.seen[entity].append(when)
             await asyncio.sleep(POLL_S)
 
-    async def __aenter__(self) -> "Watch":
+    async def __aenter__(self) -> Watch:
         # Prime, so that the first poll is not counted as an arrival.
         for entity in self.entities:
             got = await state(self.session, entity)
@@ -221,21 +223,19 @@ class Watch:
     async def __aexit__(self, *_: Any) -> None:
         if self._task is not None:
             self._task.cancel()
-            try:
+            with contextlib.suppress(asyncio.CancelledError):
                 await self._task
-            except asyncio.CancelledError:
-                pass
 
     def arrivals(self, entity: str, since: dt.datetime) -> list[dt.datetime]:
         return [w for w in self.seen[entity] if w >= since]
 
     def gaps(self, entity: str, since: dt.datetime) -> list[float]:
         when = self.arrivals(entity, since)
-        return [(b - a).total_seconds() for a, b in zip(when, when[1:])]
+        return [(b - a).total_seconds() for a, b in itertools.pairwise(when)]
 
 
 def now() -> dt.datetime:
-    return dt.datetime.now(dt.timezone.utc)
+    return dt.datetime.now(dt.UTC)
 
 
 async def samples(
@@ -492,7 +492,10 @@ async def run(args: argparse.Namespace) -> int:
                 log_before = await system_log(bus)
                 async with Watch(session, [ILLUMINANCE, BATTERY, TEMPERATURE]) as watch:
                     started = now()
-                    print(f"  watching the fast entry for {FAST_SAMPLE_S:.0f} s ...", flush=True)
+                    print(
+                        f"  watching the fast entry for {FAST_SAMPLE_S:.0f} s ...",
+                        flush=True,
+                    )
                     await asyncio.sleep(FAST_SAMPLE_S)
                     await check_b(watch, report, started)
 
@@ -503,10 +506,8 @@ async def run(args: argparse.Namespace) -> int:
 
                     left = SLOW_WINDOW_S - (now() - started).total_seconds()
                     if left > 0:
-                        print(
-                            f"  waiting {left:.0f} s more for the five-minute entry ...",
-                            flush=True,
-                        )
+                        wait = f"  waiting {left:.0f} s more for the slow entry ..."
+                        print(wait, flush=True)
                         await asyncio.sleep(left)
                     await check_c(watch, report, started)
                 await check_h(bus, report, log_before)

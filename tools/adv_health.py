@@ -97,8 +97,10 @@ async def main():
     for address, name in WANT.items():
         total = seen[address]
         wrong = bad[address]
-        print(f"\n{name} {address}: {total} advertisements in {WINDOW:.0f} s, "
-              f"{len(payloads[address])} distinct payloads, {len(wrong)} malformed")
+        print(
+            f"\n{name} {address}: {total} advertisements in {WINDOW:.0f} s, "
+            f"{len(payloads[address])} distinct payloads, {len(wrong)} malformed"
+        )
         for hexed, why in wrong[:8]:
             print(f"   {hexed}  ({why})")
 

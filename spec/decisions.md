@@ -6928,3 +6928,35 @@ baseline of 2026-10-20).
    go on its own. Riding the same PR means one review of three files instead of
    two reviews; going alone means the module changes are not held up by a
    discussion about prose.
+
+---
+
+## D-113 — the tutorial page is set aside  [DECISION]
+
+**Status:** 2026-10-20, the same evening it was written. The owner read it and
+said so plainly: *"Je n'aime pas. Mets le travail de côté, en mentionnant que
+lorsqu'on le reprendra il faudra clarifier le contenu."* D-112 is superseded on
+that point: the page is **not** offered to @gfwilliams with the next pull
+request.
+
+**What that means in the tree.** The page and its folder stay where they are,
+in `espruino/espruinodocs/tutorials/`, with `espruino/test/tutorial.test.js`
+still running its code, so nothing has to be rebuilt from memory later. Two
+things were undone:
+
+* `TUTORIALS` in `tools/build_espruino_module.py` is now empty, so the pull
+  request's folder stops carrying the page and its screenshot;
+* the reference page's *References* section no longer links to
+  `/BTHome+Light+Switch`. A link to a page nobody has submitted is a 404 on
+  somebody else's site.
+
+**When it is picked up again, the content is the first thing to settle**, not
+the wording and not the images. The fault was not itemised, so the first move is
+to ask what should be clearer rather than to redraft and hope. Worth putting to
+him then, because they are the questions the draft answered by itself: who the
+page is for (somebody who has already got BTHome working, or somebody starting
+from nothing), what it must carry about the proposal's status without becoming
+a page about the proposal, and whether it is one page or two — the switch, and
+then everything else.
+
+Nothing else changes: P1, P2, the budget and the chain test are unaffected.

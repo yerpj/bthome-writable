@@ -232,7 +232,5 @@ References
 * [Ten-minute replication](https://github.com/yerpj/bthome-writable/blob/main/docs/try-it.md)
   with a Puck.js
 * [The design discussion](https://github.com/orgs/espruino/discussions/8024)
-* [BTHome Light Switch](/BTHome+Light+Switch) — this module as a tutorial: a
-  Puck.js LED switched from Home Assistant, in twenty lines
 * [BTHome](/BTHome) — the uplink module this builds on
 * [AESCCM](/AESCCM) — needed only when you set a `bindkey`
