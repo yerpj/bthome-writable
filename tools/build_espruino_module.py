@@ -53,6 +53,20 @@ budget, what a rejected write looks like -- because that is where EspruinoDocs
 keeps it.
 """
 
+TUTORIALS = {"BTHome Light Switch.md": "bthome-writable"}
+"""Tutorial pages, which go to `tutorials/` upstream rather than `modules/`.
+
+EspruinoDocs keeps the two apart: `modules/X.md` is a module's reference,
+`tutorials/*.md` is somebody being walked through building one thing. The two
+BTHome tutorials already there -- "BTHome Setup" and "BTHome Door Sensor" --
+are the family this joins, and they set its length and its tone.
+
+They are copied into a `tutorials/` subdirectory of the pull request's folder
+while the module files stay at its root, so the folder says where each file
+goes without a README to say it. A tutorial brings its images in a folder named
+exactly as the page, which is what every illustrated page upstream does.
+"""
+
 PULL_REQUESTS = {
     "aesccm": ("AESCCM.js", "AESCCM.md"),
     "bthome-writable": ("BTHomeWritable.js", "BTHomeWritable.md"),
@@ -230,6 +244,23 @@ def main() -> int:
         text = (PAGE_DIR / page).read_text(encoding="utf-8")
         (directory(page) / page).write_text(text, encoding="utf-8", newline="\n")
         print(f"{page:20} {len(text):6} bytes (copied)")
+
+    for page, pr in TUTORIALS.items():
+        source = PAGE_DIR / "tutorials" / page
+        target = OUTPUT_DIR / pr / "tutorials"
+        target.mkdir(parents=True, exist_ok=True)
+        text = source.read_text(encoding="utf-8")
+        (target / page).write_text(text, encoding="utf-8", newline="\n")
+        images, count = source.with_suffix(""), 0
+        if images.is_dir():
+            into = target / images.name
+            into.mkdir(exist_ok=True)
+            for image in sorted(images.iterdir()):
+                if image.is_file():
+                    (into / image.name).write_bytes(image.read_bytes())
+                    count += 1
+        extra = f", {count} image(s)" if count else ""
+        print(f"{page:20} {len(text):6} bytes (copied{extra})")
 
     print()
     for pr in PULL_REQUESTS:
