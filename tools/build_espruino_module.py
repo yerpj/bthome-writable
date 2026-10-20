@@ -77,20 +77,31 @@ def directory(name: str) -> Path:
     raise KeyError(name)
 
 
-BUDGET = 22_000
-"""Within sight of the largest module EspruinoDocs ships, `QOA.js` at 19 027.
+BUDGET = 24_000
+"""Not a technical limit -- a social one, and the one that matters at review time.
 
-Not a technical limit -- a social one, and the one that matters at review time.
-Their median module is 2 477 bytes, so arriving with 38 kB asks a reviewer to
-read the wrong thing; arriving at 22 kB makes this the largest in the directory
-by about 15 %, which is a gap the `.md` page can account for.
+EspruinoDocs serves module JavaScript from two directories, both published at
+`/modules/`. `modules/`, where this one goes, holds 101 files: median 2 490
+bytes, largest `QOA.js` at 19 027. `devices/` holds 172: median 2 776, largest
+`wiolte.js` at 40 601, then `UG96.js` 35 755, `MPU6050_DMP.js` 34 121,
+`CCS811_FW.js` 21 688, `VL53L1X.js` 20 918. So five files Espruino already
+ships as modules are bigger than this budget, and what a reviewer cannot be
+asked to swallow is not a large module but a conspicuously unprecedented one
+(sizes measured 2026-10-20).
 
-The floor is 17 599 bytes, the code with every comment removed. There is no fat
+What reaches a chip is smaller again: the site publishes a minified twin of
+every one of those 285 files -- `QOA.min.js` is 15 200 bytes -- and a third of
+this file is comments, so stripping those alone takes 21 917 to 18 364.
+
+Raised from 22 000 in D-108, where it had left 83 bytes of headroom and two
+accepted proposals to fit into them. The alternative was a fourth round of
+comment cutting, and the comments are what defend a provisional object ID to a
+maintainer who has not agreed to it yet. On the device they weigh nothing.
+
+The floor is 18 364 bytes, the code with every comment removed. There is no fat
 to find: `setup()` is 2 kB, the packet planner 1.5 kB, the write codec 1 kB,
 and the rest is spread evenly across a protocol with a declaration, a GATT
-profile, encryption in both directions and a counter. Getting under 19 kB would
-mean removing capability or diagnostics, and neither is worth being
-second-largest rather than largest.
+profile, encryption in both directions and a counter.
 """
 
 HEADER = """\

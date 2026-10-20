@@ -46,9 +46,10 @@ def test_the_published_module_is_not_the_biggest_thing_in_their_tree(
 ) -> None:
     size = (directory(name) / name).stat().st_size
     assert size <= BUDGET, (
-        f"{name} is {size} bytes, over the {BUDGET} this project set itself "
-        "against EspruinoDocs' largest module (19 027). Move reasoning to the "
-        ".md page rather than raising the budget."
+        f"{name} is {size} bytes, over the {BUDGET} this project set itself. "
+        "It was raised once, in D-108, against the sizes EspruinoDocs really "
+        "ships (`build_espruino_module.BUDGET` lists them). Move reasoning to "
+        "the .md page rather than raising it again on nothing."
     )
 
 
