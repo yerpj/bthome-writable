@@ -651,6 +651,83 @@ this bench cannot produce.
 * the ESP32 proxy's config entry and the OLED automation were found **already
   disabled** by an earlier campaign, not by this one, and were left as found.
 
+## 10. What P2 removed, measured before and after
+
+**nice!nano `CD:F5:77:3A:B2:16` over its cable, 2026-10-20**, 2v29.396, `AES`
+without `AES_CCM`. The same board, the same two sketches and the same instrument
+as section 9: `NRF.setAdvertising` is wrapped from the console, which counts
+every advertisement and, by comparing its bytes with the previous ones, says
+whether it was a new packet or the one already on air. The only thing that
+differs between the two columns below is the module in Storage -- the merged one
+for *before*, the one with P2 for *after*.
+
+### A rate change, end to end
+
+`bw.setAdvertisingInterval()` is the public call that does nothing but move the
+advertising rate, which makes it the whole of P2 in one measurable statement.
+Median of five, alternating 1000 and 1100 ms so that every call is a real
+change.
+
+| | before | after |
+|---|---|---|
+| plaintext, 9 bytes of service data | 28.0 ms | **12.5 ms** |
+| sealed, 17 bytes | 98.2 ms | **14.1 ms** |
+| new packets published, out of five calls | 5 | **0** |
+
+A first attempt returned 4.8 ms *before* P2, which is worth keeping because it
+reads like a result and is not one: it is the function declining to publish at
+all. `setAdvertisingInterval()` republishes only when no fast window is pending,
+and a deployment's own disconnect arms a 30 s one. Every figure above waited
+40 s first.
+
+What remains after P2 is not the packet. Of those 14.1 ms, 3.4 is the radio call
+with freshly built argument objects -- 2.7 when the same objects are handed back
+-- and the rest is the function's own work, walking the entries and reinstalling
+the interval timer. `bw.setFastTimeout()`, which does neither, costs 1.25 ms.
+
+### One connect/disconnect cycle
+
+Counted over the cable with the fast window shortened to 3 s, as in section 9.
+
+| advertisements published / of which new packets | before | after |
+|---|---|---|
+| plaintext | 2 / 2 | 2 / **0** |
+| sealed | 2 / 2 | 2 / **0** |
+
+The count does not move: `goFast()` and the window expiring each still tell the
+radio something. Neither of them is a packet any more. At the rebuild costs
+measured on the same board in the same runs -- 23.4 then 24.1 ms plaintext,
+94.5 then 95.2 ms sealed -- **a sealed connection now spends about 7 ms of its
+single thread where it spent 189**, and a plaintext one 7 where it spent 47.
+
+Section 9 counted three rebuilds for the plaintext cycle and this run counted
+two, because no die temperature moved inside it. The third was never the rate
+change.
+
+### What did not move
+
+A rebuild is 94.5 ms sealed before and 95.2 after; the radio call alone is 2.69
+and 2.72. P2 costs the paths it does not touch nothing, which is the other half
+of what a before-and-after is for.
+
+### The device-side regression, with P2 deployed to both boards
+
+`tools.regression` against the baseline recorded on `7b9cb57`, after deploying
+the new module to the nano (`examples/oled-text.js` in flash) and to the Puck
+(`examples/light-loop.js` in flash). **Fourteen checks, seven per device, all
+ok, "no regression" on both.**
+
+| | baseline | now | limit |
+|---|---|---|---|
+| Puck, the write itself | 35.8 ms | 35.9 ms | 91.6 |
+| Puck, first command, median | 3.222 s | 2.392 s | 5.455 |
+| nano, the write itself | 43.5 ms | 42.9 ms | 107.0 |
+| nano, first command, median | 5.136 s | 3.110 s | 8.518 |
+
+Both first-command medians came in *faster* than a baseline recorded this
+morning -- the same wide spread section 9 recorded as unexplained, falling the
+other way for once. Delivery and connect-without-a-retry were 1.0 on both.
+
 ## Reproducing any of this
 
 Most of the tools above take `--address`; `tools.regression` and

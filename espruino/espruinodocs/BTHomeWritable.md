@@ -187,6 +187,15 @@ identical packet every second measured at over 100 uA of idle current for
 nothing. `bw.update()` forces a rebuild, and `bw.changed()` is how a value that
 moved on its own announces itself.
 
+**Changing how fast it advertises does not build a packet either.** A receiver
+connecting, the quiet window after it expiring and `bw.setAdvertisingInterval()`
+all change one field of the advertising options, so the module hands the radio
+back the bytes already on air rather than building the same ones again: the
+packet id stays where it is, and on a device with a `bindkey` so does the
+advertising counter -- which is exactly the repetition the format allows. On a
+nice!nano that takes one connect-and-disconnect cycle from two rebuilt packets
+to two repeated ones, 189 ms of the one thread down to 7 with a `bindkey`.
+
 **A rejected write still looks delivered.** Espruino acknowledges a write
 before your handler runs, so a device that refuses one cannot say so over the
 air. `onError` is where it shows, and it is worth printing during development.

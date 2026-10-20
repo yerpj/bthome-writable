@@ -6441,3 +6441,152 @@ declared that way would hold no timer at all.
 3. **Order.** P2 first, alone, with the measurement; then P1 as tidiness, said
    plainly as tidiness; then P3 if it is wanted. The `getTime() * 1000` of
    D-106 rides on whichever opens the file first.
+
+---
+
+## D-108 — the size budget is raised, and P2 is built  [DECISION]
+
+**Status:** 2026-10-20, ruled by the owner and implemented the same day. P1 and
+P3 stay open and were deliberately not written. `docs/measurements.md` §10 has
+the before-and-after figures.
+
+### The ruling
+
+D-107 put three proposals and a budget question to the owner. His answer, in
+order: *"Adapte le budget de taille en conséquence. Ensuite implémente P2.
+Qualifie et vérifie la non régression, mesure les gains. Ensuite on discutera de
+P1 et P3."* So: budget first, P2 alone, measured; P1 and P3 discussed
+afterwards, with nothing of either in this code.
+
+He also asked, before deciding, whether the merged module already answers
+@gfwilliams and @enaon. It does not, and that was said plainly: @gfwilliams
+merged #765 while writing *"I still don't like this I'm afraid"*, and what he
+wants is P1. @enaon's own PPK2 is the part that is answered — 235 µA to 50 — and
+the 5 µA still between 50 and an unloaded board is the part P1 is aimed at and
+cannot be promised, by §9's measurement.
+
+### The budget: 22 000 → 24 000
+
+Not trimmed a fourth time, raised, and the docstring in
+`tools/build_espruino_module.py` now carries sizes rather than an impression.
+Measured 2026-10-20 against the GitHub API and the live site:
+
+* `EspruinoDocs/modules/`, where this module goes: **101** `.js` files, median
+  **2 490** bytes, largest `QOA.js` at **19 027**. Ours is the largest of them.
+* `EspruinoDocs/devices/`, published at the same `/modules/` URLs: **172**
+  files, median **2 776**, largest `wiolte.js` at **40 601**, then `UG96.js`
+  35 755, `MPU6050_DMP.js` 34 121, `CCS811_FW.js` 21 688, `VL53L1X.js` 20 918.
+
+So **five module files Espruino already ships are bigger than this budget**, and
+three of them are 34–41 kB. The premise of the old docstring — that 22 kB was
+already stretching what a reviewer is shown — was wrong in the direction that
+mattered.
+
+**One correction to D-107.** It said the chip receives "the minified ~14" kB.
+That was an estimate and this project cannot minify, so the figure is replaced
+by two that are measured: `tools.espruino_deploy` writes **18 364 bytes** into
+Storage, its own comment stripping being the whole of the difference, and the
+site's minified twin of the next largest module, `QOA.min.js`, is **15 200**.
+The honest claim is that the reviewer reads 22.5 kB and the device loads 18.4,
+not that it loads 14.
+
+The published module is **22 478 bytes** with P2 in it, against the raised
+budget of 24 000. `tools/tests/test_espruinodocs_module.py` still guards it, and
+its failure message now says the budget was raised once, with where to find the
+sizes.
+
+### P2, as built
+
+`refreshAdvertising()` was one function doing three things. It is now three:
+
+* `advOptions()` — the advertising options, everything fixed by `setup()`
+  except the interval;
+* `publish(sd)` — hands the radio a packet, keeps it in `st.lastSd`, and owns
+  the fallback-to-a-tiny-packet net of D-022/D-088 (including, now, remembering
+  the fallback: what is on air is what a later rate change must republish);
+* `refreshAdvertising(cached)` — unchanged in meaning: bump the packet id,
+  render, seal, publish.
+
+And one new entry point, `republishRate()`, which hands `st.lastSd` back with
+the current options, or rebuilds if nothing has been published yet.
+
+Three callers stop rebuilding and start republishing: the fast window expiring,
+`setAdvertisingInterval()`, and a connection. `goFast()` no longer publishes at
+all — it moves the rate and says whether it moved — so the connect reaction
+became `onConnect()`, and `handleWrite()` became:
+
+```js
+const faster = goFast();
+if (!tick() && faster) republishRate();
+```
+
+`tick()` now says whether it published. That is what keeps a write to **one
+advertisement in every case**: when a write moves an advertised reading, the
+rebuild carries the new rate in its own options and no separate republication is
+needed; when it does not, the republication is the only advertisement. The old
+`if (!goFast()) tick()` could not do this, because `goFast()` published before
+`tick()` could be asked.
+
+`goFast()` still has to run first even when `tick()` publishes: it is also what
+cancels the pending return to idle.
+
+### Why this is legitimate, not a shortcut
+
+BTHome's format says the packet id *"should be increased on every change in
+data"* and that *"this allows you to send multiple advertisements that are
+exactly the same"*. A rate change is not a change in data. So the packet id does
+not move, and on a sealed device neither does the advertising counter — the
+bytes being repeated are the sealed bytes, counter included. `bthome-ble`'s
+`_check_encryption_counter` only refuses a counter that goes backwards, so an
+unchanged one is never a problem. D-106 made the same argument for the timer;
+this is the other half of it.
+
+### The gains, measured before and after
+
+Same board, same sketches, same wrapped `NRF.setAdvertising` as §9; the only
+difference between the columns is which module is in Storage. The wrapper
+compares each payload with the last, so "new packet" is observed, not inferred.
+
+| | before | after |
+|---|---|---|
+| `bw.setAdvertisingInterval()`, plaintext | 28.0 ms | **12.5 ms** |
+| `bw.setAdvertisingInterval()`, sealed | 98.2 ms | **14.1 ms** |
+| new packets, out of five such calls | 5 | **0** |
+| one connect+disconnect cycle, sealed | 2 advertisements, 2 new | 2 advertisements, **0 new** |
+
+At 94.5–95.2 ms per sealed rebuild, measured in the same runs, **a sealed
+connection spends about 7 ms of the single thread where it spent 189**; a
+plaintext one 7 where it spent 47. What is left in `setAdvertisingInterval()` is
+its own bookkeeping, not a packet: 3.4 ms of radio call and ~10 of walking the
+entries and reinstalling the interval timer.
+
+A rebuild itself did not get slower (94.45 → 95.18 ms sealed), which is the
+other half of what a before-and-after is for.
+
+### No regression
+
+* **253 node tests** (246 before, seven new ones for this), **292 pytest**,
+  `eslint` clean.
+* One existing test changed meaning and was rewritten rather than deleted:
+  *"a write republishes what it changed, and nothing else"*. On a device whose
+  advertising mirrors the write it still asserts a new packet; on one whose
+  advertising does not, the last publication is now the same bytes at the new
+  rate, so it asserts equality. That is the behaviour change, stated as a test.
+* The device-side suite: `tools.regression` against the baseline recorded on `7b9cb57`, with the new module deployed to both boards: **fourteen checks, seven per device, all ok, "no regression" on both**. The write itself did not move (Puck 35.8 → 35.9 ms, nano 43.5 → 42.9), and both first-command medians came in faster than the baseline (2.392 s against 3.222, 3.110 against 5.136).
+* The bench is as it was found: the nano boots `examples/oled-text.js` from
+  flash, the Puck `examples/light-loop.js`, both with the new module in Storage.
+
+### The `getTime()` micro-change rode along, as D-106 said it would
+
+`Date.now()` is gone from the module: `getTime() * 1000` in `refreshAdvertising`
+and in `tick`, 240 µs a call down to 162. The linter's Espruino globals lost
+`Date` and gained `getTime`; the test harness gained
+`getTime: () => Date.now() / 1000`, since Node has no such builtin.
+
+### Still open
+
+**P1** (@gfwilliams') and **P3** (`interval: null`) are untouched, by the
+owner's instruction, and D-107's description of both still stands. The one thing
+worth carrying into that discussion: P1's case is correctness, and §9's
+measurement says it is worth nothing on an instrument. It should be offered as
+tidiness, which is also how it should be written — not as a power fix.

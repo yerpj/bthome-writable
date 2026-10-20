@@ -17,7 +17,7 @@ export default [
         module: "writable",
         exports: "writable",
         console: "readonly",
-        Date: "readonly",
+        getTime: "readonly",
         setInterval: "readonly",
         clearInterval: "readonly",
         setTimeout: "readonly",

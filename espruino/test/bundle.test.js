@@ -149,6 +149,9 @@ function run(source, storedFiles) {
       },
       getAddress: () => "c8:80:32:ad:f7:b9",
     },
+    // Espruino's own clock, in seconds: the module uses it rather than
+    // Date.now(), which costs 240 us a call against 162 (D-106).
+    getTime: () => Date.now() / 1000,
     E: { getBattery: () => sensors.battery },
     // Physical, like the example it serves: the light sensor reads brighter
     // when the green LED is on, so a write to the light really does move an
@@ -292,7 +295,13 @@ for (const name of BUNDLES) {
      *
      * The second write is where the two part company. By then the device is
      * already advertising fast, so the rate cannot ask for a rebuild: only a
-     * moved reading can. */
+     * moved reading can.
+     *
+     * And what the first write publishes differs with the device. One whose
+     * advertising mirrors the write rebuilds, so the packet is new. One whose
+     * advertising does not is only changing its advertising rate, so the bytes
+     * on air are handed back unchanged -- same packet id, same counter, which
+     * is the repetition BTHome allows (D-108). */
     const result = run(load(name));
     const light = result.characteristics["2FAA0001-3B0B-4B1A-9E2A-B4C2952E62F2"];
 
@@ -307,11 +316,10 @@ for (const name of BUNDLES) {
         ? "the light sensor moved with it, so the packet is rebuilt"
         : "nothing advertised moved, so the radio keeps repeating"
     );
-    // Whatever was published is a rebuilt packet, not a repeat.
-    assert.notEqual(
-      hex(result.advertised[result.advertised.length - 1]),
-      hex(result.advertised[before - 1])
-    );
+    const last = hex(result.advertised[result.advertised.length - 1]);
+    const previous = hex(result.advertised[before - 1]);
+    if (expected.mirrors) assert.notEqual(last, previous, "a moved reading means a new packet");
+    else assert.equal(last, previous, "a rate change means the same packet again");
   });
 
   test(`${name}: the light's state never reaches the advertising`, () => {
@@ -464,6 +472,104 @@ test("a write keeps the device fast even without a connect event", () => {
 
   result.characteristics[uuid].onWrite({ data: [0x1e, 0x01] });
   assert.ok(result.options[result.options.length - 1].interval < idle);
+});
+
+/* --- a rate change is not a new packet (D-108) ---------------------------- */
+
+test("a connection changes the rate without building a new packet", () => {
+  /* goFast() used to call refreshAdvertising(): a full re-read, re-encode and
+   * -- on a sealed device -- a re-seal, 92 ms of the one thread, to alter one
+   * field of the advertising options. The radio repeats whatever it was last
+   * given, so the bytes already on air are the right bytes to hand back. */
+  const result = run(load("single-light-standalone.js"));
+  const before = result.advertised[result.advertised.length - 1];
+  const idle = result.options[result.options.length - 1].interval;
+
+  result.handlers.connect("aa:bb:cc:dd:ee:ff");
+
+  const after = result.advertised[result.advertised.length - 1];
+  assert.deepEqual(after, before, "the same bytes, packet id included");
+  assert.ok(result.options[result.options.length - 1].interval < idle, "at the fast rate");
+});
+
+test("a sealed device's advertising counter does not move for a rate change", () => {
+  /* The counter is inside the sealed payload, so identical bytes prove it did
+   * not move -- and a counter that does not move cannot push bthome-ble's
+   * _check_encryption_counter forward for an advertisement that says nothing
+   * new. BTHome's format allows exactly this repetition. */
+  const result = run(load("encrypted-light-standalone.js"));
+  const before = result.advertised[result.advertised.length - 1];
+
+  result.handlers.connect("aa:bb:cc:dd:ee:ff");
+
+  assert.deepEqual(result.advertised[result.advertised.length - 1], before);
+});
+
+test("the return to idle republishes the same bytes as well", () => {
+  const result = run(load("single-light-standalone.js"));
+  result.handlers.connect("aa:bb:cc:dd:ee:ff");
+  const fast = result.advertised[result.advertised.length - 1];
+  const idle = result.options[0].interval;
+
+  result.handlers.disconnect(19);
+  const pending = result.timeouts.filter((t) => !t.cancelled);
+  pending[pending.length - 1].fn();
+
+  assert.deepEqual(result.advertised[result.advertised.length - 1], fast);
+  assert.equal(result.options[result.options.length - 1].interval, idle);
+});
+
+test("changing the advertising interval does not build a packet either", () => {
+  const result = run(load("single-light-standalone.js"));
+  const before = result.advertised[result.advertised.length - 1];
+
+  assert.equal(result.context.bw.setAdvertisingInterval(2500), 2500);
+
+  assert.deepEqual(result.advertised[result.advertised.length - 1], before);
+  assert.equal(result.options[result.options.length - 1].interval, 2500);
+});
+
+test("a write that moves an advertised value publishes once, at the new rate", () => {
+  /* The write turns the light on, which the sensor really does see, so there
+   * is a genuine rebuild to do. It must carry the fast rate itself rather than
+   * be preceded by a republication of the old bytes: one advertisement, not
+   * two (D-108). */
+  const result = run(load("light-loop-standalone.js"));
+  const idle = result.options[0].interval;
+  const uuid = Object.keys(result.characteristics)[0];
+  const before = result.advertised.length;
+
+  result.characteristics[uuid].onWrite({ data: [0x1e, 0x01] });
+
+  assert.equal(result.advertised.length, before + 1, "one advertisement");
+  const last = result.advertised[result.advertised.length - 1];
+  assert.notDeepEqual(last, result.advertised[before - 1], "and it is a new packet");
+  assert.ok(result.options[result.options.length - 1].interval < idle, "at the fast rate");
+});
+
+test("a write that moves nothing advertised republishes the packet on air", () => {
+  const result = run(load("single-light-standalone.js"));
+  const idle = result.options[0].interval;
+  const uuid = Object.keys(result.characteristics)[0];
+  const before = result.advertised[result.advertised.length - 1];
+  const count = result.advertised.length;
+
+  result.characteristics[uuid].onWrite({ data: [0x1e, 0x01] });
+
+  assert.equal(result.advertised.length, count + 1, "one advertisement");
+  assert.deepEqual(result.advertised[result.advertised.length - 1], before);
+  assert.ok(result.options[result.options.length - 1].interval < idle);
+});
+
+test("a write while already fast publishes nothing it does not have to", () => {
+  const result = run(load("single-light-standalone.js"));
+  const uuid = Object.keys(result.characteristics)[0];
+
+  result.handlers.connect("aa:bb:cc:dd:ee:ff");
+  const count = result.advertised.length;
+  for (let i = 0; i < 5; i++) result.characteristics[uuid].onWrite({ data: [0x1e, i % 2] });
+
+  assert.equal(result.advertised.length, count, "nothing advertised moved, and the rate was already fast");
 });
 
 /* --- what a central reads after writing (S4.3, D-092) --------------------- */

@@ -367,23 +367,41 @@ function encodeOne(e, v) {
   return adv[0xFCD2].slice(3);
 }
 
-/* Rebuild and publish sensors, settings revision and declaration. */
-function refreshAdvertising(cached) {
-  st.packetId = (st.packetId + 1) & 255;
-  let sd = renderServiceData(st.plan, st.packetId, cached ? null : encodeOne, st.entries, Date.now(), st.revision);
-  if (st.key) sd = sealAdvertising(sd);
+/* The advertising options. */
+function advOptions() {
+  return { interval:st.advInterval, connectable:true, discoverable:true, whenConnected:st.whenConnected, showName:st.showName };
+}
 
-  const opts = { interval:st.advInterval, connectable:true, discoverable:true, whenConnected:st.whenConnected, showName:st.showName };
+/* Hand the radio a packet, and keep the bytes it accepted (D-108). */
+function publish(sd) {
+  const opts = advOptions();
   try {
     NRF.setAdvertising({ 0xFCD2:sd }, opts);
+    st.lastSd = sd;
   } catch (e) {
 
     let small = [st.plan.info, PKT_ID, st.packetId & 255];
 
     if (st.key) small = sealAdvertising(small);
     NRF.setAdvertising({ 0xFCD2:small }, Object.assign({}, opts, { showName:false }));
+
+    st.lastSd = small;
     throw err("advertising_rejected", `the radio refused ${sd.length} bytes of service data: ${e.message}`);
   }
+}
+
+/* Rebuild and publish sensors, settings revision and declaration. */
+function refreshAdvertising(cached) {
+  st.packetId = (st.packetId + 1) & 255;
+  let sd = renderServiceData(st.plan, st.packetId, cached ? null : encodeOne, st.entries, getTime() * 1000, st.revision);
+  if (st.key) sd = sealAdvertising(sd);
+  publish(sd);
+}
+
+/* Publish the packet already on air, at whatever rate is now set (D-108). */
+function republishRate() {
+  if (st.lastSd === null) refreshAdvertising();
+  else publish(st.lastSd);
 }
 
 /* Re-read the advertised entries that are due. */
@@ -400,7 +418,9 @@ function readAdvertised(now) {
 
 /* The periodic rebuild (D-106). */
 function tick() {
-  if (readAdvertised(Date.now())) refreshAdvertising(true);
+  if (!readAdvertised(getTime() * 1000)) return false;
+  refreshAdvertising(true);
+  return true;
 }
 
 /* What a read of entry `w` returns. */
@@ -417,18 +437,21 @@ function publishRead(w) {
   NRF.updateServices(svc);
 }
 
-/* Advertise fast while someone is plainly interacting. */
 /* Run a reaction to a connection without letting it throw. */
 function guarded(fn) {
   try { fn(); } catch (e) { if (st && st.onError) st.onError(e); }
 }
 
+/* Advertise fast while someone is plainly interacting. */
 function goFast() {
   if (st.fastTimer !== undefined) { clearTimeout(st.fastTimer); st.fastTimer = undefined; }
   if (st.advInterval === st.fastInterval) return false;
   st.advInterval = st.fastInterval;
-  refreshAdvertising();
   return true;
+}
+
+function onConnect() {
+  if (goFast()) republishRate();
 }
 
 function goIdleAfterTimeout() {
@@ -436,7 +459,7 @@ function goIdleAfterTimeout() {
   st.fastTimer = setTimeout(() => {
     st.fastTimer = undefined;
     st.advInterval = st.interval;
-    refreshAdvertising();
+    republishRate();
   }, st.fastTimeout);
 }
 
@@ -456,8 +479,10 @@ function handleWrite(k, pl) {
 
   if (w.readable) setTimeout(() => { guarded(() => publishRead(w)); }, 0);
 
-  try { if (!goFast()) tick(); }
-  catch (e) { if (st.onError) st.onError(e); }  // a refused packet must not escape into onWrite
+  try {
+    const faster = goFast();
+    if (!tick() && faster) republishRate();
+  } catch (e) { if (st.onError) st.onError(e); }  // a refused packet must not escape into onWrite
   return true;
 }
 
@@ -507,7 +532,9 @@ function setup(opts) {
     onError : opts.onError || null,
     timer : undefined,
     fastTimer : undefined,
-    advInterval : iv
+    advInterval : iv,
+
+    lastSd : null
   };
   /* Claim the stride now rather than when the counter reaches it. */
   if (key) saveMarks();
@@ -538,7 +565,7 @@ function setup(opts) {
   st.timer = setInterval(tick, st.interval);
 
   if (!listening) {
-    NRF.on("connect", () => guarded(goFast));
+    NRF.on("connect", () => guarded(onConnect));
     NRF.on("disconnect", () => guarded(goIdleAfterTimeout));
     listening = true;
   }
@@ -565,7 +592,7 @@ function setAdvertisingInterval(ms) {
   st.timer = setInterval(tick, st.interval);
   if (st.fastTimer === undefined && st.advInterval !== st.fastInterval) {
     st.advInterval = st.interval;
-    refreshAdvertising();
+    republishRate();
   }
   return st.interval;
 }
