@@ -153,6 +153,7 @@ class FakeGattClient:
         self.connections = 0
         self.disconnects = 0
         self.cache_cleared = 0
+        self.echo_writes = True
         self.services = self
 
     def declare(self, entries: int, readable: dict[int, bytes] | None = None) -> None:
@@ -195,7 +196,21 @@ class FakeGattClient:
         assert response, "PROTOCOL.md §4.2: writes are with response"
         if self.fail_on_write is not None:
             raise self.fail_on_write
-        self.writes.append((self._uuid(characteristic), bytes(payload)))
+        uuid = self._uuid(characteristic)
+        self.writes.append((uuid, bytes(payload)))
+        if (
+            self.echo_writes
+            and uuid in self.readable
+            and not callable(self.readable[uuid])
+        ):
+            # A device that took the write reports the new value afterwards:
+            # §4.3, and the module republishes it for exactly that reason
+            # (D-092). A receiver that reads back to confirm a write (D-117) is
+            # otherwise testing a device that acknowledges and never changes,
+            # which is the fault, not the normal case. `echo_writes = False` is
+            # how a test asks for that fault -- or for a sealed device, whose
+            # answer this fake cannot seal.
+            self.readable[uuid] = bytes(payload)
 
     async def read_gatt_char(self, characteristic) -> bytes:
         if self.fail_on_read is not None:
