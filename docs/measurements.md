@@ -9,6 +9,11 @@ Each section says **when**, **on what**, and **with which tool**. A number
 without those three is not a measurement, and several of the ones below read
 very differently once the host is named.
 
+Every write latency here was measured before D-117, so before an acknowledged
+write to a readable entry was checked against the device. That check is one GATT
+read inside the connection already open, and nothing below has been re-measured
+with it.
+
 ## The bench
 
 | | |

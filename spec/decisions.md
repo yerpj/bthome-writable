@@ -7363,6 +7363,7 @@ module and `AESCCM` from the same source, the integration up to date, the device
 removed and added again so the stored counter restarts, Home Assistant
 restarted, the proxy left off, and `E.getErrorFlags()` plus
 `process.memory().free` read once on the board.
+
 ## D-119 -- the four defects D-114 left open, closed
 
 **2026-10-21, branch `fix/d114-open-audit-defects`.** D-118, on its own branch,
@@ -7446,3 +7447,94 @@ behind, the array bindkey beside it, the two unprobeable types in
 294 tools, 181 pytest, eslint and ruff clean. Not merged and no pull request:
 EspruinoDocs#766 is still open on Gordon's side, and nothing here is on the air
 until the bench says so.
+
+## D-120 -- the two of D-117, behind their own switches
+
+**2026-10-21, branch `fix/d117-unverified-writes`.** D-117 left both of its
+remedies marked `[DECISION]`, so both are implemented behind a named constant in
+`const.py` and both are the owner's to keep or reverse. D-118 is the read path
+of D-116 and D-119 the module's audit defects, each on its own branch.
+
+### Choosing the radio ourselves
+
+`PREFER_A_SOURCE_THAT_HEARS_THE_DEVICE`, default on.
+
+The stack's own `async_ble_device_from_address` turned out to do no scoring at
+all: `habluetooth`'s manager keeps one history entry per address and returns
+`history.device`, the `BLEDevice` of whichever advertisement reached it last.
+Its scorer, `BaseHaScanner._score_connection_paths`, exists and is used
+elsewhere. That is how an ESP32 twelve metres and two walls away, which had not
+heard the device once in forty seconds, was handed back as the path to it.
+
+So the choice is made over `async_scanner_devices_by_address(connectable=True)`,
+on the same signal the stack's scorer uses -- the advertisement's RSSI -- with
+two additions: a scanner that is not scanning is not a path at all, and a
+scanner that reports when it last heard *this* address, and reports something
+older than `HEARD_RECENTLY` (30 s), goes behind every source still listening.
+
+**Only remote scanners keep those timestamps.** `HaScanner`, the local adapter,
+never fills `_previous_service_info`, so `discovered_device_timestamps` is empty
+for it and it is neither rewarded nor penalised. The asymmetry happens to point
+the right way: the deaf path in this incident was the remote one, and a local
+adapter that has gone deaf is a bench with no radio rather than a bad choice
+between two.
+
+If the stack lists no connectable source, its own answer stands. A doubtful path
+that fails visibly beats none at all, which fails as "not reachable by any
+adapter or proxy".
+
+### Checking the write against the device
+
+`CONFIRM_WRITES_BY_READING_BACK`, default on.
+
+An ATT write response cannot carry proof of delivery: ATT has no end-to-end
+authentication, and over a proxy the response is produced on the far side of
+Wi-Fi by something that is not the device. The only evidence available is the
+device's own answer afterwards, and for a readable entry it is one read on a
+link already open.
+
+The verdict has three outcomes, and the middle one is why this is not simply
+"read it back and compare":
+
+| the device reports | what it means | what happens |
+|---|---|---|
+| what was written | the write landed | success |
+| the value it had | the write did not reach it | `WriteFailed`, and the entity says so |
+| something else | it clamped or quantised | success, and *its* value is kept |
+
+A dimmer that stops at 100 and a setpoint quantised to half a degree are the
+third row, and treating them as failures would break devices that work. What
+separates them from a lost write is only this: whether anything moved at all.
+
+Events are exempt from the verdict. A write that leaves no state behind has no
+previous value to compare against, and writing the same button code twice would
+read back as "nothing moved" every second time.
+
+For a write-only entry there is no evidence to be had -- @enaon's lamp is one --
+and the honest form is the `assumed_state` the entity already carries. The read
+is skipped and a debug line says why.
+
+**What it costs:** one GATT read per write on a readable entry, inside the same
+connection. `docs/measurements.md` now says in its opening that every write
+latency in it predates this, and nothing has been re-measured. That measurement
+is the first thing the bench owes this branch.
+
+### The fake had to become honest first
+
+`FakeGattClient` acknowledged writes and never changed what it read back, which
+is precisely the fault of D-117. One existing test failed the moment a write was
+checked, and it was right to: a device that takes a write reports the new value
+afterwards, which is §4.3 and what the module republishes for (D-092). The fake
+now echoes a write into the readable value, and `echo_writes = False` is how a
+test asks for the broken device instead. No sealed test needed it.
+
+### How it was checked
+
+Eight tests in `ha/tests/test_write_confirmation.py`, seven failing on the
+previous code: the acknowledged write that changed nothing, the device that
+keeps its own value, the write-only entry that is written without a read, and
+five on the choice of source -- the loud deaf proxy against the quiet adapter,
+the loudest of two that both hear it, a scanner that is not scanning, no source
+listed at all, and a deaf source as the only one there is. 189 pytest, 294
+tools, ruff clean. `test_stale_markers.py` now allows three bare markers in
+`const.py` instead of one, which is the deliberate act that guard asks for.
