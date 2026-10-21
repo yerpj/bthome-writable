@@ -124,6 +124,8 @@ function writableSpec(e, enc, k) {
   try { one = enc(e, 1); two = enc(e, 2); }
   catch (x) { throw err("unsupported_writable_type", `entry ${k} ("${e.type}") cannot be encoded (${x.message}); declare it with id and length`); }
   const s = { id:one[0], length:one.length - 1, variable:false };
+  /* Not every type can be probed this way. */
+  if (e.type === "raw" || EVENT_IDS[s.id] || COMMAND_IDS[s.id] || FORBIDDEN[s.id]) throw err("writable_needs_id", `entry ${k} ("${e.type}") needs id and length`);
   if (s.length === 1 && one[1] === 1 && two[1] === 1) { s.codec = "binary"; return s; }
   const scale = readUint(one, 1, one.length);
   if (!scale) { s.codec = "bytes"; return s; }
@@ -269,8 +271,9 @@ function sealAdvertising(sd) {
 /* Both counters, kept coarsely in flash. */
 function loadMarks() {
   const v = require("Storage").readJSON(CTR_FILE, true);
-  if (typeof v === "number") return { w: v, a: 0 };
-  if (v && typeof v.w === "number") return { w: v.w, a: v.a || 0 };
+
+  if (typeof v === "number") return { w: v >>> 0, a: 0 };
+  if (v && typeof v.w === "number") return { w: v.w >>> 0, a: (v.a || 0) >>> 0 };
   return { w: 0, a: 0 };
 }
 
@@ -325,9 +328,14 @@ function noteWriteCounter(counter) {
   }
 }
 
+/* Has `counter` reached `mark`, in the circular sense of S5.3? `counter >= mark` is wrong at the only moment that matters. */
+function reachedMark(counter, mark, stride) {
+  return ((counter - mark) >>> 0) < stride;
+}
+
 function noteAdvCounter(counter) {
-  if (counter >= st.advMark) {
-    st.advMark = counter + ADV_STRIDE;
+  if (reachedMark(counter, st.advMark, ADV_STRIDE)) {
+    st.advMark = (counter + ADV_STRIDE) >>> 0;
     saveMarks();
   }
 }
@@ -503,6 +511,11 @@ function goIdleAfterTimeout() {
 /* Apply a write to entry k (S4.2). */
 function handleWrite(k, pl) {
   const w = st.plan.writable[k - 1];
+  /* A write to an entry this plan does not have. */
+  if (!w) {
+    if (st.onError) st.onError(err("entry_not_declared", `entry ${k} is not declared`));
+    return false;
+  }
   let value;
   try {
     value = parseWrite(pl, w);
@@ -539,7 +552,8 @@ function checkInterval(name, v) {
 /* "231d.." or a 16-byte array -> the key. */
 function toKey(v) {
   if (v === undefined || v === null) return null;
-  if (typeof v !== "string") return new Uint8Array(v);
+
+  if (typeof v !== "string") { const a = new Uint8Array(v); if (a.length !== 16) throw err("bindkey_length", `bindkey is ${a.length} bytes, expected 16`); return a; }
   if (v.length !== 32) throw err("bindkey_length", `bindkey is ${v.length} hex characters, expected 32`);
   const k = new Uint8Array(16);
   for (let i = 0; i < 16; i++) k[i] = parseInt(v.substr(i * 2, 2), 16);
@@ -558,7 +572,7 @@ function setup(opts) {
     mac : key ? macBytes() : null,
 
     advCounter : key ? marks.a : 0,
-    advMark : key ? marks.a + ADV_STRIDE : 0,
+    advMark : key ? (marks.a + ADV_STRIDE) >>> 0 : 0,
 
     writeCounter : key ? marks.w : 0,
     writeMark : key ? marks.w : 0,
@@ -690,4 +704,5 @@ exports.renderServiceData = renderServiceData;
 exports.readSensor = readSensor;
 exports.handleWrite = handleWrite;
 exports.counterIsAhead = counterIsAhead;
+exports.reachedMark = reachedMark;
 exports.COUNTER_WINDOW = CTR_WINDOW;

@@ -228,6 +228,16 @@ function writableSpec(e, enc, k) {
   try { one = enc(e, 1); two = enc(e, 2); }
   catch (x) { throw err("unsupported_writable_type", `entry ${k} ("${e.type}") cannot be encoded (${x.message}); declare it with id and length`); }
   const s = { id:one[0], length:one.length - 1, variable:false };
+  /* Not every type can be probed this way.
+
+     The probe assumes "an id, then a scaled value", which is true of every
+     numeric and binary object and of none of the others. An event code, a
+     command's framing, and `raw` -- whose value *is* the object, so the probe
+     reads its first byte as an id -- come back as a number with a nonsensical
+     scale: `dimmer_event` turned a write of 3c 02 05 into set(4.97), and `raw`
+     probed as battery. Declare them by id, which `button_event` already said
+     by throwing (D-114). */
+  if (e.type === "raw" || EVENT_IDS[s.id] || COMMAND_IDS[s.id] || FORBIDDEN[s.id]) throw err("writable_needs_id", `entry ${k} ("${e.type}") needs id and length`);
   if (s.length === 1 && one[1] === 1 && two[1] === 1) { s.codec = "binary"; return s; }
   const scale = readUint(one, 1, one.length);
   if (!scale) { s.codec = "bytes"; return s; }
@@ -438,8 +448,11 @@ function sealAdvertising(sd) {
    done without having recorded it. */
 function loadMarks() {
   const v = require("Storage").readJSON(CTR_FILE, true);
-  if (typeof v === "number") return { w: v, a: 0 };
-  if (v && typeof v.w === "number") return { w: v.w, a: v.a || 0 };
+  // Masked on the way in as well as on the way out: a file written by firmware
+  // before D-114 can hold a mark past 2^32, and resuming a counter from it
+  // would put the device's own nonces back where they have already been.
+  if (typeof v === "number") return { w: v >>> 0, a: 0 };
+  if (v && typeof v.w === "number") return { w: v.w >>> 0, a: (v.a || 0) >>> 0 };
   return { w: 0, a: 0 };
 }
 
@@ -508,9 +521,22 @@ function noteWriteCounter(counter) {
   }
 }
 
+/* Has `counter` reached `mark`, in the circular sense of S5.3?
+
+   `counter >= mark` is wrong at the only moment that matters. A mark pushed
+   past 2^32 and not masked is a mark the counter can never reach again once it
+   has wrapped, so nothing is persisted from then on and every boot resumes from
+   the same stale value -- the same advertising counters, under the same key,
+   for ever (D-114). Masking the mark alone swaps that for the opposite fault:
+   a wrapped mark sits *below* the counter it came from, and `>=` would then be
+   true on every packet, which is a flash write per advertisement. */
+function reachedMark(counter, mark, stride) {
+  return ((counter - mark) >>> 0) < stride;
+}
+
 function noteAdvCounter(counter) {
-  if (counter >= st.advMark) {
-    st.advMark = counter + ADV_STRIDE;
+  if (reachedMark(counter, st.advMark, ADV_STRIDE)) {
+    st.advMark = (counter + ADV_STRIDE) >>> 0;
     saveMarks();
   }
 }
@@ -793,6 +819,17 @@ function goIdleAfterTimeout() {
    Espruino has already acknowledged it, which is why S3 exists. */
 function handleWrite(k, pl) {
   const w = st.plan.writable[k - 1];
+  /* A write to an entry this plan does not have.
+
+     Its characteristic was left by an earlier setup(): Espruino keeps the
+     service, and its onWrite still captures k. Refusing is all that can be
+     done -- but the error path itself used to throw a TypeError on
+     `w.readable`, inside the stack's own callback, where nothing catches it
+     (D-114). */
+  if (!w) {
+    if (st.onError) st.onError(err("entry_not_declared", `entry ${k} is not declared`));
+    return false;
+  }
   let value;
   try {
     value = parseWrite(pl, w);
@@ -860,7 +897,10 @@ function checkInterval(name, v) {
 /* "231d.." or a 16-byte array -> the key. */
 function toKey(v) {
   if (v === undefined || v === null) return null;
-  if (typeof v !== "string") return new Uint8Array(v);
+  // Checked like the hex form, and for the same reason: a short array was
+  // accepted silently, every receiver then reported a key that is not at
+  // fault, and that false diagnosis is what D-088 was written to remove.
+  if (typeof v !== "string") { const a = new Uint8Array(v); if (a.length !== 16) throw err("bindkey_length", `bindkey is ${a.length} bytes, expected 16`); return a; }
   if (v.length !== 32) throw err("bindkey_length", `bindkey is ${v.length} hex characters, expected 32`);
   const k = new Uint8Array(16);
   for (let i = 0; i < 16; i++) k[i] = parseInt(v.substr(i * 2, 2), 16);
@@ -882,7 +922,7 @@ function setup(opts) {
     // than a replay-filtering nicety (D-069). A forward jump is fine for
     // bthome-ble, whose only counter rule is that it must not decrease.
     advCounter : key ? marks.a : 0,
-    advMark : key ? marks.a + ADV_STRIDE : 0,
+    advMark : key ? (marks.a + ADV_STRIDE) >>> 0 : 0,
     // The write counter is verified by the device itself, so resuming low would
     // accept a replay (S5.3).
     writeCounter : key ? marks.w : 0,
@@ -1066,4 +1106,5 @@ exports.renderServiceData = renderServiceData;
 exports.readSensor = readSensor;
 exports.handleWrite = handleWrite;
 exports.counterIsAhead = counterIsAhead;
+exports.reachedMark = reachedMark;
 exports.COUNTER_WINDOW = CTR_WINDOW;

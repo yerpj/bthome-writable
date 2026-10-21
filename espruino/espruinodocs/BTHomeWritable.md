@@ -83,13 +83,18 @@ setWatch(function() {
 
 ### Types BTHome cannot encode
 
-Button events and raw objects are declared by ID instead of by name:
+Events and raw objects are declared by ID instead of by name:
 
 ```JS
-{ id:0x3A, length:1, set:v=>print("event", v) }   // fixed length
+{ id:0x3A, length:1, set:v=>print("button", v) }  // fixed length
+{ id:0x3C, length:1, set:v=>print("dimmer", v) }  // an event code, not a value
 { id:0x54, variable:true, set:b=>print(b) }       // length-prefixed
 { id:0x3B, set:op=>print("command", op) }         // command: framing is fixed
 ```
+
+Declaring one of these by name is refused with `writable_needs_id`: the module
+works out an unnamed type's encoding by probing the BTHome module with 1 and 2,
+which reads an event code or a raw object's first byte as something it is not.
 
 Their `set` receives the value bytes, the event code, or a command's opcode.
 

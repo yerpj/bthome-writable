@@ -48,6 +48,12 @@ function fakeEncodeOne(entry, value) {
       return [0x1e, value ? 1 : 0];
     case "temperature8":
       return le(0x57, value, 1, 1);
+    case "dimmer_event":
+      return [0x3c, Math.round(value)];
+    case "raw":
+      /* The upstream module hands this one through untouched: the value *is*
+       * the object, so a probe reads its first byte as an object id. */
+      return [value];
     case "text": {
       const text = "" + value;
       const bytes = [0x53, text.length];
@@ -212,6 +218,26 @@ test("writable specs: binary, signed and unsigned numbers, text, explicit events
 
   const button = bw.writableSpec({ id: 0x3a, length: 1 }, fakeEncodeOne, 1);
   assert.deepEqual([button.id, button.length, button.codec], [0x3a, 1, "event"]);
+});
+
+test("a type the probe cannot read is refused rather than guessed", () => {
+  /* D-114. `writableSpec` probes the encoder with 1 and 2 and reads "an id,
+   * then a scaled value" out of the answers, which is true of numeric and
+   * binary objects and of nothing else. `dimmer_event` came back with a scale
+   * of 258, so a write of 3c 02 05 reached the device as set(4.97); `raw` came
+   * back as battery, because the first byte of its value is not an id. Both
+   * have to be declared with an id, which `button_event` already said by
+   * throwing. */
+  assert.throws(() => bw.writableSpec({ type: "dimmer_event" }, fakeEncodeOne, 1), {
+    code: "writable_needs_id",
+  });
+  assert.throws(() => bw.writableSpec({ type: "raw" }, fakeEncodeOne, 1), {
+    code: "writable_needs_id",
+  });
+
+  /* Declared properly, the dimmer is an event like the button. */
+  const dimmer = bw.writableSpec({ id: 0x3c, length: 1 }, fakeEncodeOne, 1);
+  assert.deepEqual([dimmer.id, dimmer.length, dimmer.codec], [0x3c, 1, "event"]);
 });
 
 test("an entry's own `signed` overrides the table", () => {

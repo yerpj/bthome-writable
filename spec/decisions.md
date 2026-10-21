@@ -7363,3 +7363,86 @@ module and `AESCCM` from the same source, the integration up to date, the device
 removed and added again so the stored counter restarts, Home Assistant
 restarted, the proxy left off, and `E.getErrorFlags()` plus
 `process.memory().free` read once on the board.
+## D-119 -- the four defects D-114 left open, closed
+
+**2026-10-21, branch `fix/d114-open-audit-defects`.** D-118, on its own branch,
+is the read path of D-116; this is the module. The audit of D-114 left four
+findings deliberately open because none is reachable by accident. Two of them
+stopped being academic the same week: @enaon declares a dimmer, and his second
+fault survives reboots, which is the shape of a counter mark that no longer
+advances.
+
+### A write to an entry the current plan does not have
+
+`setup()` declares the GATT service only when the new plan has a writable
+entry, so a run with none leaves the previous run's characteristics registered,
+their `onWrite` still capturing an entry number. `handleWrite` then looked up
+`st.plan.writable[k - 1]`, found nothing, and the **error path itself** threw a
+`TypeError` on `w.readable`, inside the Bluetooth stack's own callback where
+nothing catches it. It now reports `entry_not_declared` to `onError` and
+refuses. Removing the stale characteristics is not possible from here:
+`NRF.setServices` replaces the table, and calling it with an empty service to
+clear one would disconnect every central and is not what a `setup()` without
+writable entries asked for.
+
+### A type the probe cannot read
+
+`writableSpec` works out an unnamed type's encoding by probing the BTHome
+module with 1 and 2 and reading "an id, then a scaled value" out of the
+answers. That holds for every numeric and binary object and for nothing else.
+`{type:"dimmer_event"}` came back with a scale of 258, so a write of `3c 02 05`
+reached the device as `set(4.97)`; `{type:"raw"}` came back as battery, because
+the first byte of a raw object's value is not an id. Both are now refused with
+`writable_needs_id`, which is what `button_event` already did by throwing. The
+module page said "declared by ID instead of by name" all along, so this is the
+module enforcing its own documentation; the page now names the dimmer and the
+error.
+
+### A bindkey given as an array
+
+`toKey` checked the length of the hex form and not of the array form, so
+`[1,2,3]` was accepted and every receiver then reported a key that is not at
+fault. That false diagnosis is what D-088 was written to remove. Checked on the
+`Uint8Array` the function builds, which covers an array, a typed array and an
+`ArrayBuffer` alike.
+
+### The advertising mark, and why masking it is not enough
+
+`noteAdvCounter` did `counter + ADV_STRIDE` without `>>> 0`, and compared with
+`counter >= st.advMark`. Each `setup()` claims a stride of 10^6, so after about
+4295 of them the mark passes 2^32 and the counter can never reach it again once
+it has wrapped: nothing is persisted from then on, and **every boot resumes from
+the same stale value, re-walking the same advertising counters under the same
+key**. That is a keystream leak, not a replay-filtering nicety, and it is the
+fault D-069 exists to prevent arriving by a different road.
+
+Masking the mark alone swaps it for the opposite fault. A wrapped mark sits
+*below* the counter it was computed from, which `>=` makes true on every packet:
+one flash write per advertisement, up to a stride of them. So the comparison is
+now circular, like `counterIsAhead`: `reachedMark(counter, mark, stride)` is
+`((counter - mark) >>> 0) < stride`, true once per stride whatever has wrapped.
+`loadMarks` masks what it reads as well, because a file written by earlier
+firmware can hold a mark past 2^32 and resuming a counter from it would put the
+device's nonces back where they have already been.
+
+`noteWriteCounter` is left as it is: its stride is 64, so a wrapped write mark
+costs at most 64 extra flash writes, and its own comment already says so.
+
+### What it cost
+
+**24 939 bytes published, 61 under the budget of 25 000.** Paid for by shortening
+the sentences the four fixes publish: the generator keeps the first sentence of
+each block comment, so each one now opens with a short line and keeps its
+reasoning in the lines below, which are not published. The budget was not
+raised, and 61 bytes of headroom is the thinnest this has been: the next change
+to the module pays for itself first (D-108, D-114).
+
+### How it was checked
+
+Four tests, one per defect, each failing on the previous module: the refused
+write in `bundle.test.js` with the characteristic a second `setup()` left
+behind, the array bindkey beside it, the two unprobeable types in
+`plan.test.js`, and `reachedMark` across the wrap in `codec.test.js`. 278 node,
+294 tools, 181 pytest, eslint and ruff clean. Not merged and no pull request:
+EspruinoDocs#766 is still open on Gordon's side, and nothing here is on the air
+until the bench says so.

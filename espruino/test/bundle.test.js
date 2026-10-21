@@ -1254,6 +1254,42 @@ test("setup() twice subscribes to the radio once", () => {
   assert.equal(result.subscriptions.disconnect, 1);
 });
 
+test("a write to an entry the current setup() does not declare is refused", () => {
+  /* D-114. setup() declares the GATT service only when the new plan has a
+   * writable entry, so a run that has none leaves the previous run's
+   * characteristics registered, with an onWrite that still captures the entry
+   * number. The write then found no entry and the *error path itself* threw a
+   * TypeError on `w.readable`, inside the Bluetooth stack's own callback. */
+  const result = run(load("single-light-standalone.js"));
+  const uuid = Object.keys(result.characteristics)[0];
+  const seen = [];
+
+  result.context.bw.setup({
+    advertise: [{ type: "light", get: () => false }], // nothing writable now
+    interval: 1000,
+    onError: (e) => seen.push(e.code),
+  });
+
+  assert.doesNotThrow(() => result.write(uuid, [0x1e, 0x01]));
+  assert.deepEqual(seen, ["entry_not_declared"]);
+});
+
+test("a bindkey given as an array is checked for length, like the hex form", () => {
+  /* D-114. `[1,2,3]` was accepted, and every receiver then reported a key that
+   * is not at fault -- the false diagnosis D-088 exists to remove. */
+  const result = run(load("single-light-standalone.js"));
+
+  assert.throws(
+    () =>
+      result.context.bw.setup({
+        advertise: [{ type: "light", set: () => {} }],
+        interval: 1000,
+        bindkey: [1, 2, 3],
+      }),
+    { code: "bindkey_length" }
+  );
+});
+
 test("a connection whose advertising is refused does not throw into the stack", () => {
   /* goFast() rebuilds the advertising, and that can fail. The failure used to
    * land inside the Bluetooth stack's own callback, where nothing is prepared
