@@ -60,6 +60,30 @@ test("a forward jump is accepted, which is what makes resynchronisation work", (
   assert.ok(!bw.counterIsAhead(AHEAD + 1, 0), "one past it is not");
 });
 
+const ADV_STRIDE = 1000000; // the module's advertising stride, S5.3
+
+test("a counter reaches its mark in the circular sense, wrapped or not", () => {
+  /* D-114. The mark is where the next flash write happens, and it was compared
+   * with `counter >= mark` on a sum that was never masked. A mark a stride past
+   * 2^32 is a mark the counter can never reach once it has wrapped: nothing is
+   * persisted from then on, and every boot resumes from the same stale value --
+   * the same advertising counters, under the same key, for ever. Masking the
+   * mark alone swaps that for the opposite fault, a mark sitting *below* the
+   * counter it came from, which `>=` makes true on every packet: one flash
+   * write per advertisement. */
+  assert.ok(!bw.reachedMark(5, 10, ADV_STRIDE), "not there yet");
+  assert.ok(bw.reachedMark(10, 10, ADV_STRIDE), "exactly there");
+  assert.ok(bw.reachedMark(11, 10, ADV_STRIDE), "just past");
+
+  const wrapped = (0xfffffff0 + ADV_STRIDE) >>> 0; // 999 984
+  assert.ok(
+    !bw.reachedMark(0xfffffff0, wrapped, ADV_STRIDE),
+    "the counter the mark was computed from has not reached it"
+  );
+  assert.ok(!bw.reachedMark(0, wrapped, ADV_STRIDE), "nor has the counter that wrapped");
+  assert.ok(bw.reachedMark(wrapped, wrapped, ADV_STRIDE), "and it is reached a stride later");
+});
+
 test("wrap-around is an ordinary step forward, not a step back", () => {
   /* 0xFFFFFFFF -> 0 is +1. Without the circular comparison a device would
    * refuse every write for ever once its counter rolled over. */
