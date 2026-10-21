@@ -7538,3 +7538,46 @@ the loudest of two that both hear it, a scanner that is not scanning, no source
 listed at all, and a deaf source as the only one there is. 189 pytest, 294
 tools, ruff clean. `test_stale_markers.py` now allows three bare markers in
 `const.py` instead of one, which is the deliberate act that guard asks for.
+
+## D-121 -- the three fixes on one branch, and where two of them meet
+
+**2026-10-21, branch `candidate/enaon-retest`.** The owner's instruction: the
+separate branches were not the point, not touching `main` before validation was.
+So D-118, D-119 and D-120 are integrated here, and this is the branch @enaon
+will be asked to retest. One thing to test, one thing to measure, one thing to
+merge.
+
+The decision log and the coordinator's four `_connectable_device()` call sites
+merged mechanically. One interaction did not, and it is worth its own record.
+
+### A read-back that answers with another entry's object
+
+D-120 reads a written entry back in the same connection to prove the write
+landed. D-118 makes a wrong object ID raise `StaleEntry` rather than merely log
+it. Together, the write path can now meet the stale cached table of D-116 at a
+moment D-116 never considered, and doing nothing about it would have let that
+exception escape into `_write_now`, where nothing expects it.
+
+What it means there is worse than an unconfirmed write: **the write was
+addressed through the same stale table**, so it may have reached another
+entry's characteristic. A lamp commanded on while the count moves instead is
+exactly the fault D-116 describes, in the other direction and with no log line
+to show it.
+
+So `_read_back` drops the cached table and reports the command failed. The next
+command rediscovers, the user sees a failure rather than a value that did not
+take, and nothing is claimed about the entry. The alternative -- "sent,
+unconfirmed" -- would be honest about the read and silent about the write, which
+is how D-117 happened.
+
+Tested in `ha/tests/test_write_confirmation.py`: the read-back answers entry 1's
+object for entry 2, the service call raises, the cache is dropped exactly once,
+and the state stays what the device last said.
+
+### What is green, and what is still owed
+
+195 pytest, 294 tools, 278 node, ruff and eslint clean, the module at 24 939
+bytes. **None of it has been on a radio.** What this branch owes before it
+reaches `main`: the D-116 recipe run at the bench and the wrong-object read
+seen not to return, a write latency measured with the read-back in it, and
+@enaon's retest from a clean slate.

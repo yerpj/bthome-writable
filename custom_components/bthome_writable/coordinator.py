@@ -872,6 +872,13 @@ class BTHomeWritableCoordinator:
         authentication -- so the only evidence available is the device's own
         answer, and for a readable entry it costs one read on a link that is
         already open.
+
+        An answer carrying *another entry's* object is the stale cached table of
+        D-116, met here rather than on the read path -- and it says something
+        about the write, not only about the read: the write was addressed through
+        that same table, so it may have reached the wrong characteristic. The
+        table is dropped and the command reported failed, which is the one
+        outcome that neither hides it nor claims the value.
         """
         if not CONFIRM_WRITES_BY_READING_BACK:
             return None
@@ -884,7 +891,16 @@ class BTHomeWritableCoordinator:
             )
             return None
         raw = bytes(await client.read_gatt_char(characteristic))
-        return self._open_read(entry, raw)
+        try:
+            return self._open_read(entry, raw)
+        except StaleEntry as wrong:
+            await client.clear_cache()
+            raise WriteFailed(
+                f"{self.address}: {wrong}. The write was acknowledged, but the "
+                "cached GATT table is stale, so it may have reached another "
+                "entry's characteristic. The table has been dropped and the "
+                "next command will rediscover it"
+            ) from wrong
 
     async def async_sync_write_counter(self) -> int | None:
         """Ask the device what counter it is at, and resume from there (D-075).

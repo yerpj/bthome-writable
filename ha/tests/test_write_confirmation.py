@@ -109,6 +109,32 @@ async def test_a_write_only_entry_is_written_without_a_read(
     assert hass.states.get(LIGHT).attributes.get("assumed_state") is True
 
 
+async def test_a_read_back_from_a_stale_table_fails_the_write(
+    hass: HomeAssistant, radio, gatt
+) -> None:
+    """Where D-116 and D-117 meet, and the reason this branch exists.
+
+    The read back answers with another entry's object, which is the stale cached
+    table of D-116. The write was addressed through that same table, so it may
+    have reached the wrong characteristic: the only honest outcome is to drop
+    the table and report the command failed.
+    """
+    gatt.declare(2, readable={1: bytes.fromhex("1001"), 2: bytes.fromhex("5714")})
+    await setup_device(hass, radio, "thermostat")
+    await settle(hass)
+    gatt.echo_writes = False
+    gatt.readable[UUID_TEMPLATE.format(2)] = bytes.fromhex("1001")  # entry 1's object
+
+    with pytest.raises(HomeAssistantError):
+        await hass.services.async_call(
+            "number", "set_value", {"entity_id": TARGET, "value": 22}, blocking=True
+        )
+    await settle(hass)
+
+    assert gatt.cache_cleared == 1, "dropped, so the next command rediscovers"
+    assert float(hass.states.get(TARGET).state) == 20, "and nothing was claimed"
+
+
 # --- the radio that carries it ---------------------------------------------
 
 
