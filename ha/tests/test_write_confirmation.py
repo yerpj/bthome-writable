@@ -40,27 +40,90 @@ POWER = "switch.espruino_light_power"
 # --- the write that is checked against the device ---------------------------
 
 
-async def test_a_write_the_device_did_not_take_is_reported_failed(
-    hass: HomeAssistant, radio, gatt
+async def test_a_write_the_device_did_not_take_is_not_passed_over_in_silence(
+    hass: HomeAssistant, radio, gatt, caplog: pytest.LogCaptureFixture
 ) -> None:
     """The bench incident: acknowledged, and the value never moved.
 
     `echo_writes = False` is a device that answers the write and changes
-    nothing, which is what a proxy losing the write looks like from here.
+    nothing, which is what a proxy losing the write looks like from here -- and
+    also what a device that has not republished the entry yet looks like, which
+    is why this is a warning and not a failure (D-122). D-117 asked for one
+    thing, that it not be silent, and this is it.
     """
     gatt.declare(2, readable={1: bytes.fromhex("1001"), 2: bytes.fromhex("5714")})
     await setup_device(hass, radio, "thermostat")
     await settle(hass)
     gatt.echo_writes = False
 
-    with pytest.raises(HomeAssistantError):
+    await hass.services.async_call(
+        "number", "set_value", {"entity_id": TARGET, "value": 22}, blocking=True
+    )
+    await settle(hass)
+
+    assert gatt.writes, "the write was attempted"
+    assert "still reports the value it had" in caplog.text
+    assert float(hass.states.get(TARGET).state) == 22, (
+        "and what was written is kept, because nothing disproved it"
+    )
+
+
+async def test_a_device_that_applies_the_write_later_is_not_called_broken(
+    hass: HomeAssistant, radio, gatt, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Measured on the bench, 2026-10-21, and the reason D-120 was demoted.
+
+    @enaon's entry list on our own board. Every `turn_on` confirmed and every
+    `turn_off` reported failed, while the board's own console showed the lamp
+    off: `isOn:false, bri:0`. §4.3's getter is published, not served on demand,
+    so a read answers with whatever the device sealed when it last published,
+    and a fade republishes before the fade is over.
+
+    A device that reports the value it had is therefore not evidence of
+    anything, and the command must not come back as an error.
+    """
+    gatt.declare(1, readable={1: bytes.fromhex("1E01")})
+    await setup_device(hass, radio, "single-light")
+    await settle(hass)
+    gatt.echo_writes = False  # the lamp is fading; the published value lags
+
+    await hass.services.async_call(
+        "switch", "turn_off", {"entity_id": LIGHT}, blocking=True
+    )
+    await settle(hass)
+
+    assert gatt.writes[-1] == (UUID_TEMPLATE.format(1), bytes.fromhex("1e00"))
+    assert "did not reach the device" not in caplog.text, (
+        "it reached the device: the lamp was off and the entry was not yet "
+        "republished, which no receiver can tell apart from a lost write"
+    )
+
+
+async def test_calling_it_a_failure_is_one_constant_away(
+    hass: HomeAssistant, radio, gatt
+) -> None:
+    """What D-120 shipped, kept behind `AN_UNCHANGED_ENTRY_FAILS_THE_WRITE`.
+
+    It is the right answer for a device whose entries are served from state the
+    write has already changed, and the owner's to decide, because the mechanism
+    that settles it for every device is the write counter rather than the value
+    (D-122).
+    """
+    gatt.declare(2, readable={1: bytes.fromhex("1001"), 2: bytes.fromhex("5714")})
+    await setup_device(hass, radio, "thermostat")
+    await settle(hass)
+    gatt.echo_writes = False
+
+    with (
+        patch.object(coordinator_module, "AN_UNCHANGED_ENTRY_FAILS_THE_WRITE", True),
+        pytest.raises(HomeAssistantError),
+    ):
         await hass.services.async_call(
             "number", "set_value", {"entity_id": TARGET, "value": 22}, blocking=True
         )
     await settle(hass)
 
-    assert gatt.writes, "the write was attempted"
-    assert float(hass.states.get(TARGET).state) == 20, "and the state is the device's"
+    assert float(hass.states.get(TARGET).state) == 20, "the state is the device's"
 
 
 async def test_a_device_that_keeps_its_own_value_is_not_a_failure(

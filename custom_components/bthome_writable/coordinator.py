@@ -23,6 +23,7 @@ from homeassistant.core import HomeAssistant, callback
 from .const import (
     ALLOW_COUNTER_SYNC,
     ALLOW_PLAINTEXT_DOWNGRADE,
+    AN_UNCHANGED_ENTRY_FAILS_THE_WRITE,
     AUTHENTICATION_FAILURES_BEFORE_REAUTH,
     BTHOME_SERVICE_UUID,
     CHALLENGE_LENGTH,
@@ -772,6 +773,7 @@ class BTHomeWritableCoordinator:
                 await self._write_characteristic(client, entry, payload)
                 acknowledged = time.monotonic()
                 reported = await self._read_back(client, entry)
+                confirmed = time.monotonic()
             finally:
                 await client.disconnect()
 
@@ -782,18 +784,35 @@ class BTHomeWritableCoordinator:
             # half degrees -- and those two are told apart by one thing: whether
             # anything moved at all (D-117).
             if reported == previous:
-                raise WriteFailed(
-                    f"{self.address}: entry {number} was acknowledged and the "
-                    "device still reports the value it had, so the write did "
-                    "not reach it"
+                # Nothing moved, and this is where the evidence runs out. A
+                # device that applies a write asynchronously answers with the
+                # value it had, because §4.3's getter is published rather than
+                # served on demand and the module republishes on the tick after
+                # the write (D-122, measured). So say so and keep what was
+                # written: calling it a failure called @enaon's lamp broken on
+                # every command that turned it off.
+                if AN_UNCHANGED_ENTRY_FAILS_THE_WRITE:
+                    raise WriteFailed(
+                        f"{self.address}: entry {number} was acknowledged and "
+                        "the device still reports the value it had, so the "
+                        "write did not reach it"
+                    )
+                _LOGGER.warning(
+                    "%s: entry %d was acknowledged and the device still reports "
+                    "the value it had: either it did not arrive, or the device "
+                    "has not republished the entry yet (D-122)",
+                    self.address,
+                    number,
                 )
-            _LOGGER.debug(
-                "%s: entry %d: the device reports %s where %s was written",
-                self.address,
-                number,
-                reported.hex(),
-                value.hex(),
-            )
+                reported = None
+            else:
+                _LOGGER.debug(
+                    "%s: entry %d: the device reports %s where %s was written",
+                    self.address,
+                    number,
+                    reported.hex(),
+                    value.hex(),
+                )
 
         if coalesce:
             # Events leave no state behind; everything else does. What is kept
@@ -807,6 +826,7 @@ class BTHomeWritableCoordinator:
             connected=connected,
             write_started=write_started,
             acknowledged=acknowledged,
+            confirmed=confirmed,
         )
 
     def _report_timing(
@@ -818,6 +838,7 @@ class BTHomeWritableCoordinator:
         connected: float,
         write_started: float,
         acknowledged: float,
+        confirmed: float,
     ) -> None:
         """Say how long a write took, split where the time actually goes.
 
@@ -835,6 +856,7 @@ class BTHomeWritableCoordinator:
                 "queued_ms": round((connect_started - queued_at) * 1000, 1),
                 "connect_ms": round((connected - connect_started) * 1000, 1),
                 "write_ms": round((acknowledged - write_started) * 1000, 1),
+                "confirm_ms": round((confirmed - acknowledged) * 1000, 1),
                 "total_ms": round((acknowledged - queued_at) * 1000, 1),
             },
         )

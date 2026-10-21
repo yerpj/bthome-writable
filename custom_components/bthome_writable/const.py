@@ -162,21 +162,52 @@ Wi-Fi by something that is not the device, so a lost write reports success. An
 ATT response cannot carry proof -- ATT has no end-to-end authentication -- so the
 only evidence available is the device's own answer afterwards.
 
-For a readable entry that answer is one read in the connection already open: if
-the device still reports the value it had, the write did not land and the command
-is reported failed. A device that clamps or quantises what it was given reports
-something else again, which is not a failure and is adopted as the state.
+For a readable entry that answer is one read in the connection already open. A
+device that clamps or quantises what it was given reports something else again,
+which is not a failure and is adopted as the state.
 
 For a write-only entry there is no evidence to be had, and the honest form is
 the `assumed_state` the entity already carries.
 
+What the read cannot do is prove the opposite. §4.3's getter is *published*, not
+served on demand: `publishRead` seals the value and hands it to
+`NRF.updateServices`, and a read returns whatever was sealed when the device last
+published. A device that applies a write asynchronously therefore republishes
+before the effect exists, and answers the read with the value it had. Measured on
+the bench, 2026-10-21, on @enaon's own entry list: every `turn_on` confirmed and
+every `turn_off` reported failed, while the lamp turned off each time (D-122).
+
 The cost is one GATT read per write on a readable entry, inside the same
-connection: the figures in docs/measurements.md were taken without it."""
+connection: the figures in docs/measurements.md were taken without it, and
+`confirm_ms` on `EVENT_WRITE` is what it costs."""
+
+AN_UNCHANGED_ENTRY_FAILS_THE_WRITE: Final = False
+"""Whether a read-back that still reports the old value fails the command
+ [DECISION]
+
+True is what D-120 shipped and what the bench disproved: it cannot tell a write
+that never arrived from a device that has not republished the entry yet, and it
+called a working lamp broken every other command (D-122).
+
+False keeps the read-back for what it does prove -- a value the device reports
+differently is the device's, and is adopted -- and demotes the unchanged answer
+to a warning, so an undelivered write is still not silent, which is all D-117
+asked for.
+
+Neither value is the real answer. The write counter is: the device advances it
+only on a write it accepted (`noteWriteCounter`, after the replay check), the
+counter report of §5.6 returns it sealed, and the receiver knows which counter it
+sent. That is proof of delivery that owes nothing to application state or to
+timing, and it is the owner's to decide, because §4.2 says the write response is
+the confirmation."""
 
 EVENT_WRITE: Final = "bthome_writable_write"
 """Fired after each acknowledged write, with where its time went: `queued_ms`,
-`connect_ms`, `write_ms`, `total_ms`. `connect_ms` is mostly the wait to catch
-the device advertising, which is what its advertising interval buys or costs."""
+`connect_ms`, `write_ms`, `confirm_ms`, `total_ms`. `connect_ms` is mostly the
+wait to catch the device advertising, which is what its advertising interval buys
+or costs; `confirm_ms` is the read back of `CONFIRM_WRITES_BY_READING_BACK`, and
+0 when there was nothing to read. `total_ms` ends at the acknowledgement, so it
+excludes `confirm_ms`: a receiver's own latency is the two together."""
 
 CONF_BINDKEY: Final = "bindkey"
 CONF_WRITE_COUNTER: Final = "write_counter"

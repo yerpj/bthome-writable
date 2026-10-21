@@ -9,10 +9,10 @@ Each section says **when**, **on what**, and **with which tool**. A number
 without those three is not a measurement, and several of the ones below read
 very differently once the host is named.
 
-Every write latency here was measured before D-117, so before an acknowledged
-write to a readable entry was checked against the device. That check is one GATT
-read inside the connection already open, and nothing below has been re-measured
-with it.
+Every write latency here except §13 was measured before D-117, so before an
+acknowledged write to a readable entry was checked against the device. That
+check is one GATT read inside the connection already open; §13 is what it costs
+and what it is worth.
 
 ## The bench
 
@@ -868,6 +868,54 @@ adapter, **none was malformed**.
 
 So the damage is in a receive path, not in the module -- and not in this host's.
 Recorded rather than explained: check H is what will say whether it recurs.
+
+## 13. What confirming a write costs, and what it cannot prove
+
+**2026-10-21**, branch `candidate/enaon-retest`, nice!nano running
+`espruino/bench/many-writables.js` sealed with @enaon's three entries, Home
+Assistant 2026.7.4 on the Pi's own adapter, the ESP32 proxy out of the way. Ten
+`switch.turn_on` / `turn_off` commands on entry 1, each after twelve seconds of
+idle plus a random fraction of an advertising interval. The integration's own
+`bthome_writable_write` event, which gained `confirm_ms` for this.
+
+| | median | min | max |
+|---|---|---|---|
+| the write itself (`write_ms`) | **58 ms** | 42 | 963 |
+| to the acknowledgement (`total_ms`) | **707 ms** | 228 | 8128 |
+| the read back (`confirm_ms`) | **832 ms** | 88 | 1601 |
+| the service call, end to end | **4047 ms** | 3266 | 12157 |
+
+`total_ms` stops at the acknowledgement, so the receiver's own latency is it
+plus `confirm_ms`: confirming a write roughly **doubles** it, 1.5 s against
+707 ms. The rest of the service call is the disconnect and Home Assistant's own
+machinery, and was there before.
+
+Why 832 ms for a read of one byte, when the write is 58: the module seals the
+entry's value and hands it to `NRF.updateServices` on the tick after the write,
+and the read waits behind that work on the device's single thread. It is the
+same sealing cost §6 measures, met from the other side.
+
+### And what it buys
+
+Nothing, on this device. The same run on the first build of D-120 failed **every
+`turn_off` and confirmed every `turn_on`**, four of each, with the board's own
+console showing the lamp off each time it was called undelivered:
+
+```
+LAMP {"isOn":true,"bri":0.6,"auto":false}     before
+HA turn_off: HTTP Error 500: Internal Server Error
+LAMP {"isOn":false,"bri":0,"auto":false}      after
+```
+
+§4.3's getter is published, not served on demand. A device that applies a write
+asynchronously -- a fade, a ramp, a debounce -- republishes before the effect
+exists, so it answers the read with the value it had, and the asymmetry is
+exactly when the application mutates its own state: `fadeTo` sets `isOn` true on
+the way up and clears it twelve 20 ms steps later on the way down.
+
+So a read back can adopt a value the device reports differently, and cannot
+distinguish a lost write from one not yet republished. D-122 has what follows
+from that.
 
 ## Reproducing any of this
 

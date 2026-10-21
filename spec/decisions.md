@@ -7581,3 +7581,98 @@ bytes. **None of it has been on a radio.** What this branch owes before it
 reaches `main`: the D-116 recipe run at the bench and the wrong-object read
 seen not to return, a write latency measured with the read-back in it, and
 @enaon's retest from a clean slate.
+
+## D-122 -- a read back cannot prove a write was lost  [INCIDENT]
+
+**The bench, 2026-10-21, on branch `candidate/enaon-retest`.** The branch owed
+two things before it could be offered to @enaon: the D-116 recipe run on a radio,
+and a write latency measured with D-120's read back in it. Both were run. The
+first passed. The second found a defect in D-120 itself, which is why the branch
+was not pushed.
+
+### D-116, cured
+
+The recipe of D-116 exactly: @enaon's entry list, sealed, `counterReport` on,
+Home Assistant left to read and cache the table; then installed again with
+`counterReport` off, which takes one characteristic away while the declaration
+stays `[0x1E, 0x1E, 0x09]`.
+
+```
+22:47:00  entry 1: read object 0x1E, 1 value bytes, new
+22:47:02  entry 2: read object 0x09, expected 0x1E; the cached GATT table has been
+          dropped and the device will be read again
+22:47:08  entry 1: characteristic 2faa0001-... is declared but not in the cached GATT
+          table, on a table just rediscovered; the device's entries are not where it
+          declares them
+22:47:08  the device was not read in full; no further attempt for 10 s
+22:47:52  entry 1: read object 0x1E / entry 2: read object 0x1E / entry 3: read object 0x09
+```
+
+One occurrence, not 43. The second pass failed too -- the board had just reset
+and BlueZ was rediscovering while `setServices` rebuilt -- and that is reported
+as a failed read rather than a successful one: the revision is not marked read,
+the retry is announced, and thirty seconds later all three entries come back
+correct. On the old code the value was dropped, the table kept, success
+reported, and nothing ever came back to it.
+
+`_connectable_device()` of D-117 also showed itself working, on every
+connection: `connecting through B8:27:EB:5F:DD:BF (score -63)`, the Pi's own
+adapter, which is the one that hears this device.
+
+### D-120, wrong
+
+Ten commands on entry 1 of the same sketch. **Every `turn_off` was reported
+undelivered and every `turn_on` confirmed**, four of each, while the board's own
+console said the lamp had done as it was told:
+
+```
+LAMP {"isOn":true,"bri":0.6,"auto":false}     before
+HA turn_off: HTTP Error 500: Internal Server Error
+LAMP {"isOn":false,"bri":0,"auto":false}      after
+```
+
+The cause is structural, and it is in the protocol rather than in either
+implementation. §4.3's getter is **published, not served on demand**:
+`publishRead` seals the value and hands it to `NRF.updateServices`, and a GATT
+read returns whatever was sealed when the device last published. The module
+republishes on the tick after a write, so a device that applies a write
+asynchronously -- a fade, a ramp, a debounce -- publishes before the effect
+exists. The asymmetry is exactly when the application mutates its own state:
+`fadeTo` sets `isOn` true on the way up, and clears it twelve 20 ms steps later
+on the way down.
+
+So "the device still reports the value it had" is not evidence that the write was
+lost. On @enaon's own lamp it would have called a working command broken every
+time he turned the light off, which is worse than the silence of D-117.
+
+Measured cost, at the same time: the read back is a **median 832 ms** against
+58 ms for the write itself, and it roughly doubles the receiver's own latency
+(`docs/measurements.md` §13).
+
+### What was done, and what is the owner's  [DECISION]
+
+Done: `AN_UNCHANGED_ENTRY_FAILS_THE_WRITE = False`. The read back is kept for
+what it does prove -- a device that clamps or quantises reports something else,
+and that value is the device's and is adopted -- and the unchanged answer is
+demoted to a warning, which is all D-117 asked for. Ten of ten commands then
+succeeded on the bench and the lamp followed each one. Tested in
+`ha/tests/test_write_confirmation.py`, including the old behaviour behind the
+constant.
+
+The owner's, because §4.2 says the write response is the confirmation: **the
+write counter settles this and the value never will.** The device advances it
+only on a write it accepted (`noteWriteCounter`, after the replay check of
+§5.3), the counter report of §5.6 returns it sealed under the read direction, and
+the receiver knows which counter it sent. One more read on the open link, about
+the cost of the one being done now, and it owes nothing to application state or
+to timing. Both sides already have the code, for the resync of D-075.
+
+What that needs decided: whether confirmation moves from the value to the
+counter, what a device without `counterReport` is then entitled to claim, and
+whether the extra read goes on every write or only on the first after a quiet
+period.
+
+### What this branch still owes
+
+@enaon's retest, from a clean slate. Nothing else: the two hardware debts of
+D-121 are paid.
