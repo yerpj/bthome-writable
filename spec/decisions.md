@@ -7192,3 +7192,84 @@ there unnoticed: the thing the user exercises is the thing that heals.
    bind the entry**, so a mixed-up read cannot be caught by the crypto. Binding
    the characteristic index into the nonce would make this class of fault
    impossible rather than merely detectable.
+
+## D-117 -- a write through the ESP32 proxy is lost without a word  [INCIDENT]
+
+**Found 2026-10-21, on the owner's own Puck.js**, the afternoon of D-116 and in
+the same family: Home Assistant reports a write it did not deliver. This one
+needs no stale cache to do it.
+
+### The report
+
+The owner could no longer switch the lamp off from the `bthome_writable`
+control. Home Assistant's history shows four commands between 14:27 and 14:28,
+state flipping each time, and **not one line in the log**: no write failure, no
+warning, nothing.
+
+### What the device said
+
+The Puck answers every question itself, over its UART service, and its answers
+clear its own code entirely.
+
+| asked | answer |
+|---|---|
+| firmware, module | Puck.js 2v27, `BTHomeWritable` from the module cache |
+| the sketch | `{ type: "light", set: function (v) { lamp.on = v; apply(); } }`, `apply()` being `digitalWrite(LED2, lamp.on)` |
+| `1e 00`, `1e 01`, `1e 00` written to `2FAA0001` from this host | `lamp.on` and LED2 followed all three times, no `onError` |
+| the real GATT table | one writable characteristic, `2faa0001` at handle 18, write only |
+
+So the device, the module and the sketch are correct, and the same bytes on the
+same characteristic work when they come from a different central.
+
+Then Home Assistant was asked to do it, with `console.log` parked in an array
+on the board for the duration -- the owner's `onError` prints to a Serial1
+console nothing on this bench reads, which is why a refusal would have been
+invisible to him. **The array stayed empty and `lamp.on` never moved**, while
+Home Assistant answered HTTP 200 twice. Nothing arrived; it was not a refusal.
+
+### Which radio, and that is the whole answer
+
+A second `NRF.on("connect")` installed for the experiment named the central:
+
+| path | the device saw | the lamp |
+|---|---|---|
+| proxy enabled | `connect a4:f0:0f:1f:10:22`, the ESP32 | unchanged |
+| proxy disabled | `connect b8:27:eb:5f:dd:bf`, the Pi | **switched** |
+| proxy enabled, after a Home Assistant restart | `connect a4:f0:0f:1f:10:22`, disconnect reason 40 | unchanged |
+
+Writes to this device through the ESPHome Bluetooth proxy are acknowledged and
+never land. Through the Pi's own adapter they land every time. **A restart does
+not help**, which is what separates this from D-116: there is no stale table to
+drop here, and `load()`ing the sketch afterwards rebuilt the table anyway.
+
+The proxy should not have been chosen at all: over 40 s of listening it did not
+hear this device once, while the Pi heard it 24 times at -76 dBm. It is 12 m and
+two walls away. Why `async_ble_device_from_address(connectable=True)` returned
+the far scanner is not established here and belongs to `habluetooth`.
+
+### Why our side cannot tell  [DECISION]
+
+`_write_characteristic` writes and takes the GATT acknowledgement as proof. Over
+a local adapter that is nearly true. Over a proxy the acknowledgement is
+produced on the far side of Wi-Fi by a device that is not the one being written
+to, and §4.2's whole confirmation model rests on it.
+
+1. **Prefer a source that currently hears the device.** The scanner list is
+   available; choosing a connectable source that has not heard the device in a
+   minute over one that hears it every second is a choice we can decline.
+2. **A write that reports success must have evidence of it.** For a readable
+   entry, the read-back we already perform elsewhere is that evidence. For a
+   write-only entry there is none, and the honest form is to say so rather than
+   to promise delivery.
+3. This is the same defect class as D-116: ours is an interface that cannot
+   fail. Both belong in `custom_components/bthome_writable`.
+
+### For the record
+
+Found while answering "why can I no longer switch the lamp off", and the trigger
+was this agent re-enabling the proxy entry an hour earlier at the owner's
+request -- an entry that had been left disabled by an unfinished run. The fault
+was there all along; enabling the proxy is what revealed it.
+
+Unrelated but seen: `E.getErrorFlags()` on that Puck returns `LOW_MEMORY`, with
+1640 blocks free after a fresh `load()`.
