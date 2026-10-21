@@ -262,15 +262,18 @@ def report(outcome: Outcome) -> int:
 
 async def run(args: argparse.Namespace) -> int:
     from tools.chain_test import Watch, new_entries, system_log
-    from tools.ha_bench import bench_prepared
+    from tools.ha_bench import bench_prepared, radio_through_proxy
     from tools.latency_sweep_write import Bus
 
+    prepare = radio_through_proxy if args.radio == "proxy" else bench_prepared
+
     sealed = not args.plain
+    radio = "ESP32 proxy alone" if args.radio == "proxy" else "the Pi's own radio"
     condition = (
         f"{'sealed' if sealed else 'plaintext'}, {args.entries} entries, "
         f"busy {args.busy} ms, defer {args.defer} ms, "
-        f"{'spin' if args.no_fade else 'fade'}, {args.gap:g} s apart"
-        + (f", re-setup to {args.resetup}" if args.resetup else "")
+        f"{'spin' if args.no_fade else 'fade'}, {args.gap:g} s apart, "
+        f"{radio}" + (f", re-setup to {args.resetup}" if args.resetup else "")
     )
     outcome = Outcome(condition=condition)
 
@@ -287,7 +290,7 @@ async def run(args: argparse.Namespace) -> int:
     connector = aiohttp.TCPConnector(resolver=aiohttp.ThreadedResolver())
     async with (
         aiohttp.ClientSession(connector=connector) as session,
-        bench_prepared(session) as changed,
+        prepare(session) as changed,
     ):
         for line in changed:
             print(f"  {line}")
@@ -386,6 +389,14 @@ def main() -> int:
         "what @enaon's lamp did (his workaround was 250)",
     )
     parser.add_argument("--presses", type=int, default=20)
+    parser.add_argument(
+        "--radio",
+        choices=["local", "proxy"],
+        default="local",
+        help="which radio Home Assistant uses: 'local' is the Pi's own adapter "
+        "with the ESP32 proxy out of the way, 'proxy' is the ESP32 alone, with "
+        "the Pi's adapter disabled for the duration",
+    )
     parser.add_argument(
         "--resetup",
         type=int,

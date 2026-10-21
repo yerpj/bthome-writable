@@ -23,6 +23,7 @@ entries and automations it is given.
 
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
 import os
 from typing import Any
@@ -30,7 +31,18 @@ from typing import Any
 import aiohttp
 
 PROXY_ENTRY = "01M2QKAFXHKY07577VZ1PDZ8F2"
-"""The ESPHome Bluetooth proxy's config entry on this bench."""
+"""The ESPHome Bluetooth proxy's config entry on this bench.
+
+Disabling this one is what takes the proxy out of the picture. The proxy also
+appears as a `bluetooth` entry of its own, `esp32-bluetooth-proxy-1f1020`, which
+stays loaded either way: it is the adapter registration, not the link."""
+
+PI_ADAPTER_ENTRY = "01KBYN6ECQYR1FYPSPHP5HVHQD"
+"""The Raspberry Pi's own bcm43438, which is the bench's default radio.
+
+Disabling it is how a measurement is forced through the proxy instead, which is
+a different GATT path: the central is then an ESP32 on the far side of Wi-Fi,
+with its own connection slots and its own service cache."""
 
 OLED_AUTOMATION = "automation.puck_illuminance_oled"
 """The automation that writes the Puck's illuminance to the nice!nano."""
@@ -142,5 +154,61 @@ async def bench_prepared(
         # into this state stays in it.
         if proxy_was:
             await set_entry_enabled(session, proxy_entry, True)
+        if automation_was:
+            await set_automation(session, automation, True)
+
+
+@asynccontextmanager
+async def radio_through_proxy(
+    session: aiohttp.ClientSession,
+    proxy_entry: str = PROXY_ENTRY,
+    adapter_entry: str = PI_ADAPTER_ENTRY,
+    automation: str = OLED_AUTOMATION,
+    settle: float = 30.0,
+):
+    """The opposite of `bench_prepared`: the proxy alone, no local adapter.
+
+    Everything Home Assistant hears and every connection it opens then goes
+    through the ESP32, which is a different central with its own connection
+    slots and its own view of a device's GATT table. A measurement taken this
+    way is not comparable with one taken on the Pi's own radio, and that is the
+    point: a receiver-side fault that only appears behind a proxy cannot be
+    found with the proxy switched off.
+
+    The proxy is enabled first and given time to come up, because disabling the
+    only working adapter before the other one is up leaves Home Assistant with
+    no radio at all and every device unavailable, which looks exactly like the
+    device having died.
+
+    Restores what it changed, with the same caveat as `bench_prepared`: a bench
+    already in this state is left in it.
+    """
+    changed: list[str] = []
+    proxy_was = await entry_enabled(session, proxy_entry)
+    adapter_was = await entry_enabled(session, adapter_entry)
+    automation_was = await automation_on(session, automation)
+    try:
+        if not proxy_was:
+            await set_entry_enabled(session, proxy_entry, True)
+            changed.append("enabled the ESP32 proxy")
+            await asyncio.sleep(settle)
+        if adapter_was:
+            await set_entry_enabled(session, adapter_entry, False)
+            changed.append("disabled the Pi's own adapter")
+            await asyncio.sleep(settle)
+        if automation_was:
+            await set_automation(session, automation, False)
+            changed.append("turned off the OLED automation")
+        if not changed:
+            changed.append(
+                "nothing to change -- the bench was already on the proxy alone"
+            )
+        yield changed
+    finally:
+        if adapter_was:
+            await set_entry_enabled(session, adapter_entry, True)
+            await asyncio.sleep(settle)
+        if not proxy_was:
+            await set_entry_enabled(session, proxy_entry, False)
         if automation_was:
             await set_automation(session, automation, True)
