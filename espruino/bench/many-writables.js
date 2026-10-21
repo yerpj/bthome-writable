@@ -80,7 +80,17 @@ var ENTRIES = 3;
 var lamp = { isOn: false, bri: 0, auto: false };
 
 var cfg = { busy: 150, defer: 0, fade: true };
-var stats = { presses: 0, errors: 0, last: 0, worst: 0 };
+var stats = { presses: 0, errors: 0, last: 0, worst: 0, conns: 0 };
+
+/* How many times a central came. The receiver answers a moved settings
+ * revision with a connection, so this is the only honest count of how often it
+ * actually came to read: a read leaves no trace in the device, and counting
+ * state writes on the Home Assistant side counts changes, not reads. Espruino
+ * adds listeners rather than replacing them, so this does not disturb the
+ * module's own. */
+NRF.on("connect", function () {
+  stats.conns++;
+});
 var timer;
 var fading;
 
@@ -173,6 +183,7 @@ function report() {
     "errors=" + stats.errors,
     "lastChanged=" + stats.last,
     "worstChanged=" + stats.worst,
+    "CONNS=" + stats.conns,
     "busy=" + cfg.busy,
     "defer=" + cfg.defer,
     "fade=" + cfg.fade,
@@ -271,6 +282,28 @@ if (SEALED) {
 }
 
 bw.setup(options);
+
+/* Re-run setup() on a device that is already live, which is what "I added some
+ * more write objects" means in practice: the Web IDE sends the sketch again
+ * over a device that is advertising and has a GATT table a receiver has
+ * already cached. Two things are being tested at once here, deliberately,
+ * because that is how it happens: the module's own handling of a second
+ * setup() -- which the audit of 2026-10-20 left open as its first defect, a
+ * previous run's characteristics staying in place with a captured `w` the new
+ * plan no longer has -- and the receiver's cached handle map, which now maps
+ * entry 1 to whatever that handle has become. */
+function resetup(n) {
+  if (n !== undefined) ENTRIES = n;
+  options.advertise = [options.advertise[0]].concat(candidates.slice(0, ENTRIES));
+  bw.setup(options);
+  console.log(
+    "RESETUP entries",
+    bw.plan().entryIds,
+    "bytes",
+    bw.plan().serviceDataLength
+  );
+}
+bench.resetup = resetup;
 
 console.log("advertising as", NRF.getAddress());
 console.log("writable entries:", bw.plan().entryIds);

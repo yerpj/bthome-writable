@@ -41,6 +41,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 from dataclasses import dataclass, field
+import datetime as dt
 import os
 from pathlib import Path
 import re
@@ -81,6 +82,10 @@ one of them unavailable rather than wrong, so their being live is what makes a
 run with no symptom a run where the receiver really did read."""
 
 
+def now() -> dt.datetime:
+    return dt.datetime.now(dt.UTC)
+
+
 def _base() -> str:
     return os.environ["HA_URL"].rstrip("/")
 
@@ -95,14 +100,6 @@ async def states(session: aiohttp.ClientSession) -> list[dict[str, Any]]:
     ) as response:
         response.raise_for_status()
         return await response.json()
-
-
-def revision_of(entities: dict[str, str]) -> str:
-    """The settings revision this device advertises, as HA last heard it."""
-    for entity, value in entities.items():
-        if entity.endswith("settings_revision"):
-            return value
-    return ""
 
 
 async def ours(session: aiohttp.ClientSession, hint: str) -> dict[str, str]:
@@ -143,7 +140,9 @@ async def install(sealed: bool, entries: int) -> str:
     return await upload_serial(PORT, source, save=False, settle=6.0, reset=True)
 
 
-async def drive(presses: int, busy: int, defer: int, gap: float, fade: bool) -> str:
+async def drive(
+    presses: int, busy: int, defer: int, gap: float, fade: bool, resetup: int | None
+) -> str:
     """Run the presses and come back with what the board printed."""
     from tools.espruino_upload import SerialBoard
 
@@ -155,6 +154,9 @@ async def drive(presses: int, busy: int, defer: int, gap: float, fade: bool) -> 
             f"bench.fade({str(fade).lower()});\n"
         )
         await asyncio.sleep(0.5)
+        if resetup is not None:
+            await board.send(f"bench.resetup({resetup});\n")
+            await asyncio.sleep(2.0)
         await board.send(f"bench.loop({presses}, {int(gap * 1000)});\n")
         await board.listen(presses * gap + 10.0)
         await board.send("bench.stop();bench.report();\n")
@@ -176,7 +178,8 @@ class Outcome:
     symptoms: list[str] = field(default_factory=list)
     other: list[str] = field(default_factory=list)
     entities: dict[str, str] = field(default_factory=dict)
-    revision_moved: bool = False
+    reads_seen: int = 0
+    connections: int = 0
     readable_live: list[str] = field(default_factory=list)
 
 
@@ -197,6 +200,8 @@ def read_console(text: str, outcome: Outcome) -> None:
             parts = line[line.index("CHANGED[") :].split()
             if len(parts) >= 2 and parts[1].isdigit():
                 outcome.changed_ms.append(int(parts[1]))
+        elif "CONNS=" in line:
+            outcome.connections = int(line.split("CONNS=")[1].split()[0])
         elif "ERR " in line and "write rejected" not in line:
             outcome.device_errors.append(line)
 
@@ -229,7 +234,8 @@ def report(outcome: Outcome) -> int:
     print(f"  entities found          {len(outcome.entities)}")
     for entity, value in sorted(outcome.entities.items()):
         print(f"      {entity} = {value}")
-    print(f"  the revision moved      {outcome.revision_moved}")
+    print(f"  the receiver connected      {outcome.connections} times")
+    print(f"  state writes seen           {outcome.reads_seen}")
     print("  readable entities live  " + (", ".join(outcome.readable_live) or "(none)"))
     print(f"  WRONG-OBJECT READS      {len(outcome.symptoms)}")
     for line in outcome.symptoms:
@@ -241,7 +247,7 @@ def report(outcome: Outcome) -> int:
     if outcome.symptoms:
         print("REPRODUCED: Home Assistant read an object it did not ask for")
         return 0
-    if not (outcome.revision_moved and outcome.readable_live):
+    if not (outcome.reads_seen or outcome.connections):
         print(
             "INCONCLUSIVE: Home Assistant did not both hear and read this device, "
             "so a clean run proves nothing"
@@ -255,7 +261,7 @@ def report(outcome: Outcome) -> int:
 
 
 async def run(args: argparse.Namespace) -> int:
-    from tools.chain_test import new_entries, system_log
+    from tools.chain_test import Watch, new_entries, system_log
     from tools.ha_bench import bench_prepared
     from tools.latency_sweep_write import Bus
 
@@ -264,6 +270,7 @@ async def run(args: argparse.Namespace) -> int:
         f"{'sealed' if sealed else 'plaintext'}, {args.entries} entries, "
         f"busy {args.busy} ms, defer {args.defer} ms, "
         f"{'spin' if args.no_fade else 'fade'}, {args.gap:g} s apart"
+        + (f", re-setup to {args.resetup}" if args.resetup else "")
     )
     outcome = Outcome(condition=condition)
 
@@ -291,27 +298,42 @@ async def run(args: argparse.Namespace) -> int:
         await bus.open()
         try:
             before = await system_log(bus)
-            revision_before = revision_of(await ours(session, args.hint))
+            # Only the ones that are live: this device has accumulated entities
+            # from every sketch it has ever run, and the dead ones never update.
+            live = [
+                entity
+                for entity, value in (await ours(session, args.hint)).items()
+                if READABLE.search(entity) and value not in ("unavailable",)
+            ]
             print(
                 f"driving {args.presses} presses, {args.gap:g} s apart ...",
                 flush=True,
             )
             started = time.monotonic()
-            console = await drive(
-                args.presses,
-                args.busy,
-                args.defer,
-                args.gap,
-                not args.no_fade,
-            )
-            read_console(console, outcome)
-            print(f"  the board ran for {time.monotonic() - started:.0f} s")
-            # The receiver answers a moved revision with a connection, and
-            # the last one is still in flight when the board stops.
-            await asyncio.sleep(20.0)
+            async with Watch(session, live) as watch:
+                since = now()
+                console = await drive(
+                    args.presses,
+                    args.busy,
+                    args.defer,
+                    args.gap,
+                    not args.no_fade,
+                    args.resetup,
+                )
+                read_console(console, outcome)
+                print(f"  the board ran for {time.monotonic() - started:.0f} s")
+                # The receiver answers a moved revision with a connection, and
+                # the last one is still in flight when the board stops.
+                await asyncio.sleep(20.0)
+                # Every successful read-all writes each entity's state, whether
+                # or not the value moved, so this counts reads rather than
+                # changes -- which is the only way a run with no symptom can be
+                # told apart from a run where nothing was read at all.
+                outcome.reads_seen = max(
+                    (len(watch.arrivals(entity, since)) for entity in live), default=0
+                )
 
             outcome.entities = await ours(session, args.hint)
-            outcome.revision_moved = revision_before != revision_of(outcome.entities)
             # A readable entry whose value Home Assistant holds is a read that
             # worked; one it could not read goes unavailable, which is how a
             # silent failure shows up here, as an absence rather than a wrong
@@ -364,6 +386,14 @@ def main() -> int:
         "what @enaon's lamp did (his workaround was 250)",
     )
     parser.add_argument("--presses", type=int, default=20)
+    parser.add_argument(
+        "--resetup",
+        type=int,
+        choices=[1, 2, 3],
+        help="re-run setup() with this many writable entries on the live device "
+        "just before driving, which is what adding an entry while developing "
+        "does to a receiver that has cached the GATT table",
+    )
     parser.add_argument(
         "--gap",
         type=float,
