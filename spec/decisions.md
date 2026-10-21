@@ -7061,3 +7061,63 @@ the fixes themselves. The guard fired, which is what it is for.
 Six tests, one per fix, in `espruino/test/bundle.test.js`, and the fake board
 gained a clock a test can move backwards. 269 node tests, 294 pytest, lint and
 format clean.
+
+## D-115 — EspruinoDocs#766, and the sealed half of the audit tests
+
+**[EspruinoDocs#766](https://github.com/espruino/EspruinoDocs/pull/766)** --
+*BTHomeWritable: wake when something is due, repeat rather than rebuild* --
+opened 2026-10-21 from `yerpj:bthomewritable-schedule-and-repeat` onto
+`espruino:master`. Two files, `modules/BTHomeWritable.js` (24 125 bytes) and
+`modules/BTHomeWritable.md`, +141/-33. It carries D-108 (publish the bytes
+already on air for a rate change), D-109 (schedule from the next entry due),
+`getTime()*1000` from D-106's note, and the six fixes of D-114. It does not
+carry the tutorial (D-113) or P3 (D-110).
+
+The commit mirrors #765's shape: no attribution trailers, authored as
+`jipe_rey@hotmail.com`, which is how the previous two were merged. The body is
+ASCII only -- #765's was published with mojibake where its em dashes had been.
+
+### The audit tests in encrypted mode
+
+The six tests of D-114 all ran in clear, which proved the shared paths and
+nothing about the mode where a stopped device is hardest to notice: a sealed
+device that froze repeats a packet under a counter the receiver has already
+accepted, and there is no plaintext left for anyone downstream to find stale.
+**Five of the six now run with a key as well.** The sixth, a user `set()` that
+throws, is not reachable in that harness -- its stub cipher cannot open a write
+by design -- and the sealed write path is held to the shared vectors in
+`ccm.test.js` and `vectors.test.js` instead.
+
+The capacity one is better in encrypted mode than in clear: the counter and the
+MIC spend 8 of the bytes, so the same entry list that fits plaintext is refused
+sealed, and the test asserts both directions.
+
+**Each was checked against a mutant** of the module with its own fix reverted
+and nothing else. That mattered: reverting to the whole pre-fix module made
+four of the five fail for the wrong reason, because the read timer was renamed
+`tick` to `wake` in D-114 and the harness looks it up by name.
+
+It also caught a vacuous test. `renderServiceData` reads an entry whose
+`readInterval` is `0` on every wake without asking whether it is due, which
+stamps `lastRead` back into the present -- so an entry at `interval: 0` cannot
+exercise the backwards-clock clamp at all. Only an entry with an interval of
+its own can be skipped, and so be left with a `lastRead` in the future. The
+test now sets one up.
+
+### Two comments the published module was showing
+
+Found while reading the pull request's own diff rather than the source. The
+state swap's comment had stayed above the state literal when the `clearTimeout`
+moved below it, so the published module introduced `const next = {` with a
+sentence about disarming timers; its substance is now with the code that
+disarms them. And two of the page's new paragraphs were hand-wrapped badly,
+breaking a quotation from bthome.io across four short lines.
+
+Reading the generated copy as a reviewer would is worth doing before every
+pull request: the generator publishes the first sentence of each block comment,
+so a comment that drifts from its code drifts in public.
+
+### How it was checked
+
+274 node tests, 294 pytest, ruff and eslint clean. No behaviour changed after
+`207784e`, so the hardware measurements of §12 still stand.
