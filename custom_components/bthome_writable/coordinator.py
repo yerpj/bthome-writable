@@ -40,6 +40,7 @@ from .const import (
 from .protocol import (
     Declaration,
     ProtocolError,
+    StaleEntry,
     WritableEntry,
     advertising_counter,
     decode_object,
@@ -86,6 +87,17 @@ def _settle(waiter: asyncio.Future[None], error: Exception | None) -> None:
 
 class WriteFailed(Exception):
     """The write did not reach the device."""
+
+
+class StaleTable(Exception):
+    """The cached GATT table does not describe the device any more (D-116).
+
+    Raised inside a read pass, once the cache has been dropped, to say that the
+    pass has to start again on a rediscovered table rather than report what it
+    found. The write path has done this from the start; the read path used to
+    carry on and credit the value to the wrong entry, or skip the entry without
+    a word.
+    """
 
 
 type WriteListener = Callable[[set[int], Exception | None], None]
@@ -303,6 +315,10 @@ class BTHomeWritableCoordinator:
         window saw no read in progress and started a second (D-087).
         """
         if self._reading:
+            # Not an error, and not silent either: a device that stops being
+            # refreshed looks the same from the outside whatever the reason, so
+            # every path that declines to connect says so (D-116).
+            _LOGGER.debug("%s: no read: one is already running", self.address)
             return
         self._reading = True
         self._read_task = self.hass.async_create_task(self._read_loop())
@@ -333,6 +349,12 @@ class BTHomeWritableCoordinator:
                 if not done:
                     # Retried on a later advertisement, after READ_RETRY.
                     self._read_failed_at = time.monotonic()
+                    _LOGGER.debug(
+                        "%s: the device was not read in full; no further attempt "
+                        "for %.0f s",
+                        self.address,
+                        READ_RETRY,
+                    )
                     return
                 self._revision_read = target
                 self._read_failed_at = None
@@ -946,15 +968,61 @@ class BTHomeWritableCoordinator:
         read was refused stayed stale until the revision moved again, which for
         a knob nobody touches twice is for ever. That is the thing §3.2 exists
         to prevent, defeated by its own success check (D-083).
+
+        Two passes, because the first one can be defeated by our own cache. A
+        device whose characteristic layout changed while the list of objects it
+        declares did not leaves the cached table wrong in a way nothing else
+        notices: the handles still exist, so a read succeeds and returns another
+        entry's object, and the only thing standing in the way is the object-ID
+        check in `decode_object`. That check used to be the end of it -- the
+        value was dropped and the stale table kept, for ever on a value nobody
+        writes again (D-116, @enaon). Now it drops the table and reads again.
         """
         if self.declaration is None:
+            _LOGGER.debug(
+                "%s: no read: nothing has declared writable entries yet",
+                self.address,
+            )
             return False
         device = bluetooth.async_ble_device_from_address(
             self.hass, self.address, connectable=True
         )
         if device is None:
+            _LOGGER.debug(
+                "%s: no read: no connectable source for this device", self.address
+            )
             return False
 
+        declaration = self.declaration
+        for attempt in (1, 2):
+            try:
+                return await self._read_pass(device, declaration)
+            except StaleTable as stale:
+                if attempt == 1:
+                    _LOGGER.warning(
+                        "%s: %s; the cached GATT table has been dropped and the "
+                        "device will be read again",
+                        self.address,
+                        stale,
+                    )
+                    continue
+                _LOGGER.warning(
+                    "%s: %s, on a table just rediscovered; the device's entries "
+                    "are not where it declares them",
+                    self.address,
+                    stale,
+                )
+                return False
+        return False
+
+    async def _read_pass(self, device: Any, declaration: Declaration) -> bool:
+        """One connection's worth of reading. Raises `StaleTable` to be redone.
+
+        Reads the declaration it was given rather than the live one, so that the
+        two passes read the same device: an advertisement arriving between them
+        may have replaced it, and that case is already handled where it belongs,
+        by dropping the cache on a layout change.
+        """
         changed = False
         failed = False
         async with self._semaphore:
@@ -965,21 +1033,50 @@ class BTHomeWritableCoordinator:
                 max_attempts=2,
             )
             try:
-                for entry in self.declaration.offered:
+                for entry in declaration.offered:
                     characteristic = client.services.get_characteristic(entry.uuid)
-                    if (
-                        characteristic is None
-                        or "read" not in characteristic.properties
-                    ):
+                    if characteristic is None:
+                        # Declared in the advertising, absent from the table we
+                        # hold: the same evidence the write path acts on, and
+                        # until D-116 the one case the read path skipped in
+                        # silence -- leaving the entry stale and *reporting
+                        # success*, so nothing ever came back to it.
+                        await client.clear_cache()
+                        raise StaleTable(
+                            f"entry {entry.entry}: characteristic {entry.uuid} is "
+                            "declared but not in the cached GATT table"
+                        )
+                    if "read" not in characteristic.properties:
+                        # A write-only entry, which is legal: a lamp that takes
+                        # commands and reports nothing (§4.3). Logged because
+                        # from the outside it looks exactly like a value Home
+                        # Assistant refuses to refresh.
+                        _LOGGER.debug(
+                            "%s: entry %d: write-only, nothing to read",
+                            self.address,
+                            entry.entry,
+                        )
                         continue
                     raw = bytes(await client.read_gatt_char(characteristic))
-                    value = self._open_read(entry, raw)
+                    try:
+                        value = self._open_read(entry, raw)
+                    except StaleEntry as wrong:
+                        await client.clear_cache()
+                        raise StaleTable(str(wrong)) from wrong
                     if value is None:
                         # Refused, unauthenticated or undecodable. `_open_read`
                         # has said why; what matters here is that this entry's
                         # value is not the one the revision promised.
                         failed = True
                         continue
+                    _LOGGER.debug(
+                        "%s: entry %d: read object 0x%02X, %d value bytes%s",
+                        self.address,
+                        entry.entry,
+                        entry.object_id,
+                        len(value),
+                        "" if self._values.get(entry.entry) == value else ", new",
+                    )
                     if self._values.get(entry.entry) != value:
                         self._values[entry.entry] = value
                         changed = True
@@ -991,7 +1088,12 @@ class BTHomeWritableCoordinator:
         return not failed
 
     def _open_read(self, entry: WritableEntry, raw: bytes) -> bytes | None:
-        """A read's value, or None -- with the reason logged -- if unusable."""
+        """A read's value, or None -- with the reason logged -- if unusable.
+
+        Raises `StaleEntry` for the one unusable read that has a remedy: an
+        object ID belonging to another entry, which is the cached table being
+        wrong rather than the payload.
+        """
         plaintext: bytes | None = raw
         if self.bindkey is not None:
             try:
@@ -1008,6 +1110,8 @@ class BTHomeWritableCoordinator:
                 return None
         try:
             return decode_object(entry, plaintext)
+        except StaleEntry:
+            raise
         except ProtocolError as error:
             _LOGGER.warning("%s: %s", self.address, error)
             return None

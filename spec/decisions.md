@@ -7273,3 +7273,93 @@ was there all along; enabling the proxy is what revealed it.
 
 Unrelated but seen: `E.getErrorFlags()` on that Puck returns `LOW_MEMORY`, with
 1640 blocks free after a fresh `load()`.
+
+## D-118 -- the read path, repaired, and what @enaon's edited reply changed
+
+**2026-10-21, branch `fix/d116-stale-gatt-cache`.** D-116 items 1 and 2, with
+one refinement the report itself forced, and the diagnostics that would have
+made the report unnecessary.
+
+### What changed
+
+`protocol.py` gains `StaleEntry(ProtocolError)`, raised by `decode_object` for
+one case only: an object id belonging to another entry. It is told apart from a
+wrong length or trailing bytes because it alone has a remedy. The payload is not
+the device's fault, and reading the same handle again would fail the same way.
+
+`coordinator.py` gains `StaleTable` and splits `async_read_all` in two. A pass
+is `_read_pass`, and it raises `StaleTable`, after dropping the cache, on either
+piece of evidence that the table is wrong: a declared entry whose characteristic
+is **absent**, or a read that answers **another entry's object**. `async_read_all`
+then runs a second pass on the rediscovered table, and a second failure is
+reported as a failure rather than retried for ever. The pattern is the one
+`async_sync_write_counter` has used since D-080, for the same reason: the first
+look is defeated by our own cache, so looking once is looking at the wrong thing.
+
+### The refinement: a write-only entry is not a stale table
+
+D-116 item 1 put "offers without a `read` property" alongside the missing
+characteristic. It does not belong there. @enaon's lamp is exactly that: a
+`light` entry with a `set` and no `get`, legal under section 4.3, whose
+characteristic is present and not readable. Treating it as a fault would put
+every write-only device into a permanent retry loop, one connection per
+advertisement. It is now skipped as before, with a debug line, because from the
+outside it looks exactly like a value Home Assistant refuses to refresh.
+
+What stays unhandled, and is worth knowing: an entry that **gains** a getter
+without the declared layout changing keeps its write-only cached characteristic
+and is never read. Nothing in the declaration says which entries are readable,
+so the receiver cannot see it. Only a layout change or a restart clears it.
+
+### Every path that declines to connect now says so
+
+The cause of the second half of this incident was not the wrong value, it was
+the silence. A device that stops being refreshed looks the same from the outside
+whatever the reason, so each of these is now a debug line: nothing declared
+writable yet, no connectable source, a read already running, and a read that did
+not complete, with how long nothing will be tried. Each read logs its entry, the
+object id and whether the value moved.
+
+### Tests
+
+`ha/tests/test_stale_gatt_table.py`, five cases, four of which fail on the
+previous code: the reported fault healed by rediscovery; a wrong object never
+credited to the entry when rediscovery does not help; a missing characteristic
+found on the second pass; a missing characteristic that is not a successful
+read, which is what used to return `True`; and the write-only entry that must
+not be caught by any of it. Suites: 186 pytest, 294 tools, 274 node, ruff clean.
+
+### What @enaon's reply changed, and it was edited after posting
+
+His answer to D-116 arrived, then grew a clarification block in the minutes
+after. The corrected text separates **three** faults where the thread had been
+treating one:
+
+1. **Timing.** `changed()` called from inside the button handler: Home Assistant
+   connects and the state does not update. `setTimeout(() => bw.changed(), 250)`
+   removes it, and it has not returned since. This is D-116 seen from the user's
+   side: a read that is dropped updates nothing.
+2. **Stuck.** `changed()` and Home Assistant does not connect at all. Survived
+   about ten restarts of both Home Assistant and the host, and ended only when
+   he reconfigured the integration and changed the bindkey. Writes kept working.
+   **This one is not D-116 and is not explained.** Its shape is a counter or a
+   revision the two sides no longer agree on, which a new bindkey resets; the
+   advertising replay check is already loud, so the silent paths above are where
+   to look, and they now speak.
+3. The BlueZ adapter wedged, holding a connection it did not have. It followed
+   fault 2 and is probably derivative.
+
+He also has no proxy running, so D-117 is not involved. Two of his figures moved
+in the edit: ten restarts rather than twenty, and the 43 occurrences were his
+own testing rather than a device misbehaving on its own.
+
+### How this is delivered  [DECISION]
+
+The owner's rule, from today: **a branch per topic, `main` only once validated,
+and no pull request until there is evidence the change is solid.** The branch is
+also what an external tester is pointed at, so @enaon retests this code rather
+than `main`. Before he does, a clean slate is part of the test: the published
+module and `AESCCM` from the same source, the integration up to date, the device
+removed and added again so the stored counter restarts, Home Assistant
+restarted, the proxy left off, and `E.getErrorFlags()` plus
+`process.memory().free` read once on the board.

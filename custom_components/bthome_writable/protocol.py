@@ -57,6 +57,17 @@ class ProtocolError(Exception):
     """The payload does not follow spec/PROTOCOL.md."""
 
 
+class StaleEntry(ProtocolError):
+    """A read answered with another entry's object (D-116).
+
+    Told apart from every other malformed read because it has a cause and a
+    remedy of its own: the receiver's cached GATT table no longer matches the
+    device's, so the handle that was read belongs to something else. The payload
+    is not the device's fault and reading the same handle again will fail the
+    same way -- what has to happen is a rediscovery.
+    """
+
+
 def entity_unique_id(address: str, entry: int, object_id: int) -> str:
     """The identity of the entity backing one declared entry.
 
@@ -385,14 +396,14 @@ def encode_object(entry: WritableEntry, value: bytes) -> bytes:
 def decode_object(entry: WritableEntry, payload: bytes) -> bytes:
     """The value out of a read (§4.3), checked the way a device checks a write.
 
-    Raises ProtocolError for a wrong object ID, a wrong length, or trailing
-    bytes: a read from a characteristic that no longer means what the receiver
-    thinks must not be shown as state.
+    Raises `StaleEntry` for a wrong object ID, and `ProtocolError` for a wrong
+    length or trailing bytes: a read from a characteristic that no longer means
+    what the receiver thinks must not be shown as state.
     """
     if not payload:
         raise ProtocolError("empty read")
     if payload[0] != entry.object_id:
-        raise ProtocolError(
+        raise StaleEntry(
             f"entry {entry.entry}: read object 0x{payload[0]:02X}, "
             f"expected 0x{entry.object_id:02X}"
         )
