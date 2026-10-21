@@ -7121,3 +7121,74 @@ so a comment that drifts from its code drifts in public.
 
 274 node tests, 294 pytest, ruff and eslint clean. No behaviour changed after
 `207784e`, so the hardware measurements of §12 still stand.
+
+## D-116 — @enaon's wrong-object reads, reproduced: a stale GATT table  [INCIDENT]
+
+**Reproduced on this bench, 2026-10-21**, after seven conditions had failed to.
+What was missing was not load and not encryption: it was a device whose **GATT
+table changes while its declared object-id list does not**.
+
+### The recipe
+
+`espruino/bench/many-writables.js` with his entry list, sealed, then installed
+again with `counterReport` turned off. The declaration is `[0x1E, 0x1E, 0x09]`
+either way, so the entry list Home Assistant compares against has not moved;
+the GATT table has, because the counter characteristic is gone. Home Assistant
+kept its cached table, and the reads that followed landed on handles that no
+longer mean what the cache says:
+
+```
+CD:F5:77:3A:B2:16: entry 2: read object 0x09, expected 0x1E
+```
+
+His line, in our own words: entry 2 is a `light` and `0x09` is entry 3's
+`count`. Three occurrences in one run of ten presses, two more in the next, and
+it does not heal: that is his 43 occurrences in 29 minutes.
+
+**It authenticates.** A read's nonce binds the MAC, `0xFCD2`, the direction byte
+and the counter, never the entry (PROTOCOL.md section 5). So another
+characteristic's sealed value opens perfectly, and the object-id check in
+`protocol.py` `decode_object` is the only thing between a stale handle and a
+wrong value shown as state.
+
+### The asymmetry, which is the defect
+
+The write path already handles this, and says so in the log:
+
+```
+characteristic 2faa0001-...: not in the GATT table; the cached table has been
+dropped, so the next write will rediscover it
+```
+
+`async_read_all` does not. A characteristic the cached table does not offer, or
+offers without a `read` property, is skipped with `continue`, and the method
+returns `not failed`, which is `True`. Nothing read, success reported, the
+settings revision marked read, the log silent. Three runs earlier in the day
+showed that face of it: 21 connections, 0 reads, 0 log lines, the entities at
+`unknown` for ever, while writes kept working perfectly.
+
+The cached table is dropped only when the **declared layout** changes
+(`coordinator.py`, around line 230). Forcing that with `--resetup 2` made reads
+resume on the next connection, which is how the cause was confirmed.
+
+### What clears it
+
+**A Home Assistant restart is enough**: 13 connections, 7 state writes, three
+live entities, 0 wrong-object reads immediately after one. The device does not
+have to be removed and added again. A failed *write* also clears it, which is
+why a device in this state still takes commands -- and why the fault can sit
+there unnoticed: the thing the user exercises is the thing that heals.
+
+### What to change  [DECISION]
+
+1. **The read path must not skip in silence.** A declared, readable entry whose
+   characteristic is missing from the cached table is a reason to drop that
+   table and retry, exactly as the write path does, and a reason to log.
+2. **A wrong object is evidence of a stale table**, not only of a bad device:
+   `decode_object` refusing an object id should drop the cache too.
+3. Both are in `custom_components/bthome_writable`. The Espruino module did
+   nothing wrong in any of the ten conditions run today.
+4. Separately, and the owner's to decide with Gordon: **the read nonce does not
+   bind the entry**, so a mixed-up read cannot be caught by the crypto. Binding
+   the characteristic index into the nonce would make this class of fault
+   impossible rather than merely detectable.
