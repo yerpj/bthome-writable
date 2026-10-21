@@ -26,6 +26,7 @@ export default [
         clearInterval: "readonly",
         global: "readonly",
         digitalWrite: "readonly",
+        analogWrite: "readonly",
         LED1: "readonly",
         LED2: "readonly",
         LED3: "readonly",

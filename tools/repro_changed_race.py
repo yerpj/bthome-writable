@@ -114,7 +114,7 @@ async def ours(session: aiohttp.ClientSession, hint: str) -> dict[str, str]:
 # --- the board ---------------------------------------------------------------
 
 
-def sketch_source(sealed: bool, entries: int) -> str:
+def sketch_source(sealed: bool, entries: int, report: bool = True) -> str:
     """The sketch, with its two constants set for this condition.
 
     Substituted rather than parameterised over the console: a condition that is
@@ -126,22 +126,33 @@ def sketch_source(sealed: bool, entries: int) -> str:
         "var SEALED = true;", f"var SEALED = {str(sealed).lower()};"
     )
     source = source.replace("var ENTRIES = 3;", f"var ENTRIES = {entries};")
+    source = source.replace(
+        "var REPORT = true;", f"var REPORT = {str(report).lower()};"
+    )
     if f"var SEALED = {str(sealed).lower()};" not in source:
         raise SystemExit(f"the SEALED line is not where it was in {SKETCH}")
     if f"var ENTRIES = {entries};" not in source:
         raise SystemExit(f"the ENTRIES line is not where it was in {SKETCH}")
+    if f"var REPORT = {str(report).lower()};" not in source:
+        raise SystemExit(f"the REPORT line is not where it was in {SKETCH}")
     return source
 
 
-async def install(sealed: bool, entries: int) -> str:
+async def install(sealed: bool, entries: int, report: bool) -> str:
     from tools.espruino_upload import resolve_modules, upload_serial
 
-    source = resolve_modules(sketch_source(sealed, entries))
+    source = resolve_modules(sketch_source(sealed, entries, report))
     return await upload_serial(PORT, source, save=False, settle=6.0, reset=True)
 
 
 async def drive(
-    presses: int, busy: int, defer: int, gap: float, fade: bool, resetup: int | None
+    presses: int,
+    busy: int,
+    defer: int,
+    gap: float,
+    fade: bool,
+    resetup: int | None,
+    sweep: bool,
 ) -> str:
     """Run the presses and come back with what the board printed."""
     from tools.espruino_upload import SerialBoard
@@ -154,6 +165,11 @@ async def drive(
             f"bench.fade({str(fade).lower()});\n"
         )
         await asyncio.sleep(0.5)
+        if sweep:
+            # The load has to be running before the first press, and through
+            # every connection, not only between them.
+            await board.send("bench.sweep(true);\n")
+            await asyncio.sleep(1.0)
         if resetup is not None:
             await board.send(f"bench.resetup({resetup});\n")
             await asyncio.sleep(2.0)
@@ -273,13 +289,15 @@ async def run(args: argparse.Namespace) -> int:
         f"{'sealed' if sealed else 'plaintext'}, {args.entries} entries, "
         f"busy {args.busy} ms, defer {args.defer} ms, "
         f"{'spin' if args.no_fade else 'fade'}, {args.gap:g} s apart, "
-        f"{radio}" + (f", re-setup to {args.resetup}" if args.resetup else "")
+        f"{radio}, {'no PWM' if args.no_sweep else 'PWM sweeping'}"
+        f"{', no counter report' if args.no_report else ''}"
+        + (f", re-setup to {args.resetup}" if args.resetup else "")
     )
     outcome = Outcome(condition=condition)
 
     if not args.no_install:
         print(f"installing {SKETCH} on {PORT} ({'sealed' if sealed else 'plaintext'})")
-        console = await install(sealed, args.entries)
+        console = await install(sealed, args.entries, not args.no_report)
         for line in console.splitlines():
             if line.startswith(("advertising as", "writable entries", "service data")):
                 print(f"  {line}")
@@ -322,6 +340,7 @@ async def run(args: argparse.Namespace) -> int:
                     args.gap,
                     not args.no_fade,
                     args.resetup,
+                    not args.no_sweep,
                 )
                 read_console(console, outcome)
                 print(f"  the board ran for {time.monotonic() - started:.0f} s")
@@ -389,6 +408,21 @@ def main() -> int:
         "what @enaon's lamp did (his workaround was 250)",
     )
     parser.add_argument("--presses", type=int, default=20)
+    parser.add_argument(
+        "--no-report",
+        action="store_true",
+        help="turn the counter report off, so the receiver cannot ask for it. "
+        "Its answer is sealed under the same direction byte as an entry read, "
+        "so it authenticates as one and its plaintext starts with a byte of the "
+        "receiver's random challenge -- which is what an arbitrary object id "
+        "looks like. @enaon has it on",
+    )
+    parser.add_argument(
+        "--no-sweep",
+        action="store_true",
+        help="leave the two PWM channels alone instead of re-issuing them every "
+        "20 ms for the whole run, which is the load @enaon's lamp applies",
+    )
     parser.add_argument(
         "--radio",
         choices=["local", "proxy"],

@@ -75,6 +75,7 @@ try {
  * describes. Edit them by hand and upload if you are driving it yourself. */
 var SEALED = true;
 var ENTRIES = 3;
+var REPORT = true;
 
 /* The lamp, as numbers. `bri` is 0..1 like his `getBri()`. */
 var lamp = { isOn: false, bri: 0, auto: false };
@@ -93,6 +94,7 @@ NRF.on("connect", function () {
 });
 var timer;
 var fading;
+var sweeping;
 
 /* Block the single thread for `ms`, the way a fade written as a loop does. */
 function burn(ms) {
@@ -102,20 +104,75 @@ function burn(ms) {
   return spins;
 }
 
-/* A fade that keeps moving the brightness while everything else happens.
+/* The load, on two real pins, which is what he said was missing.
  *
- * Synchronous on purpose, in steps, so that `getBri()` really does answer
- * differently at two points inside one burst of reads -- which is his lamp and
- * is not a spin loop. */
-function fadeTo(target, ms) {
-  var steps = 10;
-  var step = ms / steps;
-  var from = lamp.bri;
-  for (var i = 1; i <= steps; i++) {
-    lamp.bri = from + ((target - from) * i) / steps;
-    burn(step);
+ * His `apply()` drives a warm and a cold LED channel with
+ * `analogWrite(pin, v, {freq: 4000})`, and his fade re-issues both every 20 ms
+ * (`dimmer.interval`). That is hardware PWM being reconfigured fifty times a
+ * second while the SoftDevice advertises and serves a connection, and it is
+ * nothing like a spin loop: the first version of this repro burned the
+ * processor and touched no peripheral at all, which is exactly what he
+ * objected to.
+ *
+ * D2 and D29 on this board, which carry the SSD1306's I2C lines. Nothing is
+ * driving that display while this runs, and 3V3 logic on its own pins harms
+ * neither it nor the board; what matters here is that two real PWM channels are
+ * being reconfigured, not what is on the other end. */
+var PINS = { warm: D2, cold: D29 };
+
+function apply() {
+  var warm = 0;
+  var cold = 0;
+  if (lamp.isOn) {
+    warm = lamp.bri * 0.6;
+    cold = lamp.bri * 0.4;
   }
-  lamp.bri = target;
+  if (warm === 0 && cold === 0) {
+    // His own apply() does this: back to plain outputs, and off.
+    PINS.warm.mode("output");
+    PINS.cold.mode("output");
+    digitalWrite(PINS.warm, 0);
+    digitalWrite(PINS.cold, 0);
+    lamp.isOn = false;
+    return;
+  }
+  analogWrite(PINS.warm, warm, { freq: 4000 });
+  analogWrite(PINS.cold, cold, { freq: 4000 });
+}
+
+var FADE_STEP_MS = 20; // his dimmer.interval
+
+/* His `fadeTo`: asynchronous, 0.05 a step, every 20 ms.
+ *
+ * Asynchronous is the point and the second thing the first version got wrong.
+ * A synchronous fade blocks the thread and then calls `changed()`; his lets the
+ * dimmer's interval go on firing *while* `changed()` runs, so a 20 ms timer
+ * keeps re-reading the brightness, re-issuing two PWM writes and mutating what
+ * the third entry reports, right through the 371 ms of sealing. */
+function fadeTo(target) {
+  if (fading !== undefined) {
+    clearInterval(fading);
+    fading = undefined;
+  }
+  if (target > 0) lamp.isOn = true;
+  var from = lamp.bri;
+  var step = target > from ? 0.05 : -0.05;
+  var steps = Math.abs(Math.ceil((target - from) / step));
+  var n = 0;
+  if (steps < 1) {
+    lamp.bri = target;
+    apply();
+    return;
+  }
+  fading = setInterval(function () {
+    n++;
+    lamp.bri = Math.min(1, Math.max(0, n >= steps ? target : from + step * n));
+    apply();
+    if (n >= steps) {
+      clearInterval(fading);
+      fading = undefined;
+    }
+  }, FADE_STEP_MS);
 }
 
 function announce() {
@@ -132,14 +189,17 @@ function announce() {
 }
 
 /* One simulated button press, in his order: the handler changes what the
- * device holds, the lamp does its own work, and `changed()` goes out from
- * inside that same callback. */
+ * device holds, the lamp starts its own work, and `changed()` goes out from
+ * inside that same callback -- with the fade still running. */
 function press() {
   stats.presses++;
-  lamp.isOn = !lamp.isOn;
+  var wasOn = lamp.isOn;
   if (stats.presses % 3 === 0) lamp.auto = !lamp.auto;
-  if (cfg.fade) fadeTo(lamp.isOn ? 0.2 + (stats.presses % 4) / 5 : 0, cfg.busy);
-  else burn(cfg.busy);
+  if (cfg.fade) fadeTo(wasOn ? 0 : 0.2 + (stats.presses % 4) / 5);
+  else {
+    lamp.isOn = !wasOn;
+    burn(cfg.busy);
+  }
   console.log(
     "PRESS[" + stats.presses + "] busy=" + cfg.busy,
     "defer=" + cfg.defer,
@@ -149,7 +209,42 @@ function press() {
   else announce();
 }
 
+/* A dimmer that never stops, which is the load a lamp in use actually applies.
+ *
+ * A fade triggered by a press is over in 160 ms, and `bw.changed()` is 371 ms
+ * of synchronous work, so on a single thread the fade simply waits its turn:
+ * nothing of the application runs *during* `changed()`, and the first version
+ * of this file could not have reproduced an interleaving even in principle.
+ * What can genuinely overlap is the hardware -- the PWM peripheral and the
+ * SoftDevice serving a GATT read out of a characteristic buffer while
+ * JavaScript is blocked -- so the load has to be there all the time, not only
+ * between presses. This keeps two PWM channels being reconfigured fifty times
+ * a second for the whole run, including inside every connection. */
+function sweep(on) {
+  if (sweeping !== undefined) {
+    clearInterval(sweeping);
+    sweeping = undefined;
+  }
+  if (on === false) {
+    console.log("SWEEP off");
+    return;
+  }
+  var step = 0.05;
+  lamp.isOn = true;
+  sweeping = setInterval(function () {
+    var next = lamp.bri + step;
+    if (next >= 1 || next <= 0) step = -step;
+    lamp.bri = Math.min(1, Math.max(0.05, next));
+    apply();
+  }, FADE_STEP_MS);
+  console.log("SWEEP on, every", FADE_STEP_MS, "ms");
+}
+
 function stop() {
+  if (sweeping !== undefined) {
+    clearInterval(sweeping);
+    sweeping = undefined;
+  }
   if (timer !== undefined) {
     clearInterval(timer);
     timer = undefined;
@@ -188,7 +283,8 @@ function report() {
     "defer=" + cfg.defer,
     "fade=" + cfg.fade,
     "sealed=" + SEALED,
-    "entries=" + ENTRIES
+    "entries=" + ENTRIES,
+    "report=" + REPORT
   );
 }
 
@@ -209,6 +305,7 @@ var bench = {
     cfg.fade = on !== false;
     console.log("FADE", cfg.fade);
   },
+  sweep: sweep,
 };
 global.bench = bench;
 
@@ -222,8 +319,9 @@ var candidates = [
       return lamp.isOn;
     },
     set: function (v) {
-      lamp.isOn = v;
-      if (cfg.fade) fadeTo(v ? 0.6 : 0, cfg.busy);
+      // His on()/off(), which both go through the fade.
+      if (cfg.fade) fadeTo(v ? 0.6 : 0);
+      else lamp.isOn = v;
     },
   },
   {
@@ -243,10 +341,12 @@ var candidates = [
     // Assistant reported as an object id.
     type: "count",
     get: function () {
-      return lamp.bri * 255;
+      // His getBri(): zero when the lamp is off, the level otherwise.
+      return (lamp.isOn ? lamp.bri : 0) * 255;
     },
     set: function (v) {
-      lamp.bri = v / 255;
+      if (cfg.fade) fadeTo(v / 255);
+      else lamp.bri = v / 255;
     },
   },
 ];
@@ -278,7 +378,7 @@ var options = {
 if (SEALED) {
   // From test-vectors.json, and therefore public. His is his own.
   options.bindkey = "231d39c1d7cc1ab1aee224cd096db932";
-  options.counterReport = true;
+  options.counterReport = REPORT;
 }
 
 bw.setup(options);
@@ -305,6 +405,7 @@ function resetup(n) {
 }
 bench.resetup = resetup;
 
+apply();
 console.log("advertising as", NRF.getAddress());
 console.log("writable entries:", bw.plan().entryIds);
 console.log("service data bytes:", bw.plan().serviceDataLength, "of", bw.plan().budget);
