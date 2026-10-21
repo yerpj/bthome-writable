@@ -4,6 +4,16 @@ The Espruino Web IDE does this over Web Bluetooth; this does the same thing from
 a terminal, so the hardware-test loop does not need a human with a browser for
 every iteration.
 
+    python -m tools.espruino_upload --port COM15 espruino/bench/many-writables.js
+    python -m tools.espruino_upload --port COM15 --eval "bench.loop(10, 3000);"
+
+`--port` is the same conversation over the board's USB console instead of over
+the air, and on this bench it is the only route to the nice!nano: this host
+cannot open a GATT connection to that board at all, though Home Assistant can
+(tools/latency_sweep_ha.py says so where it matters). `--eval` sends one
+statement to a board that is already running and prints what it says back,
+which is how a bench sketch is driven without reflashing it.
+
     python -m tools.espruino_upload --address C8:80:32:AD:F7:B9 \
         espruino/dist/single-light-standalone.min.js
 
@@ -103,8 +113,79 @@ class Board:
         await self.client.write_gatt_char(UART_RX, CTRL_C, response=False)
         await asyncio.sleep(0.3)
 
+    async def listen(self, seconds: float) -> None:
+        """Keep the link open for a while; notifications arrive on their own."""
+        await asyncio.sleep(seconds)
+
     def console(self) -> str:
         return self.output.decode("utf-8", errors="replace")
+
+
+class SerialBoard:
+    """A board on its USB console, with the same interface as `Board`.
+
+    The flow control is the same XON/XOFF and still needed: 115200 baud fills
+    Espruino's input buffer faster than it parses. What differs is that the
+    signal arrives at once rather than a connection event late, so the chunks
+    can be larger and no acknowledgement is involved.
+    """
+
+    def __init__(self, port: str, baud: int = 115200, chunk: int = 64) -> None:
+        import serial  # pyserial, imported here so the BLE path need not have it
+
+        self.link = serial.Serial(port, baud, timeout=0)
+        self.chunk = chunk
+        self.output = bytearray()
+        self._flowing = True
+
+    def _drain(self) -> None:
+        for byte in self.link.read(4096):
+            if byte == XOFF:
+                self._flowing = False
+            elif byte == XON:
+                self._flowing = True
+            else:
+                self.output.append(byte)
+
+    async def start(self) -> None:
+        await asyncio.sleep(0.2)
+        self._drain()
+        self.output.clear()
+
+    async def send(self, text: str) -> None:
+        payload = text.encode("utf-8", errors="replace")
+        for offset in range(0, len(payload), self.chunk):
+            waited = 0.0
+            while not self._flowing:
+                await asyncio.sleep(0.01)
+                self._drain()
+                waited += 0.01
+                if waited > 30:
+                    raise TimeoutError("the board stopped asking for more")
+            self.link.write(payload[offset : offset + self.chunk])
+            self.link.flush()
+            await asyncio.sleep(0.01)
+            self._drain()
+
+    async def interrupt(self) -> None:
+        self.link.write(CTRL_C)
+        self.link.flush()
+        await asyncio.sleep(0.3)
+        self._drain()
+
+    async def listen(self, seconds: float) -> None:
+        """Keep reading the console for a while without sending anything."""
+        deadline = time.monotonic() + seconds
+        while time.monotonic() < deadline:
+            await asyncio.sleep(0.05)
+            self._drain()
+
+    def console(self) -> str:
+        self._drain()
+        return self.output.decode("utf-8", errors="replace")
+
+    def close(self) -> None:
+        self.link.close()
 
 
 CACHE_STALE_DAYS = 30
@@ -117,7 +198,20 @@ months after it gained one (D-089). Saying the age out loud costs nothing."""
 
 
 def fetch_module(name: str) -> str:
-    """The module source, from espruino.com, cached on disk."""
+    """The module source: this repository's copy if it owns one, else the site.
+
+    `BTHomeWritable` and `AESCCM` are *published* on espruino.com now, so
+    resolving by name alone would quietly inject the merged copy and test code
+    one pull request behind the working tree. A wrong answer, and the worse kind
+    for being invisible. The table lives in `espruino_deploy`, which writes the
+    same two files into Storage, so there is one of it (D-084).
+    """
+    from tools.espruino_deploy import LOCAL_MODULES
+
+    if name in LOCAL_MODULES:
+        print(f"  resolved require({name!r}) from this working tree")
+        return LOCAL_MODULES[name].read_text(encoding="utf-8")
+
     MODULE_CACHE.mkdir(exist_ok=True)
     cached = MODULE_CACHE / f"{name}.js"
     if cached.exists():
@@ -185,6 +279,46 @@ async def find_address(name_hint: str | None) -> str:
     return candidates[0][0]
 
 
+async def send_sketch(
+    board, source: str, save: bool, settle: float, reset: bool
+) -> str:
+    """Interrupt a board, optionally reset it, and send a sketch.
+
+    Written against `Board`'s interface rather than against Bluetooth, because
+    the nice!nano on this bench is only reachable over its USB console and the
+    conversation is otherwise identical.
+    """
+    await board.interrupt()
+
+    if reset:
+        # Upload into a clean interpreter. Re-uploading over a running
+        # program that has already registered a GATT service leaves a BLE
+        # restart queued, and code sent into that window gets interrupted
+        # part-way -- which showed up as a module cache that silently did
+        # not stick, and a setup() that stopped just before it armed its
+        # refresh timer. Both looked like bugs in the module.
+        await board.send("reset();\n")
+        await asyncio.sleep(2.5)
+        await board.interrupt()
+
+    board.output.clear()
+    await board.send(PREAMBLE)
+    await asyncio.sleep(0.3)
+
+    print(f"sending {len(source)} bytes ...")
+    await board.send(source)
+    if not source.endswith("\n"):
+        await board.send("\n")
+
+    if save:
+        await asyncio.sleep(0.5)
+        print("saving to flash ...")
+        await board.send("save();\n")
+
+    await board.listen(settle)
+    return board.console()
+
+
 async def upload(
     address: str,
     source: str,
@@ -200,42 +334,51 @@ async def upload(
         )
         await board.start()
         print(f"connected, MTU {client.mtu_size}, chunk {board.chunk}")
+        return await send_sketch(board, source, save, settle, reset)
 
-        await board.interrupt()
 
-        if reset:
-            # Upload into a clean interpreter. Re-uploading over a running
-            # program that has already registered a GATT service leaves a BLE
-            # restart queued, and code sent into that window gets interrupted
-            # part-way -- which showed up as a module cache that silently did
-            # not stick, and a setup() that stopped just before it armed its
-            # refresh timer. Both looked like bugs in the module.
-            await board.send("reset();\n")
-            await asyncio.sleep(2.5)
-            await board.interrupt()
+async def upload_serial(
+    port: str, source: str, save: bool, settle: float, reset: bool = True
+) -> str:
+    print(f"opening {port} ...")
+    board = SerialBoard(port)
+    try:
+        await board.start()
+        return await send_sketch(board, source, save, settle, reset)
+    finally:
+        board.close()
 
-        board.output.clear()
-        await board.send(PREAMBLE)
-        await asyncio.sleep(0.3)
 
-        print(f"sending {len(source)} bytes ...")
-        await board.send(source)
-        if not source.endswith("\n"):
-            await board.send("\n")
+async def evaluate(port: str, statement: str, settle: float) -> str:
+    """Run one statement on a board that is already running, and listen.
 
-        if save:
-            await asyncio.sleep(0.5)
-            print("saving to flash ...")
-            await board.send("save();\n")
-
-        await asyncio.sleep(settle)
+    No interrupt and no reset: the point is to drive a sketch that is up, which
+    is how a bench repro changes condition without being reflashed.
+    """
+    print(f"opening {port} ...")
+    board = SerialBoard(port)
+    try:
+        await board.start()
+        await board.send(statement if statement.endswith("\n") else statement + "\n")
+        await board.listen(settle)
         return board.console()
+    finally:
+        board.close()
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("file", type=Path, help="JavaScript file to upload")
+    parser.add_argument("file", type=Path, nargs="?", help="JavaScript file to upload")
     parser.add_argument("--address", help="BLE address; scans if omitted")
+    parser.add_argument(
+        "--port",
+        help="serial port of the board's USB console, e.g. COM15, instead of BLE",
+    )
+    parser.add_argument(
+        "--eval",
+        dest="statement",
+        help="run one statement on a board that is already running (needs --port)",
+    )
     parser.add_argument("--name", help="substring to pick a board when scanning")
     parser.add_argument(
         "--save",
@@ -260,21 +403,35 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    source = args.file.read_text(encoding="utf-8")
-    print(f"{args.file}: {len(source)} bytes")
-    source = resolve_modules(source)
+    if args.statement:
+        if not args.port:
+            parser.error("--eval needs --port")
+        console = asyncio.run(evaluate(args.port, args.statement, args.settle))
+    else:
+        if args.file is None:
+            parser.error("give a file to upload, or --eval a statement")
+        source = args.file.read_text(encoding="utf-8")
+        print(f"{args.file}: {len(source)} bytes")
+        source = resolve_modules(source)
 
-    address = args.address or asyncio.run(find_address(args.name))
-    console = asyncio.run(
-        upload(
-            address,
-            source,
-            args.save,
-            args.settle,
-            not args.no_response,
-            not args.no_reset,
-        )
-    )
+        if args.port:
+            console = asyncio.run(
+                upload_serial(
+                    args.port, source, args.save, args.settle, not args.no_reset
+                )
+            )
+        else:
+            address = args.address or asyncio.run(find_address(args.name))
+            console = asyncio.run(
+                upload(
+                    address,
+                    source,
+                    args.save,
+                    args.settle,
+                    not args.no_response,
+                    not args.no_reset,
+                )
+            )
 
     print("\n=== board console ===")
     print(console.strip() or "(nothing)")

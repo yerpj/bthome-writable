@@ -3,7 +3,7 @@
 // no async. Tests run under Node, config files are ESM.
 export default [
   {
-    files: ["*.js", "examples/**/*.js"],
+    files: ["*.js", "examples/**/*.js", "bench/**/*.js"],
     languageOptions: {
       ecmaVersion: 2015,
       sourceType: "script",
@@ -20,6 +20,11 @@ export default [
         getTime: "readonly",
         setTimeout: "readonly",
         clearTimeout: "readonly",
+        // bench/ only: a repro sketch drives itself from a timer and hangs its
+        // console handles off `global`, which no example needs.
+        setInterval: "readonly",
+        clearInterval: "readonly",
+        global: "readonly",
         digitalWrite: "readonly",
         LED1: "readonly",
         LED2: "readonly",
