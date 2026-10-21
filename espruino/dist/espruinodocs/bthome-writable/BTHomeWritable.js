@@ -551,7 +551,7 @@ function setup(opts) {
   const iv = checkInterval("interval", opts.interval || 2000);
   const key = toKey(opts.bindkey);
   const marks = key ? loadMarks() : { w: 0, a: 0 };
-  /* Disarm the previous run's timers before `st` is replaced, because that is the only moment their handles still exist. */
+  /* The device's new state, built whole before the old one is let go. */
   const next = {
     entries : entries,
     key : key,

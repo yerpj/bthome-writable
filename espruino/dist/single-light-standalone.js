@@ -890,14 +890,7 @@ function setup(opts) {
   const iv = checkInterval("interval", opts.interval || 2000);
   const key = toKey(opts.bindkey);
   const marks = key ? loadMarks() : { w: 0, a: 0 };
-  /* Disarm the previous run's timers before `st` is replaced, because that is
-     the only moment their handles still exist. A device being developed on is
-     a device whose setup() runs again and again (D-088), and each run used to
-     leave the one before it holding a live timer that went on calling into the
-     new state -- a second read timer on the old entry's schedule, and a return
-     to idle for a connection that belonged to a device that no longer exists.
-     The clearInterval() this replaces read `st.timer` after the assignment
-     below, where it is always undefined, so it had never cleared anything. */
+  /* The device's new state, built whole before the old one is let go. */
   const next = {
     entries : entries,
     key : key,
@@ -940,8 +933,16 @@ function setup(opts) {
      refuses a packet that does not fit, an entry without a length, an interval
      out of range; disarming before that left a device which had been working
      with no timers at all, still advertising, frozen until the next setup()
-     that happened to succeed. The handles belong to the state being replaced,
-     so they have to be taken here, where it still exists. */
+     that happened to succeed.
+
+     And here rather than later, because this is the only moment the old
+     handles still exist. A device being developed on is a device whose setup()
+     runs again and again (D-088), and each run used to leave the one before it
+     holding a live timer that went on calling into the new state -- a second
+     read timer on the old entry's schedule, and a return to idle for a
+     connection that belonged to a device that no longer exists. The
+     clearInterval() this replaces read `st.timer` after the assignment, where
+     it is always undefined, so it had never cleared anything. */
   if (st) {
     if (st.timer !== undefined) clearTimeout(st.timer);
     if (st.fastTimer !== undefined) clearTimeout(st.fastTimer);
