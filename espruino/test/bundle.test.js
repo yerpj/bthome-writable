@@ -1038,6 +1038,170 @@ test("bw.update() re-reads every sensor, not only the ones that are due", () => 
   assert.ok(last.includes(42), `expected the value it just read, got ${hex(last)}`);
 });
 
+/* --- the same defects, on a sealed device ---------------------------------- */
+
+/* The six above all run in clear, which proves the shared paths and nothing
+   about the one mode where a stopped device is hardest to notice: a sealed
+   device that froze goes on repeating a packet under a counter the receiver
+   has already accepted, so there is no plaintext for anyone downstream to find
+   stale. Five of the six are reachable with a key; the sixth is not, because
+   the stub cipher here cannot open a write (decrypt() returns null by design),
+   and the sealed write path is held to the shared vectors in ccm.test.js and
+   vectors.test.js instead.
+
+   The stub's encrypt() hands its plaintext back, which is what lets these
+   tests read a value out of sealed service data. */
+
+test("a sealed reading that throws does not stop the device reading for ever", () => {
+  const result = run(load("encrypted-light-standalone.js"));
+  const seen = [];
+  let broken = false;
+
+  result.context.bw.setup({
+    advertise: [
+      {
+        type: "illuminance",
+        get: () => {
+          if (broken) throw new Error("sensor not ready");
+          return 12;
+        },
+      },
+      { type: "light", set: () => {} },
+    ],
+    interval: 1000,
+    maxServiceData: 20,
+    showName: false,
+    bindkey: "231d39c1d7cc1ab1aee224cd096db932",
+    onError: (e) => seen.push(e.message),
+  });
+
+  const first = result.reads;
+  const spent = advCounterOf(result);
+  broken = true;
+  result.shiftClock(1100); // the entry falls due, so the wake really reads
+  first.fn();
+
+  assert.deepEqual(seen, ["sensor not ready"], "onError is told");
+  assert.notEqual(result.reads, first, "and another wake is armed");
+  about(result.reads.ms, 1100, "retried at the advertising interval");
+  assert.equal(advCounterOf(result), spent, "no counter spent on a packet never built");
+});
+
+test("a sealed setup() that cannot fit leaves the running device alone", () => {
+  /* Encryption is where this is likeliest: the counter and the MIC spend eight
+     of the bytes, so an entry list that fits in clear is refused sealed, and
+     S2.4 has that refused at setup rather than in the field. Which makes the
+     sealed device the one most likely to meet the defect: disarming the old
+     timers before the new plan was known to work left it advertising, frozen
+     and with no timer at all. */
+  const result = run(load("encrypted-light-standalone.js"));
+  const armed = result.reads;
+  const entries = result.context.bw.plan().entryIds;
+  const tooBigSealed = {
+    advertise: [
+      { type: "illuminance", get: () => 12 },
+      { type: "illuminance", get: () => 34 },
+      { type: "light", set: () => {} },
+    ],
+    interval: 1000,
+    maxServiceData: 20,
+    showName: false,
+  };
+
+  assert.throws(
+    () => result.context.bw.setup(Object.assign({ bindkey: "231d39c1d7cc1ab1aee224cd096db932" }, tooBigSealed)),
+    (error) => error.code === "capacity_exceeded"
+  );
+
+  assert.equal(result.reads, armed, "the old timer is still the armed one");
+  assert.deepEqual(result.context.bw.plan().entryIds, entries, "and the old plan stands");
+  // The same entries in clear, where those eight bytes are not spent, fit:
+  // the refusal above really is the encryption and not the entry list.
+  assert.doesNotThrow(() => result.context.bw.setup(tooBigSealed));
+});
+
+test("a sealed device's clock moving backwards does not stop the reads", () => {
+  /* The entry needs an interval of its own. The shipped example's is
+     `interval: 0` -- read at the advertising rate -- and renderServiceData
+     reads such an entry on every wake without asking whether it is due, which
+     stamps lastRead back into the present and hides the whole case. An entry
+     with an interval is the one that gets skipped, and so the one left with a
+     lastRead in the future. */
+  const result = run(load("encrypted-light-standalone.js"));
+  result.context.bw.setup({
+    advertise: [
+      { type: "illuminance", interval: 300000, get: () => 12 },
+      { type: "light", set: () => {} },
+    ],
+    interval: 1000,
+    maxServiceData: 20,
+    showName: false,
+    bindkey: "231d39c1d7cc1ab1aee224cd096db932",
+  });
+
+  result.reads.fn(); // an ordinary wake, which stamps lastRead
+  result.shiftClock(-900000); // a quarter of an hour backwards
+  result.reads.fn();
+
+  about(result.reads.ms, 300100, "one interval away, not one jump away");
+});
+
+test("a sealed device whose first packet is refused still reads", () => {
+  /* The fallback is sealed (see the next section), so the device can be found
+     and connected to. It also has to be a device that still works. */
+  const result = run(load("encrypted-light-standalone.js"));
+  result.refuse((payload) => payload.length > 14);
+
+  assert.throws(
+    () =>
+      result.context.bw.setup({
+        advertise: [
+          { type: "illuminance", get: () => 12 },
+          { type: "light", set: () => {} },
+        ],
+        interval: 1000,
+        maxServiceData: 20,
+        showName: false,
+        bindkey: "231d39c1d7cc1ab1aee224cd096db932",
+      }),
+    (error) => error.code === "advertising_rejected"
+  );
+
+  assert.ok(result.reads, "a read timer is armed anyway");
+  assert.equal(typeof result.handlers.connect, "function", "and a connection is still handled");
+  const published = result.advertised[result.advertised.length - 1];
+  assert.equal(published[0] & 1, 1, "and what went out instead is still sealed");
+});
+
+test("bw.update() on a sealed device re-reads and spends a new counter", () => {
+  /* A new packet id under a new counter says, as loudly as BTHome can, that
+     these values are new. Publishing values it had not re-read made that a
+     lie no receiver can detect. */
+  const result = run(load("encrypted-light-standalone.js"));
+  let lux = 90;
+
+  result.context.bw.setup({
+    advertise: [
+      { type: "illuminance", interval: 300000, get: () => lux },
+      { type: "light", set: () => {} },
+    ],
+    interval: 1000,
+    maxServiceData: 20,
+    showName: false,
+    bindkey: "231d39c1d7cc1ab1aee224cd096db932",
+  });
+
+  const spent = advCounterOf(result);
+  lux = 42;
+  result.context.bw.update();
+
+  const published = hex(result.advertised[result.advertised.length - 1]);
+  assert.ok(advCounterOf(result) > spent, "a counter it had not used before");
+  // illuminance is 0x05 and hundredths of a lux, little-endian: 4200 = 0x1068.
+  assert.ok(published.includes("05681000"), `expected 42 lux, got ${published}`);
+  assert.ok(!published.includes("05282300"), `still carrying 90 lux: ${published}`);
+});
+
 /* --- the safety net, and the stack we subscribe to (D-088) ----------------- */
 
 test("the fallback packet is sealed when the device has a key", () => {
