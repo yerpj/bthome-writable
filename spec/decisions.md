@@ -8210,3 +8210,38 @@ age (D-117's original case); and a path that connects and then lets a GATT
 operation time out is not penalised either, because `_finished_connecting` counts
 the connection only (this bench's 92 failures). Both belong in a `habluetooth`
 issue if the owner wants them raised.
+
+### Removed the same day: the integration takes the stack's choice
+
+`PREFER_A_SOURCE_THAT_HEARS_THE_DEVICE`, `HEARD_RECENTLY`, `NO_RSSI` and
+`DEAF_SOURCE` are gone from `const.py`; `_connectable_device()` is gone from the
+coordinator, and its four call sites ask
+`bluetooth.async_ble_device_from_address(self.hass, self.address,
+connectable=True)` directly, which is what every Bluetooth integration in Home
+Assistant does. Ninety-one lines of shipping code net, and one behavioural
+difference from the rest of the ecosystem, removed.
+
+Five unit tests went with it, replaced by one: a write completes while
+`async_scanner_devices_by_address` is patched to raise, which is the assertion
+that nothing here scores sources any more. 193 pass in `ha/`, 298 in the spec
+tooling, `ruff` clean. `tools/tests/test_stale_markers.py` allows three bare
+`[DECISION]` markers in `const.py` instead of four: the plaintext downgrade, the
+read back of D-117, and D-122's reading of an unchanged entry.
+
+Two records were corrected rather than deleted. `docs/measurements.md` §15 said
+the one failed write of the sealed run was "a defect in D-117's heuristic" and
+a candidate explanation for @enaon's fault 2; it was neither, since the stack
+would have chosen that proxy too and @enaon had no proxy in the path. The root
+`CHANGELOG.md` loses the `Added` line that announced the adapter choice -- it
+never reached a release -- and gains a `Changed` line that says the integration
+takes Home Assistant's choice, and why ours went.
+
+Deployed to the bench and measured, because this is the live write path:
+`const.py` and `coordinator.py` to the share, Home Assistant restarted (back in
+97 s), `tools.regression --device puck` run under the lock. **No regression**: 24
+commands, all delivered, none needing a retry, the write itself 36.1 ms against
+a 35.8 ms baseline, first command median 1.13 s against 3.22 s -- faster than
+the baseline, which is where the advertisement fell and not a gain to claim. The
+bench was left as found: the puck's LED written off and the illuminance back to
+74 lux on the air, the OLED automation on, the proxy entry disabled, the lock
+released.

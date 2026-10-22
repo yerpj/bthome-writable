@@ -116,42 +116,6 @@ READ_RETRY: Final = 10.0
 one central at a time, so a read can fail simply because a phone or the Web IDE
 holds the link; the next advertisement after this retries it."""
 
-PREFER_A_SOURCE_THAT_HEARS_THE_DEVICE: Final = True
-"""Whether to choose the connectable source ourselves rather than take the
-stack's (D-117)  [DECISION]
-
-On the bench, `async_ble_device_from_address(connectable=True)` handed back an
-ESP32 proxy that had not heard the device once in forty seconds, twelve metres
-and two walls away, while the local adapter heard it every second at -76 dBm.
-Every write through it was acknowledged and none arrived. Why the far scanner
-was chosen belongs to `habluetooth`; declining to use it does not.
-
-So each connectable source is asked when it last heard this address, and the
-loudest of those that heard it inside `HEARD_RECENTLY` wins. If none has, the
-stack's own choice stands: better a doubtful path than none at all, and the
-write will fail visibly rather than invisibly.
-
-Turning this off restores the stack's choice exactly."""
-
-HEARD_RECENTLY: Final = 30.0
-"""Seconds within which a source must have heard the device to be preferred.
-
-A device advertising on this protocol's default interval is heard about once a
-second, and a sleepy one at least on the event that just happened. Thirty
-seconds is therefore long enough that a missed packet or two changes nothing,
-and short enough that a scanner which has gone deaf to a device -- out of range,
-its slots full -- stops being chosen for it. `habluetooth` expires a remote
-scanner's devices after 195 s, which is a different question: whether the device
-exists, not whether this path still works."""
-
-NO_RSSI: Final = -127
-"""What an advertisement with no RSSI scores, which is `habluetooth`'s own
-`NO_RSSI_VALUE`: weaker than any real reading."""
-
-DEAF_SOURCE: Final = -128
-"""What a source that has not heard the device within `HEARD_RECENTLY` scores:
-behind every source still listening, and still ahead of having no path."""
-
 CONFIRM_WRITES_BY_READING_BACK: Final = True
 """Whether an acknowledged write must be checked against the device (D-117)
  [DECISION]

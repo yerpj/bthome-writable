@@ -1,5 +1,4 @@
-"""D-117: a write that reports success must have evidence of it, and the radio
-that carries it must be one that hears the device.
+"""D-117: a write that reports success must have evidence of it.
 
 Found on the owner's own Puck.js. Four commands, the switch flipping each time,
 not one log line, and the lamp never moved. Home Assistant had chosen an ESP32
@@ -9,16 +8,14 @@ proxy connected, the write was acknowledged, and nothing arrived: over a proxy
 the ATT response is produced on the far side of Wi-Fi by something that is not
 the device, and §4.2 rests on that response being the confirmation.
 
-So two things, both in this integration and neither on the wire: choose a source
-that hears the device, and check an acknowledged write against the device
-itself.
+So two things, both in this integration and neither on the wire: check an
+acknowledged write against the device itself, and choose a source that hears the
+device. The second one is gone again -- the stack picks the path itself and
+picks it better, D-127 -- and the test below is what is left of it.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-import time
-from typing import Any
 from unittest.mock import patch
 
 from homeassistant.core import HomeAssistant
@@ -26,9 +23,8 @@ from homeassistant.exceptions import HomeAssistantError
 import pytest
 
 from custom_components.bthome_writable import coordinator as coordinator_module
-from custom_components.bthome_writable.coordinator import BTHomeWritableCoordinator
 
-from .conftest import DEFAULT_ADDRESS, UUID_TEMPLATE, settle, setup_device
+from .conftest import UUID_TEMPLATE, settle, setup_device
 
 pytestmark = pytest.mark.usefixtures("custom_integration")
 
@@ -198,123 +194,35 @@ async def test_a_read_back_from_a_stale_table_fails_the_write(
     assert float(hass.states.get(TARGET).state) == 20, "and nothing was claimed"
 
 
-# --- the radio that carries it ---------------------------------------------
+# --- the radio that carries it: the stack's, not ours (D-127) --------------
 
 
-@dataclass
-class FakeScanner:
-    """The parts of a `habluetooth` scanner this choice looks at."""
-
-    source: str
-    scanning: bool = True
-    heard: dict[str, float] | None = None
-
-    @property
-    def discovered_device_timestamps(self) -> dict[str, float]:
-        """Empty for a local adapter, which keeps none (`HaScanner`)."""
-        return self.heard or {}
-
-
-@dataclass
-class FakeAdvertisement:
-    rssi: int
-
-
-@dataclass
-class FakeScannerDevice:
-    scanner: FakeScanner
-    advertisement: FakeAdvertisement
-    ble_device: Any
-
-
-def sources(hass: HomeAssistant, *devices: FakeScannerDevice):
-    """Patch the list of connectable sources for this address."""
-    return patch.object(
-        coordinator_module.bluetooth,
-        "async_scanner_devices_by_address",
-        return_value=list(devices),
-    )
-
-
-def test_a_source_that_has_not_heard_the_device_is_not_chosen(
-    hass: HomeAssistant,
+async def test_the_source_is_whatever_the_stack_hands_back(
+    hass: HomeAssistant, radio, gatt
 ) -> None:
-    """The incident itself: the loud, deaf proxy against the quiet adapter.
+    """D-117 scored the connectable sources here; D-127 deleted the scoring.
 
-    The proxy is -40 dBm on whatever it last heard and has not heard this
-    device for a minute; the local adapter hears it now, at -76. Scoring on
-    signal alone picks the proxy, which is what happened.
+    `HaBleakClientWrapper.connect()` re-picks the path from the address, so the
+    `BLEDevice` an integration hands it carries an address and little else. On
+    the bench the two choices named the same source with the same number, four
+    writes out of four, and the stack's knows what cannot be seen from here:
+    connect failures per source, connections in flight, whether a source has a
+    free slot at all. So a write takes `async_ble_device_from_address` and asks
+    the scanners nothing.
     """
-    device = BTHomeWritableCoordinator(hass, DEFAULT_ADDRESS)
-    proxy = FakeScannerDevice(
-        FakeScanner("esp32-proxy", heard={DEFAULT_ADDRESS: time.monotonic() - 60}),
-        FakeAdvertisement(-40),
-        "through the proxy",
-    )
-    local = FakeScannerDevice(
-        FakeScanner("hci0"), FakeAdvertisement(-76), "through the adapter"
-    )
+    gatt.declare(1, readable={1: bytes.fromhex("1E01")})
+    await setup_device(hass, radio, "single-light")
+    await settle(hass)
 
-    with sources(hass, proxy, local):
-        assert device._connectable_device() == "through the adapter"
+    def scored_here(*_args, **_kwargs):
+        raise AssertionError("scoring the sources is the stack's job (D-127)")
 
-
-def test_among_sources_that_hear_it_the_loudest_wins(hass: HomeAssistant) -> None:
-    """With nothing to separate them on freshness, this is the stack's own
-    signal and there is no reason to differ from it."""
-    device = BTHomeWritableCoordinator(hass, DEFAULT_ADDRESS)
-    near = FakeScannerDevice(
-        FakeScanner("esp32-proxy", heard={DEFAULT_ADDRESS: time.monotonic()}),
-        FakeAdvertisement(-41),
-        "through the proxy",
-    )
-    far = FakeScannerDevice(
-        FakeScanner("hci0"), FakeAdvertisement(-88), "through the adapter"
-    )
-
-    with sources(hass, near, far):
-        assert device._connectable_device() == "through the proxy"
-
-
-def test_a_scanner_that_is_not_scanning_is_not_a_path(hass: HomeAssistant) -> None:
-    device = BTHomeWritableCoordinator(hass, DEFAULT_ADDRESS)
-    stopped = FakeScannerDevice(
-        FakeScanner("hci0", scanning=False), FakeAdvertisement(-30), "stopped"
-    )
-    running = FakeScannerDevice(
-        FakeScanner("esp32-proxy"), FakeAdvertisement(-90), "running"
-    )
-
-    with sources(hass, stopped, running):
-        assert device._connectable_device() == "running"
-
-
-def test_with_no_source_listed_the_stacks_own_answer_stands(
-    hass: HomeAssistant,
-) -> None:
-    """A doubtful path that fails visibly beats none at all, which fails as
-    "not reachable by any adapter or proxy"."""
-    device = BTHomeWritableCoordinator(hass, DEFAULT_ADDRESS)
-
-    with (
-        sources(hass),
-        patch.object(
-            coordinator_module.bluetooth,
-            "async_ble_device_from_address",
-            return_value="whatever the stack says",
-        ),
+    with patch.object(
+        coordinator_module.bluetooth, "async_scanner_devices_by_address", scored_here
     ):
-        assert device._connectable_device() == "whatever the stack says"
+        await hass.services.async_call(
+            "switch", "turn_off", {"entity_id": LIGHT}, blocking=True
+        )
+        await settle(hass)
 
-
-def test_only_a_deaf_source_is_still_better_than_none(hass: HomeAssistant) -> None:
-    """Chosen, because the alternative is to refuse to try."""
-    device = BTHomeWritableCoordinator(hass, DEFAULT_ADDRESS)
-    deaf = FakeScannerDevice(
-        FakeScanner("esp32-proxy", heard={DEFAULT_ADDRESS: time.monotonic() - 600}),
-        FakeAdvertisement(-70),
-        "through the proxy",
-    )
-
-    with sources(hass, deaf):
-        assert device._connectable_device() == "through the proxy"
+    assert gatt.writes[-1] == (UUID_TEMPLATE.format(1), bytes.fromhex("1e00"))

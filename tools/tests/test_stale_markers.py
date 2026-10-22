@@ -34,15 +34,15 @@ DISPOSITIONS = ("ruled", "settled", "moot", "out of scope", "done")
 """Words that turn a marker from a question into a record of its answer."""
 
 STILL_OPEN = {
-    # Four in shipping code, and all legitimately standing: receiver policies
+    # Three in shipping code, and all legitimately standing: receiver policies
     # the owner may reverse at any time without the protocol changing. The
-    # plaintext downgrade, the two of D-117 -- whether to choose the radio
-    # ourselves rather than take the stack's, and whether an acknowledged write
-    # must be checked against the device, which costs one read per write on a
-    # readable entry -- and the one the bench added to them, whether a read back
-    # that reports the old value is a failed write or only an unproven one
-    # (D-122).
-    "custom_components/bthome_writable/const.py": 4,
+    # plaintext downgrade, one of the two of D-117 -- whether an acknowledged
+    # write must be checked against the device, which costs one read per write
+    # on a readable entry -- and the one the bench added to them, whether a read
+    # back that reports the old value is a failed write or only an unproven one
+    # (D-122). D-117's other one, whether to choose the connectable source
+    # ourselves rather than take the stack's, was ruled and removed (D-127).
+    "custom_components/bthome_writable/const.py": 3,
     # The markers' own definition, and the task line that explains them.
     "SPEC-WORKING-DOCUMENT.md": 2,
 }

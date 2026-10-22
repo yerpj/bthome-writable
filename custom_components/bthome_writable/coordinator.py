@@ -32,13 +32,9 @@ from .const import (
     COUNTER_RESTART_CEILING,
     COUNTER_STRIDE,
     COUNTER_UUID,
-    DEAF_SOURCE,
     DEFAULT_MAX_CONNECTIONS,
     DEFAULT_MTU_PAYLOAD,
     EVENT_WRITE,
-    HEARD_RECENTLY,
-    NO_RSSI,
-    PREFER_A_SOURCE_THAT_HEARS_THE_DEVICE,
     READ_RETRY,
     RESYNC_JUMP,
     SERVICE_UUID,
@@ -718,7 +714,9 @@ class BTHomeWritableCoordinator:
                 f"{self.address}: no declaration seen yet, refusing to write"
             )
 
-        device = self._connectable_device()
+        device = bluetooth.async_ble_device_from_address(
+            self.hass, self.address, connectable=True
+        )
         if device is None:
             raise WriteFailed(f"{self.address}: not reachable by any adapter or proxy")
 
@@ -946,7 +944,9 @@ class BTHomeWritableCoordinator:
         """
         if self.bindkey is None:
             return None
-        device = self._connectable_device()
+        device = bluetooth.async_ble_device_from_address(
+            self.hass, self.address, connectable=True
+        )
         if device is None:
             return None
 
@@ -1072,7 +1072,9 @@ class BTHomeWritableCoordinator:
                 self.address,
             )
             return False
-        device = self._connectable_device()
+        device = bluetooth.async_ble_device_from_address(
+            self.hass, self.address, connectable=True
+        )
         if device is None:
             _LOGGER.debug(
                 "%s: no read: no connectable source for this device", self.address
@@ -1202,70 +1204,13 @@ class BTHomeWritableCoordinator:
             _LOGGER.warning("%s: %s", self.address, error)
             return None
 
-    # --- Choosing a radio (D-117) -------------------------------------------
-
-    def _connectable_device(self) -> Any | None:
-        """A connectable source for this device, preferring one that hears it.
-
-        `async_ble_device_from_address` returns the `BLEDevice` of whichever
-        advertisement reached the manager last, with no scoring at all. On this
-        bench that was an ESP32 proxy twelve metres and two walls away which had
-        not heard the device once in forty seconds, while the local adapter heard
-        it every second; every write through it was acknowledged and none
-        arrived (D-117).
-
-        So the choice is made here instead, over the sources the stack says can
-        connect to this address, on the same signal its own scorer uses -- the
-        advertisement's RSSI -- with one addition: a source that reports when it
-        last heard this device, and reports something older than
-        `HEARD_RECENTLY`, goes behind every source that is still listening.
-        Only remote scanners keep those per-device timestamps; a local adapter
-        reports none and is neither rewarded nor penalised for it.
-
-        If the stack lists no connectable source at all, its own answer stands.
-        A doubtful path that fails visibly beats no path at all, which fails as
-        "not reachable by any adapter or proxy".
-        """
-        fallback = bluetooth.async_ble_device_from_address(
-            self.hass, self.address, connectable=True
-        )
-        if not PREFER_A_SOURCE_THAT_HEARS_THE_DEVICE:
-            return fallback
-
-        now = time.monotonic()
-        best: tuple[float, str, Any] | None = None
-        for candidate in bluetooth.async_scanner_devices_by_address(
-            self.hass, self.address, connectable=True
-        ):
-            scanner = candidate.scanner
-            if not scanner.scanning:
-                continue
-            score = float(candidate.advertisement.rssi or NO_RSSI)
-            heard = scanner.discovered_device_timestamps.get(self.address)
-            if heard is not None and now - heard > HEARD_RECENTLY:
-                _LOGGER.debug(
-                    "%s: %s has not heard this device for %.0f s; it is the "
-                    "last source this write or read would choose",
-                    self.address,
-                    scanner.source,
-                    now - heard,
-                )
-                score = DEAF_SOURCE
-            if best is None or score > best[0]:
-                best = (score, scanner.source, candidate.ble_device)
-
-        if best is None:
-            return fallback
-        _LOGGER.debug(
-            "%s: connecting through %s (score %.0f)", self.address, best[1], best[0]
-        )
-        return best[2]
-
     # --- Housekeeping -------------------------------------------------------
 
     async def async_clear_service_cache(self) -> None:
         """Forget the cached GATT table for this device."""
-        device = self._connectable_device()
+        device = bluetooth.async_ble_device_from_address(
+            self.hass, self.address, connectable=True
+        )
         if device is None:
             return
         async with self._semaphore:

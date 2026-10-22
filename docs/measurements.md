@@ -1031,12 +1031,16 @@ read direction and authenticated, which is the whole of §5.6's exchange.
 
 Command 2 returned HTTP 500 after 17.8 s without reaching the board. It went
 through the ESP32 proxy, which had been switched back on an hour earlier and
-which hears that board at **-36 dBm** against the Pi's **-63**, so
-`_connectable_device()` prefers it and the connection then does not complete.
-92 writes failed that way in 90 minutes, all of them the OLED automation's. The
-proxy is off again and D-127 has the evidence: it is a defect in D-117's
-heuristic, not in this branch, and it is a candidate explanation for @enaon's
-own fault 2.
+which hears that board at **-36 dBm** against the Pi's **-63**, so it is what
+gets chosen and the connection then does not complete. 92 writes failed that way
+in 90 minutes, all of them the OLED automation's. The proxy is off again, and
+D-127 has the rest of it: our own scoring and Home Assistant's named that same
+proxy with the same number, four writes out of four, so this was never a defect
+in D-117's heuristic -- which has since been removed for agreeing with the stack
+at best -- and it does not explain @enaon's fault 2, which happened on his local
+adapter with every proxy disabled. What it does expose is upstream's: a path
+that connects and then lets a GATT operation time out costs that source nothing
+in the next choice.
 
 ## Reproducing any of this
 

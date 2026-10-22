@@ -19,10 +19,6 @@ Everything here is on `candidate/enaon-retest` and not yet on `main`.
 
 ### Added
 
-- The integration chooses which Bluetooth adapter to connect through, by what
-  actually hears the device, rather than taking the first answer the stack
-  gives. A write through an ESP32 proxy that could not reach the device was
-  being lost without a word (D-117).
 - A write to an entry the device can also report is read back and checked. A
   device that applies a write slowly, a fade or a ramp, is logged rather than
   called broken, because §4.3's getter is published and not served on demand
@@ -34,6 +30,14 @@ Everything here is on `candidate/enaon-retest` and not yet on `main`.
 
 ### Changed
 
+- The integration connects through the adapter or proxy Home Assistant chooses,
+  as every other Bluetooth integration does. For two days it scored the
+  connectable sources itself, after a write through a proxy that could not reach
+  the device was lost without a word (D-117); measured against the stack's own
+  scorer, the two named the same source with the same number on every write, and
+  the stack's also knows what an integration cannot see: connect failures per
+  source, connections in flight, whether a source has a free slot at all
+  (D-127).
 - **The module rebuilds its advertising packet when an encoded value has moved,
   not on every interval.** BTHome's own format asks for exactly this, the packet
   id being what tells a receiver the data is new. @enaon's PPK2 measured 235 µA
