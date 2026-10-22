@@ -8023,3 +8023,130 @@ else knows about fails three of the four.
 
 Rule 9 in `CLAUDE.md` is the instruction that keeps it maintained, and the
 README points a reader at both files.
+
+---
+
+## D-126 -- the phantom connection is Espruino's, and we are not chasing it
+
+**2026-10-22, ruled by the owner:** record it and move on. Our subject is
+bthome-writable, not Espruino's Bluetooth stack. This entry exists so the facts
+are in one place if it comes back; nobody here is to spend another afternoon on
+it.
+
+### What was seen, by @enaon, on his lamp
+
+After pressing the lamp's buttons rapidly:
+
+```
+NRF.getSecurityStatus().connected
+=true
+```
+
+with no connection open from Home Assistant, which failed every attempt with
+`Failed to connect after 3 or 4 attempt(s): TimeoutError` and once with
+`[org.bluez.Error.InProgress] In Progress`. `E.getErrorFlags()` held
+`["LOW_MEMORY"]`; `process.memory()` showed `free: 8523` of `total: 13000` with
+`gc: 363`. The Pi's adapter was serving his other lamps at the same time, so the
+stale connection was the device's. `NRF.disconnect()` typed on its console
+cleared it.
+
+### Where the line falls
+
+**Ours, and fixed:** the module drove its heaviest path from a `setWatch`
+handler at whatever rate a finger can manage. That is D-124, measured at 375 ms
+a call and twenty rebuilds for twenty presses, now three.
+
+**Not ours:** a SoftDevice that keeps `connected === true` after its central is
+gone, reached from a thread saturated under `LOW_MEMORY`. We cannot fix it, we
+did not reproduce it -- our nano kept 8 000 JsVars free at the worst of the same
+burst and never raised the flag -- and the only evidence lives on a board we do
+not have. @enaon has the reproduction if Gordon ever wants it.
+
+**Derivative:** `org.bluez.Error.InProgress`. These boards serve one central at
+a time, so a connection the device still believes in locks the receiver out.
+We saw the same error on this bench on 2026-10-22 from an ordinary overlap of
+two connection attempts, and D-118's path recovered from it by itself, so the
+error is a symptom of contention rather than a fault of its own.
+
+### What to do if it returns
+
+Ask for the two numbers that distinguish a stopped device from a stopped
+receiver, which is what the message of 2026-10-21 already asked and did not get:
+do advertisements still arrive, and does the packet counter in them still
+advance. Then it is Espruino's to look at, through espruino#8024 or an issue of
+its own, and the owner's to raise.
+
+---
+
+## D-127 -- a proxy that hears the device best and cannot write to it  [DECISION]
+
+**2026-10-22, found while validating the sealed path for D-124.** The branch is
+not at fault and nothing here is new code; what is new is that the ESP32 proxy
+was switched back on, after an unfinished campaign had left it off, and the
+defect it exposes has been sitting in `_connectable_device()` since D-117.
+
+### What happened
+
+At 14:17 the proxy came back. From 14:18 to 15:50, **92 writes to the nano
+failed** with `Timeout waiting for BluetoothGATTReadResponse,
+BluetoothGATTErrorResponse, BluetoothDeviceConnectionResponse after 30.0s`, one
+a minute, which is the OLED automation writing text every 30 s. Of 162 source
+choices logged for that device, **105 went to the proxy** `A4:F0:0F:1F:10:22`
+and 57 to the Pi `B8:27:EB:5F:DD:BF`. The scores say why:
+
+```
+15:52:26  connecting through A4:F0:0F:1F:10:22 (score -36)
+15:52:54  connecting through A4:F0:0F:1F:10:22 (score -39)
+...        the Pi, in the same minutes, scored -63 and -64
+```
+
+The proxy hears that board **25 dB better** than the Pi does, so D-117's scorer
+prefers it, correctly by its own rule, and then the connection does not
+complete.
+
+### Why the heuristic misses it
+
+D-117 was written against the opposite case: a proxy that had not heard the
+device for forty seconds and was chosen anyway, because
+`async_ble_device_from_address` returns whoever advertised last with no scoring
+at all. The cure was to score the sources on RSSI and to push a source that has
+stopped *hearing* the device behind the ones still listening.
+
+A source that hears the device best and cannot *reach* it is the same symptom
+from the other side, and RSSI cannot predict it: the proxy's radio hears the
+advertisement perfectly and its own connection slots, its uplink or its
+firmware are what fail. `HEARD_RECENTLY` does not fire, because it is hearing
+the device every second.
+
+### What would fix it, and is not ours to choose
+
+Remember the failures. A source whose connection attempt just failed is the one
+piece of evidence that bears directly on whether it can connect, and we throw
+it away: every attempt starts from the same scores and makes the same choice,
+92 times in 90 minutes. A `FAILED_RECENTLY` window, mirroring `HEARD_RECENTLY`
+and behind its own constant, would send the next attempt to the Pi and cost one
+timeout rather than ninety-two.
+
+Open questions for the owner, which is why this is a marker and not a commit:
+how long a failure should count against a source; whether a failure on a read
+should count against a write; and whether a source should be forgiven on a
+success, which it must be, or the first bad minute would exile a good proxy for
+good.
+
+### Why it matters beyond this bench
+
+**@enaon was asked on 2026-10-21 whether he runs an ESPHome Bluetooth proxy,
+and this is the shape of his fault 2**: Home Assistant stopping connecting at
+all, cured by a reconfigure and a new bindkey. Reloading a config entry
+re-picks the source. That fits a wrongly chosen source better than it fits
+`LOW_MEMORY`, which is a consequence D-124 already explains on the device side.
+It is a hypothesis, not a finding: his answer about the proxy, and whether the
+advertisements kept arriving, are what would separate the two.
+
+### The bench, meanwhile
+
+The proxy is **off again**. Normally it belongs on -- `tools/ha_bench.py` turns
+it off for a measurement and back on afterwards -- but with it on, every write
+to the nano fails every minute, which is a bench nobody can work on. Turning it
+back on, this morning, was a restoration done without checking what it
+restored.

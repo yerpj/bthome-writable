@@ -983,6 +983,61 @@ connection attempts overlapped: the same BlueZ error @enaon reported, recovered
 here by D-118's own path, which dropped the cached table and read the device
 again.
 
+## 15. The sealed path, end to end, on the module of this branch
+
+**2026-10-22**, the test that had to happen before @enaon is asked to retest.
+D-123 replaced four `Math.pow` with `readUint(pl, n, n + 4)` in `openWrite()`,
+which is how a sealed device reads the write counter out of a write it has not
+yet decrypted. Unit tests and the shared vectors cover the function; nothing had
+run it on a radio.
+
+nice!nano running `espruino/bench/many-writables.js` sealed with @enaon's three
+entries and `counterReport: true`, the test-vector bindkey set on the config
+entry through the integration's own reconfigure flow, ten `switch.turn_on` /
+`turn_off` on entry 1 five seconds apart, then the counter report.
+
+| | |
+|---|---|
+| commands accepted | **9 of 10** |
+| service call, median of the nine | **2250 ms** (min 1578, max 4422) |
+| the state followed the command | every time |
+| errors reported by the device | **0** |
+| `E.getErrorFlags()` after | none |
+
+Zero errors on the device is the result that matters: not one `mic_mismatch`,
+not one `counter_not_increasing`, not one `truncated`. Every write that reached
+the board authenticated and its counter was read correctly. The reads of all
+three entries, sealed, were correct throughout (`entry 1: read object 0x1E`,
+`entry 2: 0x1E`, `entry 3: 0x09`).
+
+Faster than §13's 4047 ms because the commands are five seconds apart rather
+than after twelve seconds of idle, so the device stays inside its fast
+advertising window, and because a write is no longer retried when the device
+reports the value it had (D-122).
+
+### §5.6, the counter report, exercised twice
+
+```
+15:51:10  the device reports write counter 1792616629; keeping 1792677067,
+          which is already ahead of it
+15:53:08  write counter resynchronised to 1792777077
+```
+
+The first is the integration asking on its own after a failed write; the second
+is the `Resynchronise write counter` button. Both answers were sealed under the
+read direction and authenticated, which is the whole of §5.6's exchange.
+
+### The one failure, which was not the module's
+
+Command 2 returned HTTP 500 after 17.8 s without reaching the board. It went
+through the ESP32 proxy, which had been switched back on an hour earlier and
+which hears that board at **-36 dBm** against the Pi's **-63**, so
+`_connectable_device()` prefers it and the connection then does not complete.
+92 writes failed that way in 90 minutes, all of them the OLED automation's. The
+proxy is off again and D-127 has the evidence: it is a defect in D-117's
+heuristic, not in this branch, and it is a candidate explanation for @enaon's
+own fault 2.
+
 ## Reproducing any of this
 
 Most of the tools above take `--address`; `tools.regression` and
