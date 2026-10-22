@@ -292,7 +292,6 @@ function planPacket(entries, enc, defRead, encrypted, limit) {
     if (hasSet) {
       const k = writable.length + 1;
       const w = writableSpec(e, enc, k);
-      if (FORBIDDEN[w.id]) throw err("forbidden_entry", `entry ${k} is 0x${w.id.toString(16)}, which S2.1 forbids`);
       w.entry = k;
       w.uuid = characteristicUuid(k);
       w.entryIndex = i;
@@ -345,15 +344,9 @@ function planPacket(entries, enc, defRead, encrypted, limit) {
    with no device state, and how a rebuild that follows readAdvertised() avoids
    calling every get() twice. */
 function renderServiceData(p, pid, enc, entries, now, revision) {
-  if (now === undefined) now = 0;
   p.pkt.value[0] = pid & 255;
   if (p.rev) p.rev.value[0] = (revision || 0) & 255;
-  for (let i = 0; enc !== null && i < p.ordered.length; i++) {
-    const it = p.ordered[i];
-    // Reuse the last reading until this entry's interval elapses. What this
-    // skips is get(), which on some sensors is the expensive part.
-    if (!(it.readInterval && now - it.lastRead < it.readInterval)) readSensor(it, enc, entries, now);
-  }
+  if (enc !== null) readDue(p, enc, entries, now);
   return buildServiceData(p.info, p.objs, p.decl, p.budget);
 }
 
@@ -367,6 +360,24 @@ function readSensor(it, enc, entries, now) {
   let moved = it.value.length !== b.length - 1;
   for (let i = 0; !moved && i < it.value.length; i++) moved = it.value[i] !== b[i + 1];
   if (moved) it.value = b.slice(1);
+  return moved;
+}
+
+/* Re-read every advertised entry that is due, and say whether any bytes moved. */
+// Reusing the last reading until an entry's interval elapses is what skips
+// get(), which on some sensors is the expensive part. An entry with interval 0
+// is due at every wake, which is how a sensor measuring what a write just did
+// still goes out at once (D-050). Whether anything moved is what decides
+// whether the packet is rebuilt at all (D-106), and the caller that does not
+// care simply ignores it: the rebuild path and the timer's wake used to be two
+// copies of this loop, with the same predicate spelled two ways.
+function readDue(p, enc, entries, now) {
+  let moved = false;
+  for (let i = 0; i < p.ordered.length; i++) {
+    const it = p.ordered[i];
+    if (it.readInterval && now - it.lastRead < it.readInterval) continue;
+    if (readSensor(it, enc, entries, now)) moved = true;
+  }
   return moved;
 }
 
@@ -567,8 +578,7 @@ function openWrite(pl) {
     return null;
   }
   const n = pl.length - ENC_OVERHEAD;
-  let counter = 0;
-  for (let i = 0; i < 4; i++) counter += pl[n + i] * Math.pow(256, i);
+  const counter = readUint(pl, n, n + 4);
   // Before the cipher: a replay costs nothing to reject, and doing it first
   // means a flood of them cannot make the device spend 75ms each (D-028).
   if (!counterIsAhead(counter, st.writeCounter)) {
@@ -665,22 +675,6 @@ function republishRate() {
   else publish(st.lastSd);
 }
 
-/* Re-read the advertised entries that are due.
-
-   Says whether any of their bytes moved. A sensor measuring what a write just
-   did has interval 0, which is how its reading still goes out at once
-   (D-050). */
-function readAdvertised(now) {
-  const ord = st.plan.ordered;
-  let moved = false;
-  for (let i = 0; i < ord.length; i++) {
-    const it = ord[i];
-    if (it.readInterval && now - it.lastRead < it.readInterval) continue;
-    if (readSensor(it, encodeOne, st.entries, now)) moved = true;
-  }
-  return moved;
-}
-
 /* How long until the next advertised entry falls due, in milliseconds.
 
    Null when none ever does: a device whose advertised values are all static,
@@ -767,7 +761,7 @@ function wake() {
    rate changed can publish once rather than twice (D-108). Arms the next wake
    itself (D-109), which is why handleWrite() and the timer can both call it. */
 function tick() {
-  const moved = readAdvertised(getTime() * 1000);
+  const moved = readDue(st.plan, encodeOne, st.entries, getTime() * 1000);
   if (moved) refreshAdvertising(true);
   // Before returning, and whether or not anything moved: a wake that found
   // nothing is still a wake, and the next one is computed from where the reads
@@ -837,55 +831,46 @@ function goIdleAfterTimeout() {
    Espruino has already acknowledged it, which is why S3 exists. */
 function handleWrite(k, pl) {
   const w = st.plan.writable[k - 1];
-  /* A write to an entry this plan does not have.
-
-     Its characteristic was left by an earlier setup(): Espruino keeps the
-     service, and its onWrite still captures k. Refusing is all that can be
-     done -- but the error path itself used to throw a TypeError on
-     `w.readable`, inside the stack's own callback, where nothing catches it
-     (D-114). */
+  // A write to an entry this plan does not have. Its characteristic was left by
+  // an earlier setup(): Espruino keeps the service, and its onWrite still
+  // captures k. Refusing is all that can be done -- but the error path itself
+  // used to throw a TypeError on `w.readable`, inside the stack's own callback,
+  // where nothing catches it (D-114).
   if (!w) {
     if (st.onError) st.onError(err("entry_not_declared", `entry ${k} is not declared`));
-    return false;
+    return;
   }
-  let value;
+  // Parsed and applied as one step, because what follows is the same whichever
+  // of the two refuses it: a receiver that wrote the wrong object for this
+  // entry and a set() that threw are both a write the device did not take, and
+  // both leave the characteristic holding the central's own bytes.
+  //
+  // Espruino has already acknowledged the write, so onError is the only place
+  // either can show, and it was not being told: the exception went up into the
+  // Bluetooth stack's own onWrite callback, where nothing catches it. It took
+  // goFast() and the re-read with it (D-114).
+  let refused = null;
   try {
-    value = parseWrite(pl, w);
+    st.entries[w.entryIndex].set(decodeValue(parseWrite(pl, w), w));
   } catch (e) {
-    // The rejected bytes are still on their way into the characteristic's own
-    // value, for the reason the accepted path explains below -- and S4.3
-    // promises a read returns the entry's current value, not the one a
-    // receiver was refused. D-092 republished on the accepted path only, so a
-    // refusal left its own payload sitting there: on a sealed device, a
-    // write-direction ciphertext where a read-direction one is promised.
-    if (w.readable) setTimeout(() => { guarded(() => publishRead(w)); }, 0);
-    if (st.onError) st.onError(e);
-    return false;
+    refused = e;
   }
-  try {
-    st.entries[w.entryIndex].set(decodeValue(value, w));
-  } catch (e) {
-    /* The device's own set() threw. Espruino has already acknowledged the
-       write, so onError is the only place that can show, and it was not being
-       told: the exception went up into the Bluetooth stack's own onWrite
-       callback, where nothing catches it. It took goFast() and the re-read
-       with it, and left the characteristic holding the bytes the central
-       wrote, which is what D-092 exists to prevent (D-114). */
-    if (w.readable) setTimeout(() => { guarded(() => publishRead(w)); }, 0);
-    if (st.onError) st.onError(e);
-    return false;
-  }
-  // Keep the readable value current, but do not bump the revision: the
-  // receiver that wrote it already knows (S3.2).
+  // Keep the readable value current whatever happened, but do not bump the
+  // revision: the receiver that wrote it already knows (S3.2).
+  //
+  // Whatever happened, because all three outcomes leave the bytes the central
+  // wrote in the characteristic. S4.3 promises a read returns the entry's
+  // current value, not the one a receiver asked for and certainly not one it
+  // was refused, and on a sealed device those bytes are a write-direction
+  // ciphertext where a read-direction one is promised. D-092 republished on the
+  // accepted path only, so a refusal left its own payload sitting there.
   //
   // Deferred by one turn of the loop, for the reason counterCharacteristic()
-  // spells out: Espruino stores the bytes a central wrote into the
-  // characteristic's own value *after* onWrite returns, so a value published
-  // from here is destroyed. The characteristic was then left holding the write
-  // itself -- which on a sealed device is a write-direction ciphertext sitting
-  // where S4.3 promises the entry's current value, and on any device is the
-  // value the receiver asked for rather than the one the device kept (D-092).
+  // spells out: Espruino stores what a central wrote into the characteristic's
+  // own value *after* onWrite returns, so a value published from here is
+  // destroyed.
   if (w.readable) setTimeout(() => { guarded(() => publishRead(w)); }, 0);
+  if (refused) { if (st.onError) st.onError(refused); return; }
   // A write means a receiver is plainly here, and its next command should not
   // wait out the idle interval -- even if the connect event was missed. And
   // anything the write changed that *is* advertised goes out now rather than
@@ -895,12 +880,12 @@ function handleWrite(k, pl) {
   // One advertisement either way. A rebuild carries the new rate in its own
   // options, so the rate needs publishing on its own only when nothing else
   // published -- but goFast() still has to run first, because it is also what
-  // cancels a pending return to idle (D-108).
-  try {
+  // cancels a pending return to idle (D-108). Guarded, because a refused
+  // packet must not escape into onWrite either.
+  guarded(() => {
     const faster = goFast();
     if (!tick() && faster) republishRate();
-  } catch (e) { if (st.onError) st.onError(e); }  // a refused packet must not escape into onWrite
-  return true;
+  });
 }
 
 /* The radio clamps anything outside 20..10000 silently.
@@ -920,6 +905,11 @@ function toKey(v) {
   // fault, and that false diagnosis is what D-088 was written to remove.
   if (typeof v !== "string") { const a = new Uint8Array(v); if (a.length !== 16) throw err("bindkey_length", `bindkey is ${a.length} bytes, expected 16`); return a; }
   if (v.length !== 32) throw err("bindkey_length", `bindkey is ${v.length} hex characters, expected 32`);
+  for (let i = 0; i < 32; i++) {
+    const c = v.charCodeAt(i) | 32; // folds A-F onto a-f and leaves 0-9 alone
+    if (!((c >= 48 && c <= 57) || (c >= 97 && c <= 102)))
+      throw err("bindkey_not_hex", `bindkey character ${i} ("${v[i]}") is not hexadecimal`);
+  }
   const k = new Uint8Array(16);
   for (let i = 0; i < 16; i++) k[i] = parseInt(v.substr(i * 2, 2), 16);
   return k;
@@ -939,12 +929,12 @@ function setup(opts) {
     // restarted at 0 every boot reused nonces, which is a keystream leak rather
     // than a replay-filtering nicety (D-069). A forward jump is fine for
     // bthome-ble, whose only counter rule is that it must not decrease.
-    advCounter : key ? marks.a : 0,
-    advMark : key ? (marks.a + ADV_STRIDE) >>> 0 : 0,
+    advCounter : marks.a,
+    advMark : (marks.a + ADV_STRIDE) >>> 0,
     // The write counter is verified by the device itself, so resuming low would
     // accept a replay (S5.3).
-    writeCounter : key ? marks.w : 0,
-    writeMark : key ? marks.w : 0,
+    writeCounter : marks.w,
+    writeMark : marks.w,
     plan : planPacket(entries, encodeOne, iv, key !== null, opts.maxServiceData),
     // A random start, so that a restart -- which may have reset values to their
     // defaults -- most likely changes the revision and prompts a re-read (S3.2).
@@ -955,10 +945,6 @@ function setup(opts) {
     fastInterval : Math.max(100, checkInterval("fastInterval", opts.fastInterval || 100)),
     fastTimeout : opts.fastTimeout === undefined ? 30000 : opts.fastTimeout,
     maxWriteLength : opts.maxWriteLength || 128,
-    // Off by default: it is a protocol addition, still under discussion in
-    // espruino#8024, and a device that does not offer it loses nothing that
-    // worked before.
-    counterReport : opts.counterReport === true && key !== null,
     whenConnected : opts.whenConnected !== false,
     onError : opts.onError || null,
     // A timeout, re-armed by every wake, not a fixed interval (D-109).
@@ -995,7 +981,10 @@ function setup(opts) {
   if (key) saveMarks();
   if (st.plan.writable.length) {
     const chars = {}, svcs = {};
-    if (st.counterReport) chars[COUNTER_UUID] = counterCharacteristic();
+    // Off by default: it is a protocol addition, still under discussion in
+    // espruino#8024, and a device that does not offer it loses nothing that
+    // worked before.
+    if (opts.counterReport === true && key) chars[COUNTER_UUID] = counterCharacteristic();
     st.plan.writable.forEach(w => {
       const c = {
         writable : true,
@@ -1108,8 +1097,6 @@ exports.plan = () => st && st.plan;
 
 /* The pure half, exported for the unit tests. */
 exports.DECLARATION_OBJECT_ID = DECL_ID;
-exports.PACKET_ID_OBJECT_ID = PKT_ID;
-exports.SETTINGS_REVISION_OBJECT_ID = REV_ID;
 exports.DEVICE_INFO_PLAIN = DEV_INFO;
 exports.DEVICE_INFO_ENCRYPTED = DEV_INFO_ENC;
 exports.SERVICE_DATA_BUDGET = BUDGET;
@@ -1118,11 +1105,9 @@ exports.buildServiceData = buildServiceData;
 exports.parseWrite = parseWrite;
 exports.decodeValue = decodeValue;
 exports.writableSpec = writableSpec;
-exports.stableSortByObjectId = stableSortByObjectId;
 exports.planPacket = planPacket;
 exports.renderServiceData = renderServiceData;
 exports.readSensor = readSensor;
-exports.handleWrite = handleWrite;
 exports.counterIsAhead = counterIsAhead;
 exports.reachedMark = reachedMark;
 exports.COUNTER_WINDOW = CTR_WINDOW;

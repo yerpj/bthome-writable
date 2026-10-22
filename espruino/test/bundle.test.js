@@ -1290,6 +1290,30 @@ test("a bindkey given as an array is checked for length, like the hex form", () 
   );
 });
 
+test("a bindkey of the right length that is not hexadecimal is refused", () => {
+  /* `parseInt` stops at the first character it cannot read rather than failing,
+   * so "2z" is 2 and a key with a typo in it was silently a different key. Every
+   * receiver then reported a key that is not at fault, which is the same false
+   * diagnosis D-088 and D-114 were written to remove. */
+  const result = run(load("single-light-standalone.js"));
+
+  assert.throws(
+    () =>
+      result.context.bw.setup({
+        advertise: [{ type: "light", set: () => {} }],
+        interval: 1000,
+        bindkey: "231d39c1d7cc1ab1aee224cd096db9zz",
+      }),
+    { code: "bindkey_not_hex" }
+  );
+  // And the 32 characters that are hexadecimal still are, upper case included.
+  result.context.bw.setup({
+    advertise: [{ type: "light", set: () => {} }],
+    interval: 1000,
+    bindkey: "231D39C1D7CC1AB1AEE224CD096DB932",
+  });
+});
+
 test("a connection whose advertising is refused does not throw into the stack", () => {
   /* goFast() rebuilds the advertising, and that can fail. The failure used to
    * land inside the Bluetooth stack's own callback, where nothing is prepared

@@ -160,7 +160,7 @@ Reference
 | `fastTimeout` | milliseconds to keep advertising fast after a disconnect (default 30000) |
 | `whenConnected` | keep advertising during a connection (default `true`) |
 | `maxWriteLength` | largest accepted write, in bytes (default 128) |
-| `bindkey` | 16-byte AES key, as 32 hex characters or an array |
+| `bindkey` | 16-byte AES key, as 32 hex characters or an array. Anything else is refused at `setup()`: a key that is silently the wrong key has every receiver blaming a key that is not at fault |
 | `showName` | put the device name in the advertising packet (default `true`) |
 | `maxServiceData` | what your radio will really accept, in bytes. Set it and the packet is checked at `setup()` rather than at the first transmission |
 | `counterReport` | offer the counter report at `2FAA1000` (default `false`, and only with a `bindkey`) |

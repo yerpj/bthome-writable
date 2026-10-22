@@ -158,7 +158,6 @@ function planPacket(entries, enc, defRead, encrypted, limit) {
     if (hasSet) {
       const k = writable.length + 1;
       const w = writableSpec(e, enc, k);
-      if (FORBIDDEN[w.id]) throw err("forbidden_entry", `entry ${k} is 0x${w.id.toString(16)}, which S2.1 forbids`);
       w.entry = k;
       w.uuid = characteristicUuid(k);
       w.entryIndex = i;
@@ -198,14 +197,9 @@ function planPacket(entries, enc, defRead, encrypted, limit) {
 
 /* Service data for one advertisement. */
 function renderServiceData(p, pid, enc, entries, now, revision) {
-  if (now === undefined) now = 0;
   p.pkt.value[0] = pid & 255;
   if (p.rev) p.rev.value[0] = (revision || 0) & 255;
-  for (let i = 0; enc !== null && i < p.ordered.length; i++) {
-    const it = p.ordered[i];
-
-    if (!(it.readInterval && now - it.lastRead < it.readInterval)) readSensor(it, enc, entries, now);
-  }
+  if (enc !== null) readDue(p, enc, entries, now);
   return buildServiceData(p.info, p.objs, p.decl, p.budget);
 }
 
@@ -218,6 +212,18 @@ function readSensor(it, enc, entries, now) {
   let moved = it.value.length !== b.length - 1;
   for (let i = 0; !moved && i < it.value.length; i++) moved = it.value[i] !== b[i + 1];
   if (moved) it.value = b.slice(1);
+  return moved;
+}
+
+/* Re-read every advertised entry that is due, and say whether any bytes moved. */
+
+function readDue(p, enc, entries, now) {
+  let moved = false;
+  for (let i = 0; i < p.ordered.length; i++) {
+    const it = p.ordered[i];
+    if (it.readInterval && now - it.lastRead < it.readInterval) continue;
+    if (readSensor(it, enc, entries, now)) moved = true;
+  }
   return moved;
 }
 
@@ -347,8 +353,7 @@ function openWrite(pl) {
     return null;
   }
   const n = pl.length - ENC_OVERHEAD;
-  let counter = 0;
-  for (let i = 0; i < 4; i++) counter += pl[n + i] * Math.pow(256, i);
+  const counter = readUint(pl, n, n + 4);
 
   if (!counterIsAhead(counter, st.writeCounter)) {
     if (st.onError) st.onError(err("counter_not_increasing", `write counter ${counter} is not ahead of ${st.writeCounter}`));
@@ -414,18 +419,6 @@ function republishRate() {
   else publish(st.lastSd);
 }
 
-/* Re-read the advertised entries that are due. */
-function readAdvertised(now) {
-  const ord = st.plan.ordered;
-  let moved = false;
-  for (let i = 0; i < ord.length; i++) {
-    const it = ord[i];
-    if (it.readInterval && now - it.lastRead < it.readInterval) continue;
-    if (readSensor(it, encodeOne, st.entries, now)) moved = true;
-  }
-  return moved;
-}
-
 /* How long until the next advertised entry falls due, in milliseconds. */
 function nextDue(now) {
   const ord = st.plan.ordered;
@@ -461,7 +454,7 @@ function wake() {
 
 /* The periodic rebuild (D-106). */
 function tick() {
-  const moved = readAdvertised(getTime() * 1000);
+  const moved = readDue(st.plan, encodeOne, st.entries, getTime() * 1000);
   if (moved) refreshAdvertising(true);
 
   schedule();
@@ -511,36 +504,26 @@ function goIdleAfterTimeout() {
 /* Apply a write to entry k (S4.2). */
 function handleWrite(k, pl) {
   const w = st.plan.writable[k - 1];
-  /* A write to an entry this plan does not have. */
+
   if (!w) {
     if (st.onError) st.onError(err("entry_not_declared", `entry ${k} is not declared`));
-    return false;
+    return;
   }
-  let value;
-  try {
-    value = parseWrite(pl, w);
-  } catch (e) {
 
-    if (w.readable) setTimeout(() => { guarded(() => publishRead(w)); }, 0);
-    if (st.onError) st.onError(e);
-    return false;
-  }
+  let refused = null;
   try {
-    st.entries[w.entryIndex].set(decodeValue(value, w));
+    st.entries[w.entryIndex].set(decodeValue(parseWrite(pl, w), w));
   } catch (e) {
-    /* The device's own set() threw. */
-    if (w.readable) setTimeout(() => { guarded(() => publishRead(w)); }, 0);
-    if (st.onError) st.onError(e);
-    return false;
+    refused = e;
   }
 
   if (w.readable) setTimeout(() => { guarded(() => publishRead(w)); }, 0);
+  if (refused) { if (st.onError) st.onError(refused); return; }
 
-  try {
+  guarded(() => {
     const faster = goFast();
     if (!tick() && faster) republishRate();
-  } catch (e) { if (st.onError) st.onError(e); }  // a refused packet must not escape into onWrite
-  return true;
+  });
 }
 
 /* The radio clamps anything outside 20..10000 silently. */
@@ -555,6 +538,11 @@ function toKey(v) {
 
   if (typeof v !== "string") { const a = new Uint8Array(v); if (a.length !== 16) throw err("bindkey_length", `bindkey is ${a.length} bytes, expected 16`); return a; }
   if (v.length !== 32) throw err("bindkey_length", `bindkey is ${v.length} hex characters, expected 32`);
+  for (let i = 0; i < 32; i++) {
+    const c = v.charCodeAt(i) | 32; // folds A-F onto a-f and leaves 0-9 alone
+    if (!((c >= 48 && c <= 57) || (c >= 97 && c <= 102)))
+      throw err("bindkey_not_hex", `bindkey character ${i} ("${v[i]}") is not hexadecimal`);
+  }
   const k = new Uint8Array(16);
   for (let i = 0; i < 16; i++) k[i] = parseInt(v.substr(i * 2, 2), 16);
   return k;
@@ -571,11 +559,11 @@ function setup(opts) {
     key : key,
     mac : key ? macBytes() : null,
 
-    advCounter : key ? marks.a : 0,
-    advMark : key ? (marks.a + ADV_STRIDE) >>> 0 : 0,
+    advCounter : marks.a,
+    advMark : (marks.a + ADV_STRIDE) >>> 0,
 
-    writeCounter : key ? marks.w : 0,
-    writeMark : key ? marks.w : 0,
+    writeCounter : marks.w,
+    writeMark : marks.w,
     plan : planPacket(entries, encodeOne, iv, key !== null, opts.maxServiceData),
 
     revision : Math.floor(Math.random() * 256),
@@ -585,8 +573,6 @@ function setup(opts) {
     fastInterval : Math.max(100, checkInterval("fastInterval", opts.fastInterval || 100)),
     fastTimeout : opts.fastTimeout === undefined ? 30000 : opts.fastTimeout,
     maxWriteLength : opts.maxWriteLength || 128,
-
-    counterReport : opts.counterReport === true && key !== null,
     whenConnected : opts.whenConnected !== false,
     onError : opts.onError || null,
 
@@ -606,7 +592,8 @@ function setup(opts) {
   if (key) saveMarks();
   if (st.plan.writable.length) {
     const chars = {}, svcs = {};
-    if (st.counterReport) chars[COUNTER_UUID] = counterCharacteristic();
+
+    if (opts.counterReport === true && key) chars[COUNTER_UUID] = counterCharacteristic();
     st.plan.writable.forEach(w => {
       const c = {
         writable : true,
@@ -688,8 +675,6 @@ exports.plan = () => st && st.plan;
 
 /* The pure half, exported for the unit tests. */
 exports.DECLARATION_OBJECT_ID = DECL_ID;
-exports.PACKET_ID_OBJECT_ID = PKT_ID;
-exports.SETTINGS_REVISION_OBJECT_ID = REV_ID;
 exports.DEVICE_INFO_PLAIN = DEV_INFO;
 exports.DEVICE_INFO_ENCRYPTED = DEV_INFO_ENC;
 exports.SERVICE_DATA_BUDGET = BUDGET;
@@ -698,11 +683,9 @@ exports.buildServiceData = buildServiceData;
 exports.parseWrite = parseWrite;
 exports.decodeValue = decodeValue;
 exports.writableSpec = writableSpec;
-exports.stableSortByObjectId = stableSortByObjectId;
 exports.planPacket = planPacket;
 exports.renderServiceData = renderServiceData;
 exports.readSensor = readSensor;
-exports.handleWrite = handleWrite;
 exports.counterIsAhead = counterIsAhead;
 exports.reachedMark = reachedMark;
 exports.COUNTER_WINDOW = CTR_WINDOW;

@@ -7676,3 +7676,94 @@ period.
 
 @enaon's retest, from a clean slate. Nothing else: the two hardware debts of
 D-121 are paid.
+
+## D-123 -- what a neutral audit of the module found, and what was taken
+
+**2026-10-22, branch `simplify/espruino-module`.** An audit of
+`espruino/BTHomeWritable.js` was commissioned with one instruction: find
+simplifications, change no byte of the protocol. It came back with ten, each
+one measured by applying it rather than argued. Six were taken, three are the
+owner's to decide, one was refused, and one latent defect came with them.
+
+The published copy goes from **24 939 to 24 227 bytes**, so the margin under the
+25 000 budget is 773 bytes rather than 61. 279 tests pass.
+
+### Taken
+
+1. **One write path in `handleWrite`.** The republish was written three times
+   at the character, and the two `catch` arms did the same three things. A
+   receiver that wrote the wrong object and a `set()` that threw are the same
+   outcome: a write the device did not take, with the central's bytes left in
+   the characteristic. One try, one `refused`, one republish, and the final
+   try/catch becomes the `guarded()` that already exists for it.
+2. **Four exports nobody reads**: `PACKET_ID_OBJECT_ID`,
+   `SETTINGS_REVISION_OBJECT_ID`, `stableSortByObjectId`, `handleWrite`. The
+   last sat under "the pure half, exported for the unit tests", which it is
+   not: it touches `st` and the radio.
+3. **One loop for the entries that are due.** `renderServiceData` and
+   `readAdvertised` carried the same predicate, in double negation on one side
+   and as a `continue` on the other, differing only in whether they returned
+   `moved`. Now `readDue(p, enc, entries, now)`, above the divider and pure.
+   Two things fell out with it: `if (now === undefined) now = 0;` was dead (no
+   call site passes an encoder without a `now`, checked rather than assumed),
+   and the `enc !== null` test leaves the loop condition, so it is one
+   comparison per sensor per packet rather than one per iteration. `D-109`
+   names `readAdvertised`, which is why this entry exists.
+4. **`FORBIDDEN` checked once.** `planPacket` and `encodeDeclaration` both
+   refused a forbidden id, with the same code and, since the entry numbering is
+   the same in both, the same message. `encodeDeclaration` is the one that is
+   exported and tested directly.
+5. **`readUint` instead of four `Math.pow`** in `openWrite`, which is the hot
+   receive path and already had the function it was reimplementing.
+6. **Less state in `setup()`.** `marks` already holds `{w:0, a:0}` without a
+   key, so three ternaries said twice what `loadMarks()` said once, and
+   `st.counterReport` was a per-device field written and read in the same
+   function. `advMark` without a key is now `ADV_STRIDE` rather than 0, which
+   nothing can observe: it is read only by `noteAdvCounter`, called only from
+   `seal()`, called only with a key.
+
+A note worth keeping for the next time: the published copy keeps the **first
+sentence of every block comment** and drops a `//` that starts its own line. So
+moving an explanation from `/* */` to `//` keeps every word in the repository
+and costs nothing published, and the first attempt at this work saved 10 bytes
+instead of 712 by writing the explanations as blocks.
+
+### Refused
+
+Factoring the two `NRF.updateServices` call sites into a `publishValue()` costs
+**+34 bytes**. A `fail()` helper for the ten `if (st.onError)` sites saves 13. A
+`u32le()` shared by the three little-endian counter writes costs **+152**. The
+reflex to extract helpers is wrong in a file with a published-size budget:
+every function pays for its name, its braces and its published sentence. Worth
+recording because it is the advice anyone would give, measured and false here.
+
+### The latent defect that came with it, fixed
+
+**A bindkey of 32 characters that are not all hexadecimal was accepted.**
+`parseInt` stops at the first character it cannot read rather than failing, so
+`"2z"` is 2 and one typo made the key silently a different key. After that every
+receiver reports a key that is not at fault, which is exactly the false
+diagnosis D-088 exists to remove and the reasoning D-114 already applied to the
+array form. `toKey` now checks all 32 characters and throws `bindkey_not_hex`.
+Tested, and the test fails on the previous module.
+
+### The owner's, not taken  [DECISION]
+
+1. **`nextDue(now)` folded into `schedule()`**, its only caller: 134 bytes. But
+   D-109 names `nextDue(now)` as a piece of the design agreed with Gordon in
+   espruino#8024, so this renames something the public discussion points at.
+2. **`w.uuid` cached per writable entry** (`characteristicUuid` has two call
+   sites): about 1 kB of RAM on twenty entries, but `plan.test.js` asserts
+   `plan.writable[i].uuid`, so it is an observed shape of the plan.
+3. **The two single-member tables** `TEXT_TYPES` and `COMMAND_IDS`: 19 bytes and
+   two fewer objects alive for the module's life, against the extensibility of a
+   second command id or a second length-prefixed type.
+
+Two more the audit reported and could not settle, left open deliberately:
+`setAdvertisingInterval()` does nothing when `interval === fastInterval`, which
+is every device configured at 100 ms, because the fast window is inferred from
+comparing the two rather than recorded; and a `get()` that throws during
+`setup()` leaves the device with no read timer and no services reinstalled,
+because the line that reads the initial value sits outside the `try/finally`
+that D-114 put there for exactly this. Both were reproduced. Both change
+behaviour in the case they fix, so both are the owner's.
