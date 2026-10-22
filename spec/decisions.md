@@ -8172,3 +8172,41 @@ evidence from this bench is unaffected -- 92 failed writes in 90 minutes, 105 of
 162 choices to a source that hears the device 25 dB better and cannot reach it --
 and so are the three questions. The claim that it explained anything of his is
 withdrawn.
+
+### Measured 2026-10-22: the stack picks the same path, and it is the one that counts
+
+`habluetooth.wrappers` at INFO, the proxy back on for the run so that two
+sources existed, four writes to the puck. Each write logged both choices in the
+same second:
+
+```
+17:03:09  ours:  connecting through A4:F0:0F:1F:10:22 (score -66)
+17:03:09  stack: Found 2 connection path(s), preferred order:
+          esp32-bluetooth-proxy-1f1020 (A4:F0:0F:1F:10:22) (RSSI=-66)
+          (failures=0) (in_progress=0) (slots=3/3 free) (score=-66.0),
+          hci0 (B8:27:EB:5F:DD:BF) (RSSI=-74)
+```
+
+**The same source and the same score, four times out of four**, and all four
+writes landed (391 to 1938 ms). `HaBleakClientWrapper.connect()` re-picks the
+path through `_async_get_best_available_backend_and_device`, so the `BLEDevice`
+our scorer chose supplies an address and nothing else. We are not deciding
+anything, and when we and the stack both compute a choice, we agree.
+
+The stack's version is also the better one: it knows per-source connect
+failures, how many connections that source has in flight and whether it has a
+free slot, and it excludes a source with none. We can see none of that.
+
+**So D-117's scoring goes.** Per the owner's direction of 2026-10-22, align with
+what Home Assistant already does and carry nothing into a BTHome proposal beyond
+the `0xFF` object and the module: `PREFER_A_SOURCE_THAT_HEARS_THE_DEVICE` to
+`False`, then `_connectable_device()` and its three constants deleted, back to
+`async_ble_device_from_address`.
+
+Two things survive the removal, both upstream's and neither ours to fix: a
+source that has stopped hearing the device is not penalised by
+`_score_connection_paths`, which reads the last advertisement's RSSI and not its
+age (D-117's original case); and a path that connects and then lets a GATT
+operation time out is not penalised either, because `_finished_connecting` counts
+the connection only (this bench's 92 failures). Both belong in a `habluetooth`
+issue if the owner wants them raised.
