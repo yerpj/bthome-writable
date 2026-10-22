@@ -372,6 +372,37 @@ const READ_SLACK = 100; /* ms added to every scheduled read (D-109).
 
    @gfwilliams' number. See schedule(): it buys a wake that finds work. */
 
+const CHANGE_HOLD = 250; /* ms that a burst of changed() calls is folded into (D-124).
+
+   What a burst is: changed() is documented to be called from a button handler,
+   which is exactly where one arrives, and it does the most expensive thing in
+   the module -- a get() and a seal() per readable entry, then a whole packet
+   rebuilt and re-sealed, 26 to 38 ms of the one thread. @enaon got an nRF52
+   into a state where it held a connection no central had any more, by pressing
+   the buttons on his lamp rapidly: E.getErrorFlags() came back ["LOW_MEMORY"]
+   and process.memory() had counted 363 collections, while Home Assistant
+   failed every connection with TimeoutError and once with
+   org.bluez.Error.InProgress. One central at a time, so that one phantom
+   connection locked the device out of its receiver until NRF.disconnect() was
+   typed on its console. Called from a watch, each press stacked another
+   rebuild on a thread already behind.
+
+   So a call arms this and returns. Calls inside the window are dropped, and
+   the window ends in one revision bump, one publication per readable entry and
+   one rebuild, reading the values then rather than when the first press came
+   in: what a receiver is told to re-read is where the burst left the device,
+   not where it started. A rate limit and not a debounce -- the window is never
+   extended -- because a knob held for a minute has to publish four times a
+   second rather than nothing at all.
+
+   250 ms is ours by default and the owner's to move  [DECISION]: slower suits
+   a sealed device on a coin cell, faster suits a knob. It is what @enaon had
+   already wrapped around his own calls
+   before we got here, and because a receiver is slower than that anyway: 832
+   ms median from write to read-back on this bench (docs/measurements.md S13).
+   0 defers to the next turn of the event loop, which is the part that keeps a
+   watch handler out of the radio and keeps nothing else. */
+
 const CTR_FILE = ".bwctr"; // the persisted counter high-water marks
 const CTR_STRIDE = 64; // persist every this many accepted writes, not each one
 const CTR_WINDOW = 0x80000000; /* how far ahead a write counter may jump (S5.3).
@@ -932,6 +963,8 @@ function setup(opts) {
     // A timeout, re-armed by every wake, not a fixed interval (D-109).
     timer : undefined,
     fastTimer : undefined,
+    // The window a burst of changed() calls is folded into (D-124).
+    changeTimer : undefined,
     advInterval : iv,
     // The bytes the radio last accepted. Changing only the advertising rate
     // hands these back rather than building a packet nobody needed (D-108).
@@ -954,6 +987,7 @@ function setup(opts) {
   if (st) {
     if (st.timer !== undefined) clearTimeout(st.timer);
     if (st.fastTimer !== undefined) clearTimeout(st.fastTimer);
+    if (st.changeTimer !== undefined) clearTimeout(st.changeTimer);
   }
   st = next;
   /* Claim the stride now rather than when the counter reaches it. A mark that
@@ -1028,14 +1062,28 @@ function update() {
   schedule();
 }
 
-/* A writable value changed without a write - a knob, a button, a schedule.
-   Bumps the settings revision so receivers read it again (S3.2). */
-function changed() {
-  if (!st.plan.settingsRevision) throw err("not_readable", "no writable entry has get(); nothing for a receiver to re-read");
+/* What the end of a burst of changed() calls does (D-124). */
+function publishChange() {
+  // Cleared first, so that a packet the radio refuses still leaves the next
+  // call able to arm a window rather than a device that has stopped
+  // announcing its own knobs for good.
+  st.changeTimer = undefined;
   st.revision = (st.revision + 1) & 255;
   st.plan.writable.forEach(w => { if (w.readable) publishRead(w); });
   refreshAdvertising();
   schedule();
+}
+
+/* A writable value changed without a write - a knob, a button, a schedule.
+   Bumps the settings revision so receivers read it again (S3.2), CHANGE_HOLD
+   ms later and once for however many calls arrive inside that window. */
+function changed() {
+  // Thrown from the caller's own stack, not from the timer: a device whose
+  // writable entries are all write-only has a bug in its sketch, and the line
+  // that says so is worth more than an onError a quarter of a second later.
+  if (!st.plan.settingsRevision) throw err("not_readable", "no writable entry has get(); nothing for a receiver to re-read");
+  if (st.changeTimer !== undefined) return;
+  st.changeTimer = setTimeout(() => guarded(publishChange), CHANGE_HOLD);
 }
 
 /* Change the advertising interval without re-running setup(). */

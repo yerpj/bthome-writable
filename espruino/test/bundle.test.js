@@ -1333,3 +1333,144 @@ test("a connection whose advertising is refused does not throw into the stack", 
   assert.doesNotThrow(() => result.handlers.connect("aa:bb:cc:dd:ee:ff"));
   assert.deepEqual(seen, ["advertising_rejected"]);
 });
+
+/* --- a burst of changed() calls folds into one rebuild (D-124) ------------ */
+
+/* A light the device itself can toggle, which is what changed() is for. */
+function localLight(result) {
+  const lamp = { on: false };
+  result.context.bw.setup({
+    advertise: [
+      { type: "battery", interval: 300000, get: () => BATTERY },
+      { type: "light", get: () => lamp.on, set: (v) => (lamp.on = v) },
+    ],
+    interval: 1000,
+  });
+  result.advertised.length = 0;
+  return lamp;
+}
+
+/* The pending change window, or undefined. The read timer is the named `wake`
+   and the return to idle lasts fastTimeout, so the hold's own 250 ms is enough
+   to tell it apart. */
+function windowOf(result) {
+  return result.timeouts.filter((t) => !t.cancelled && !t.done && t.ms === 250).pop();
+}
+
+function lightValueOf(result) {
+  const uuid = Object.keys(result.characteristics).find((u) =>
+    u.toUpperCase().startsWith("2FAA0001")
+  );
+  return Array.from(result.characteristics[uuid].value);
+}
+
+test("ten presses of a button rebuild the packet once, not ten times", () => {
+  /* @enaon got an nRF52 to hold a connection no central had any more by
+   * pressing the buttons on his lamp rapidly, with LOW_MEMORY set and 363
+   * collections counted. changed() is documented to be called from a watch
+   * handler and it was the most expensive thing in the module: a get() and a
+   * seal() per readable entry, then a packet rebuilt and re-sealed, each press
+   * stacking another one on a thread already behind. */
+  const result = run(load("single-light-standalone.js"));
+  localLight(result);
+
+  for (let i = 0; i < 10; i++) result.context.bw.changed();
+  assert.equal(result.advertised.length, 0, "nothing published while the presses arrive");
+
+  const held = windowOf(result);
+  assert.equal(held.ms, 250, "one window armed, for the hold");
+  held.fn();
+
+  assert.equal(result.advertised.length, 1, "one rebuild for the whole burst");
+});
+
+test("what the burst publishes is where it left the lamp, not where it started", () => {
+  /* Which is why the window ends in the work rather than beginning with it: a
+   * leading edge would publish the first press and drop the nine that followed,
+   * leaving the receiver told to re-read a value that had moved again since. */
+  const result = run(load("single-light-standalone.js"));
+  const lamp = localLight(result);
+
+  lamp.on = true;
+  result.context.bw.changed();
+  lamp.on = false;
+  result.context.bw.changed();
+  lamp.on = true;
+  result.context.bw.changed();
+  windowOf(result).fn();
+
+  assert.deepEqual(lightValueOf(result), [0x1e, 1], "the value read at the end of the window");
+});
+
+test("the settings revision moves once per burst, and keeps moving", () => {
+  /* A rate limit, not a debounce. The window is never extended, so a knob being
+   * turned for a minute publishes four times a second rather than nothing at
+   * all -- and each window is a revision a receiver can notice (S3.2). */
+  const result = run(load("single-light-standalone.js"));
+  localLight(result);
+
+  const revisionOf = (sd) => sd[sd.indexOf(0x65) + 1];
+  result.context.bw.changed();
+  result.context.bw.changed();
+  windowOf(result).fn();
+  const first = revisionOf(result.advertised[0]);
+
+  result.context.bw.changed();
+  const second = windowOf(result);
+  assert.notEqual(second, undefined, "a call after the window arms the next one");
+  second.fn();
+
+  assert.equal(result.advertised.length, 2, "one advertisement per window");
+  assert.equal(revisionOf(result.advertised[1]), (first + 1) & 255, "one bump per window");
+});
+
+test("a sketch with nothing to re-read hears about it where it called", () => {
+  /* From its own stack, not from the timer a quarter of a second later: a
+   * device whose writable entries are all write-only has a bug in its sketch,
+   * and the line that says so is worth more than an onError. */
+  const result = run(load("single-light-standalone.js"));
+  result.context.bw.setup({
+    advertise: [{ type: "light", set: () => {} }],
+    interval: 1000,
+  });
+
+  assert.throws(() => result.context.bw.changed(), { code: "not_readable" });
+});
+
+test("setup() disarms a change window the device no longer owns", () => {
+  /* Like the read timer and the return to idle before it: `st` is rebuilt by
+   * every setup() call, and a device being developed on is a device whose
+   * setup() runs again and again (D-088). */
+  const result = run(load("single-light-standalone.js"));
+  localLight(result);
+
+  result.context.bw.changed();
+  const held = windowOf(result);
+  localLight(result);
+
+  assert.equal(windowOf(result), undefined, "no window left armed");
+  assert.doesNotThrow(() => held.fn(), "and the spent one is harmless");
+});
+
+test("a packet the radio refuses does not end the device's windows for good", () => {
+  /* publishChange() clears the handle before it publishes. Clearing it after
+   * would leave a device that had thrown once unable ever to arm another
+   * window: its knobs would move and no receiver would be told again. */
+  const seen = [];
+  const result = run(load("single-light-standalone.js"));
+  const lamp = { on: false };
+  result.context.bw.setup({
+    advertise: [{ type: "light", get: () => lamp.on, set: (v) => (lamp.on = v) }],
+    interval: 1000,
+    onError: (e) => seen.push(e.code),
+  });
+
+  result.refuse((payload) => payload.length > 4);
+  result.context.bw.changed();
+  windowOf(result).fn();
+  assert.deepEqual(seen, ["advertising_rejected"], "reported, and not thrown out of a timer");
+
+  result.refuse(null);
+  result.context.bw.changed();
+  assert.notEqual(windowOf(result), undefined, "and another window can still be armed");
+});

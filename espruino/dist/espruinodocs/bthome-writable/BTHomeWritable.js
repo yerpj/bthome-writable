@@ -234,6 +234,8 @@ let listening = false; // whether NRF connect/disconnect handlers are attached
 
 const READ_SLACK = 100; /* ms added to every scheduled read (D-109). */
 
+const CHANGE_HOLD = 250; /* ms that a burst of changed() calls is folded into (D-124). */
+
 const CTR_FILE = ".bwctr"; // the persisted counter high-water marks
 const CTR_STRIDE = 64; // persist every this many accepted writes, not each one
 const CTR_WINDOW = 0x80000000; /* how far ahead a write counter may jump (S5.3). */
@@ -578,6 +580,8 @@ function setup(opts) {
 
     timer : undefined,
     fastTimer : undefined,
+
+    changeTimer : undefined,
     advInterval : iv,
 
     lastSd : null
@@ -586,6 +590,7 @@ function setup(opts) {
   if (st) {
     if (st.timer !== undefined) clearTimeout(st.timer);
     if (st.fastTimer !== undefined) clearTimeout(st.fastTimer);
+    if (st.changeTimer !== undefined) clearTimeout(st.changeTimer);
   }
   st = next;
   /* Claim the stride now rather than when the counter reaches it. */
@@ -634,13 +639,22 @@ function update() {
   schedule();
 }
 
-/* A writable value changed without a write - a knob, a button, a schedule. */
-function changed() {
-  if (!st.plan.settingsRevision) throw err("not_readable", "no writable entry has get(); nothing for a receiver to re-read");
+/* What the end of a burst of changed() calls does (D-124). */
+function publishChange() {
+
+  st.changeTimer = undefined;
   st.revision = (st.revision + 1) & 255;
   st.plan.writable.forEach(w => { if (w.readable) publishRead(w); });
   refreshAdvertising();
   schedule();
+}
+
+/* A writable value changed without a write - a knob, a button, a schedule. */
+function changed() {
+
+  if (!st.plan.settingsRevision) throw err("not_readable", "no writable entry has get(); nothing for a receiver to re-read");
+  if (st.changeTimer !== undefined) return;
+  st.changeTimer = setTimeout(() => guarded(publishChange), CHANGE_HOLD);
 }
 
 /* Change the advertising interval without re-running setup(). */

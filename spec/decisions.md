@@ -7767,3 +7767,118 @@ comparing the two rather than recorded; and a `get()` that throws during
 because the line that reads the initial value sits outside the `try/finally`
 that D-114 put there for exactly this. Both were reproduced. Both change
 behaviour in the case they fix, so both are the owner's.
+
+---
+
+## D-124 -- a burst of `changed()` calls is one rebuild, not one each
+
+**2026-10-22, branch `candidate/enaon-retest`.** @enaon retested the branch and
+closed the first of his three faults: the wrong reads did not come back. He had
+been changing the configuration and adding and removing entities just before
+they appeared, and his verdict is that the cached GATT table of D-116 plus the
+module's own "worth knowing" account for all 43 of them. D-118's fix is
+confirmed on a device that is not ours.
+
+Then he produced something better than the fault we could not reproduce. He got
+the Bluetooth stack stuck **by pressing the buttons on his lamp rapidly**, and
+this time the device said what state it was in:
+
+```
+NRF.getSecurityStatus().connected
+=true
+```
+
+with no connection open from Home Assistant, which was failing every attempt:
+
+```
+Failed to connect after 3 or 4 attempt(s): TimeoutError
+Failed to connect after 4 attempt(s): [org.bluez.Error.InProgress] In Progress
+```
+
+`E.getErrorFlags()` came back `[ "LOW_MEMORY" ]`, and `process.memory()` showed
+`free: 8523` of `total: 13000` with `gc: 363` collections counted. The adapter
+was serving his other lamps at the same time, so the phantom connection was the
+device's. `NRF.disconnect()` typed on its console put everything back.
+
+That is fault 2, with a trigger, and fault 3 follows from it: these boards serve
+one central at a time, so a connection the device still believes in locks its
+receiver out, and BlueZ's `InProgress` is what that looks like from the Pi.
+
+### Why it is ours
+
+`changed()` is documented to be called from a `setWatch` handler -- the button
+example on the module's own page does exactly that -- and it was the most
+expensive thing in the module. Per call: a `get()` and an AES-CCM `seal()` for
+every readable writable entry, a `NRF.updateServices()` for each, then a whole
+packet rendered and re-sealed and handed to `NRF.setAdvertising`. 26 to 38 ms of
+the one thread, measured in D-106, and the allocation behind 363 collections.
+Ten presses in a second stacked ten of those on a thread already behind.
+
+The chain from there to a phantom connection is plausible and not proven: we
+have `LOW_MEMORY` set, a soft device being reconfigured from a saturated thread,
+and a connection state left wrong. What is certain is that the module let a
+user-facing callback drive its heaviest path at whatever rate a finger can
+manage, and that @enaon had already wrapped `setTimeout(() => bw.changed(), 250)`
+around his own calls and then written a rate limiter of his own. He concluded
+"it is not really a problem with the module". It is: a module whose documented
+usage needs the caller to protect it is the one with the defect.
+
+### What it does now
+
+`CHANGE_HOLD = 250` ms. A call arms the window and returns; calls arriving
+inside it are dropped; the window ends in `publishChange()`, which does what
+`changed()` used to do, once.
+
+- **Trailing, not leading.** The values are read when the window ends, so what a
+  receiver is told to re-read is where the burst left the device. A leading edge
+  would publish the first press and drop the nine after it.
+- **A rate limit, not a debounce.** The window is never extended, so a knob held
+  for a minute publishes four times a second rather than nothing at all.
+- **The throw stays on the caller's stack.** `not_readable` means the sketch has
+  a bug, and the line that says so is worth more than an `onError` a quarter of
+  a second later.
+- **The handle is cleared before the work.** Clearing it after would leave a
+  device whose packet was once refused unable to arm another window for good.
+- `setup()` disarms a pending window, like the read timer and the return to idle
+  before it (D-088).
+
+250 ms because it is the number @enaon had already chosen, and because the
+receiver is slower than that anyway: 832 ms median from write to read-back on
+this bench (`docs/measurements.md` S13). At `CHANGE_HOLD = 0` the work still
+defers to the next turn of the event loop, which is the part that keeps a watch
+handler out of the radio.
+
+Nothing in §3.2 moves. It requires the revision to change "whenever any writable
+value changes other than by a write" and says nothing about when; one bump after
+N changes still sends the receiver to read every characteristic, which is the
+whole of what it would have learned from N bumps.
+
+### Cost, and what paid for it
+
+**24 227 to 24 659 bytes published**, so 341 bytes of margin under the 25 000
+budget. It is D-123 that paid: `candidate/enaon-retest` was fast-forwarded onto
+`simplify/espruino-module` first, because the 61 bytes the branch had left were
+not enough to hold the fix. The margin D-123 earned was spent on the next
+defect, which is what it was for. 285 node tests pass, 6 of them new, and 5 of
+the 6 fail on the module as it was.
+
+### Still open  [DECISION]
+
+1. **`CHANGE_HOLD = 250`.** Ours by default; the owner's if a slower window is
+   wanted for a sealed device on a coin cell, or a faster one for a knob.
+2. **Should §3.2 say a device MAY coalesce?** A non-normative sentence would
+   save the next implementer from discovering this the way we did, and it is a
+   spec edit, so it is the owner's and Gordon's.
+3. **Worth reporting upstream:** a soft device that keeps `connected === true`
+   after its central is gone, reachable from a saturated thread under
+   `LOW_MEMORY`. That is Espruino's, not ours, and @enaon has the reproduction.
+
+### Of the five requests, what came back
+
+Answered: `E.getErrorFlags()` and `process.memory()`, and the stuck state's own
+diagnosis, which is better than the advertising-counter check that was asked
+for. Outstanding: whether removing and re-adding the device restarted the write
+counter cleanly, which version of `ew_m_btHwr` he is running, and the retest
+without his own `setTimeout` -- he replaced it with a rate limiter rather than
+removing it, so the receiver-side proof is still missing. The limiter is now
+redundant, and that is the thing to tell him.
