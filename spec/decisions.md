@@ -7932,3 +7932,36 @@ puck carries this branch's module in flash where the nano still carries the one
 before D-123, because this host cannot open a GATT connection to the nano and
 `espruino_deploy` needs one; and the ESP32 proxy and the OLED automation, which
 an earlier campaign had left disabled, are back on.
+
+### Ruled, 2026-10-22
+
+**250 ms stands**, and §3.2 now says so. Of the three questions above, the first
+two are settled by the owner: the number is kept, and the specification states
+that a device MAY group changes that happen close together into one change of
+`0x65`, provided the revision has changed once the last of them is in effect and
+the readable characteristics then return the values it settled on. That is a
+clarification of the existing requirement rather than a new one -- §3.2 already
+asked that the revision end up changed, not that it change once per change -- but
+it is a permission a device implementer needs in writing, since without it the
+obvious reading is one bump per change and the obvious reading is what cost
+@enaon his afternoon. `PROTOCOL.md` moves to **2.0-draft.8**, with `README.md`
+and both generators; the fixtures and the vectors are regenerated and differ in
+nothing but that string.
+
+The reasons the number is 250 and not something else, recorded where the
+constant lives: it is what @enaon had already wrapped around his own calls; it
+is an order of magnitude inside the receiver's own cycle, 832 ms median from
+write to read-back (§13), so the notice it delays is not notice anyone was
+waiting on; and a local change still appears in a receiver at once rather than
+after a count of two, which a second-long window would cost.
+
+What 250 ms does **not** do, and the module now says so plainly: bound a
+sustained burst. A sealed rebuild is 375 ms, longer than the window, so a knob
+turned without pause still keeps the thread busy. It bounds the case that
+actually happens, a handful of presses, from 7.5 s of rebuilding to 1.1 s.
+
+Only the third question is still open: whether a soft device that keeps
+`connected === true` after its central is gone is worth reporting to Gordon.
+@enaon has the reproduction, and it is Espruino's, not ours.
+
+Still to tell @enaon: his own rate limiter is now redundant.

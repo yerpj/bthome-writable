@@ -234,7 +234,7 @@ let listening = false; // whether NRF connect/disconnect handlers are attached
 
 const READ_SLACK = 100; /* ms added to every scheduled read (D-109). */
 
-const CHANGE_HOLD = 250; /* ms that a burst of changed() calls is folded into (D-124). */
+const CHANGE_HOLD = 250; /* ms that a burst of changed() calls is folded into: four announcements a second at most, a quarter of a second of notice at worst (S3.2, D-124). */
 
 const CTR_FILE = ".bwctr"; // the persisted counter high-water marks
 const CTR_STRIDE = 64; // persist every this many accepted writes, not each one

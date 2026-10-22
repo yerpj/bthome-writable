@@ -390,7 +390,7 @@ const READ_SLACK = 100; /* ms added to every scheduled read (D-109).
 
    @gfwilliams' number. See schedule(): it buys a wake that finds work. */
 
-const CHANGE_HOLD = 250; /* ms that a burst of changed() calls is folded into (D-124).
+const CHANGE_HOLD = 250; /* ms that a burst of changed() calls is folded into: four announcements a second at most, a quarter of a second of notice at worst (S3.2, D-124).
 
    What a burst is: changed() is documented to be called from a button handler,
    which is exactly where one arrives, and it does the most expensive thing in
@@ -413,11 +413,17 @@ const CHANGE_HOLD = 250; /* ms that a burst of changed() calls is folded into (D
    extended -- because a knob held for a minute has to publish four times a
    second rather than nothing at all.
 
-   250 ms is ours by default and the owner's to move  [DECISION]: slower suits
-   a sealed device on a coin cell, faster suits a knob. It is what @enaon had
-   already wrapped around his own calls
-   before we got here, and because a receiver is slower than that anyway: 832
-   ms median from write to read-back on this bench (docs/measurements.md S13).
+   250 ms, ruled by the owner on 2026-10-22 and written into S3.2 with it. It
+   is what @enaon had already wrapped around his own calls before we got here;
+   it is far inside the receiver's own cycle, 832 ms median from write to
+   read-back on this bench (docs/measurements.md S13), so the notice it delays
+   is not notice anyone was waiting on; and a local change still shows up in a
+   receiver immediately rather than after a count of two, which a second-long
+   window would cost. What it does not do is bound a *sustained* burst: a
+   sealed rebuild is 375 ms, longer than the window itself, so a knob turned
+   without pause still keeps the thread busy. That case is the one this does not
+   claim to fix, and it is why the number is a constant.
+
    0 defers to the next turn of the event loop, which is the part that keeps a
    watch handler out of the radio and keeps nothing else. */
 

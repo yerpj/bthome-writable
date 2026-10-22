@@ -45,11 +45,6 @@ STILL_OPEN = {
     "custom_components/bthome_writable/const.py": 4,
     # The markers' own definition, and the task line that explains them.
     "SPEC-WORKING-DOCUMENT.md": 2,
-    # One: how long a burst of changed() calls is folded into. Named in the
-    # module because that is where the number lives, and on a comment line the
-    # generator drops, so the published copy carries no marker of ours. The
-    # folding itself is settled (D-124); what it may be tuned to is not.
-    "espruino/BTHomeWritable.js": 1,
 }
 """How many bare markers each file may still carry, and why, above."""
 

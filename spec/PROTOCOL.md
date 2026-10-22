@@ -1,6 +1,6 @@
 # BTHome Writable — protocol specification
 
-**Version:** 2.0-draft.7 · **Status:** DRAFT, nothing frozen · **License:** MIT
+**Version:** 2.0-draft.8 · **Status:** DRAFT, nothing frozen · **License:** MIT
 
 BTHome standardizes a BLE **uplink**: a device broadcasts its state in
 advertising, a receiver parses it. It has no **downlink**. This document
@@ -189,6 +189,24 @@ settings revision too, which triggers the same re-read.
 
 A device MUST NOT change `0x65` in response to a write it received: the receiver
 already knows that value.
+
+A device MAY **group** changes that happen close together into a single change of
+`0x65`, provided the revision has changed by the time the last of them is in
+effect and the readable characteristics then return the values it settled on.
+The requirement above is that the revision end up changed, not that it change
+once per change, and a receiver loses nothing either way: one change already
+sends it to read every writable characteristic.
+
+> **Why this is worth saying.** Announcing each change on its own means
+> rebuilding and re-sealing the whole advertising packet per change: 26 to 38 ms
+> of an nRF52's single thread, 375 ms on a device with a bindkey, driven from a
+> button handler that can fire ten times a second. The reference implementation
+> did exactly that, and twenty presses in one second cost it seven and a half
+> seconds of rebuilding; one device reached a state where it still held a
+> connection its receiver had let go, and its own code had to rate-limit the
+> call to stay usable. It now groups over **250 ms**, which bounds a receiver's
+> notice at a quarter of a second against a read cycle measured at 832 ms
+> (`decisions.md` D-124, `docs/measurements.md` §14).
 
 ---
 
