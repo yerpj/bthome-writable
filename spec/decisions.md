@@ -8150,3 +8150,25 @@ it off for a measurement and back on afterwards -- but with it on, every write
 to the nano fails every minute, which is a bench nobody can work on. Turning it
 back on, this morning, was a restoration done without checking what it
 restored.
+
+### Corrected the same day: it does not explain @enaon's fault 2
+
+He had already answered the question, twice, and the entry above was written
+without reading him properly. On **2026-10-06** he described his bench as "RPI4b
+with openwrt, latest HA image running on podman, **6 espHome proxies** and the
+local bluez BT", working "both using local BT and the proxies". On
+**2026-10-21**, asked about the proxies: "Not as a part of this issue, it is a
+strange one so **disabled all but the bluez adapter**."
+
+So the stuck state he reported on 2026-10-22 happened on `hci0` alone, with no
+proxy in the path, and this defect cannot be its cause. What his report says
+instead stands as D-124 and D-126 have it: the thread was saturated, and the
+last step to a stack that still believes it is connected is not reproduced here.
+
+What survives, and is worth more than the hypothesis it replaces: his 43 wrong
+reads **did** happen with six proxies enabled, and a user with six proxies and a
+local adapter is exactly who `_connectable_device()` has to choose well for. The
+evidence from this bench is unaffected -- 92 failed writes in 90 minutes, 105 of
+162 choices to a source that hears the device 25 dB better and cannot reach it --
+and so are the three questions. The claim that it explained anything of his is
+withdrawn.
