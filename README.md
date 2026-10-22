@@ -80,6 +80,9 @@ version: installing without HACS, and what to do when a control misbehaves.
 - [`spec/PROTOCOL.md`](spec/PROTOCOL.md) — the protocol. Normative.
 - [`spec/decisions.md`](spec/decisions.md) — every resolved question, with the
   measurement or the ruling that resolved it.
+- [`CHANGELOG.md`](CHANGELOG.md) and
+  [`spec/CHANGELOG.md`](spec/CHANGELOG.md) — what changed in the two
+  implementations, and what changed in the protocol, by draft number.
 - [`spec/PLATFORMS.md`](spec/PLATFORMS.md) — how a BTHome object becomes a Home
   Assistant entity, and which ones are deliberately not exposed.
 
@@ -109,7 +112,7 @@ in the encryption path.
 
 | Directory | Contents |
 |---|---|
-| `spec/` | `PROTOCOL.md` (normative), `PLATFORMS.md`, `decisions.md`, advertising fixtures |
+| `spec/` | `PROTOCOL.md` (normative), `PLATFORMS.md`, `decisions.md`, `CHANGELOG.md`, advertising fixtures |
 | `custom_components/` | the Home Assistant integration itself — at the root so HACS installs straight from GitHub |
 | `ha/` | its test suite, harness and hardware-test procedure |
 | `espruino/` | the Espruino JS module + pure-JS unit tests |

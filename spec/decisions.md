@@ -7965,3 +7965,61 @@ Only the third question is still open: whether a soft device that keeps
 @enaon has the reproduction, and it is Espruino's, not ours.
 
 Still to tell @enaon: his own rate limiter is now redundant.
+
+---
+
+## D-125 -- two changelogs, and a guard so they are kept
+
+**2026-10-22, ruled by the owner.** Minor changes to `PROTOCOL.md` no longer
+need to wait for a round with Gordon: at this stage the draft number itself
+announces them. What they do need is a record, "selon les bonnes pratiques
+logicielles", and the project had none.
+
+Two files, because there are two version axes and conflating them would make
+both useless:
+
+- **`spec/CHANGELOG.md`**, one entry per `2.0-draft.N`, newest first, each
+  naming the sections touched and the decision behind them. Reconstructed from
+  the git history of `PROTOCOL.md` rather than from memory, which is how the two
+  gaps below were found.
+- **`CHANGELOG.md`** at the root, [Keep a Changelog](https://keepachangelog.com)
+  with Added / Changed / Fixed, covering the Home Assistant integration
+  (versioned in `manifest.json`, tagged `v0.1.0` on 2026-10-14) and the Espruino
+  module, which EspruinoDocs serves by name and which therefore has no version
+  of its own: it rides the repository's. Everything since the tag is under
+  `[Unreleased]`, which is 55 commits.
+
+### What writing it down found
+
+**Two normative edits that never bumped the draft number.** §4.1's per-device
+entry numbering (D-103) and §2.1's corrected entry count (D-105) were written on
+2026-10-15 while the document went on claiming `2.0-draft.7`. They are recorded
+under draft.8, which is the first number that carries them. D-074's "one
+receiver per device" and D-084's "one command per connection" did the same
+thing earlier, inside the drafts that shipped them.
+
+So the failure the owner's rule guards against was already here, twice, and
+invisible both times. Which is the argument for the guard rather than for the
+file.
+
+### The guard
+
+`tools/tests/test_changelog.py`, four checks:
+
+1. all **six** files that state the protocol version state the same one:
+   `PROTOCOL.md`, `README.md`, both generators, and the two generated JSON
+   contracts;
+2. the current version has an entry in `spec/CHANGELOG.md`;
+3. no draft number between 1 and the current one is missing from it;
+4. `manifest.json`'s version has an entry in `CHANGELOG.md`, which also has an
+   `[Unreleased]` section for work to land in as it happens.
+
+Check 1 is the one with history: `gen_test_vectors.py` once wrote
+`spec_version: 2.0-draft.6` into the shared contract while emitting a
+declaration without the length byte §2.1 had gained two commits earlier, and
+every test that opened the file passed because they all read the same wrong
+bytes (D-079). Verified to bite: bumping `PROTOCOL.md` to a draft.9 that nothing
+else knows about fails three of the four.
+
+Rule 9 in `CLAUDE.md` is the instruction that keeps it maintained, and the
+README points a reader at both files.

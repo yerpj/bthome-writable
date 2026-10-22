@@ -35,6 +35,7 @@ The project owner (JP, @yerpj on GitHub) drives the discussion with Gordon; you 
 
    The Espruino discussion is a different project under its own rules (D-091).
 8. **Test vectors are the contract.** `/test-vectors/test-vectors.json` (produced in T0.3) must be consumed by BOTH test suites; a change to it is a spec change (rule 2 applies).
+9. **Two changelogs, kept as you go.** `spec/CHANGELOG.md` records every change to `PROTOCOL.md` under the draft number that carries it; `CHANGELOG.md` records what the integration and the module did, under `[Unreleased]` until a tag. A change to the specification bumps its version in all six files that state it, adds its entry, and regenerates the fixtures and the vectors -- `tools/tests/test_changelog.py` fails on all three omissions. Minor changes to the specification are allowed at this stage (the owner, 2026-10-22); invisible ones are not.
 
 ## Repo layout (create in T0.1)
 
