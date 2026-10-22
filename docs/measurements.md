@@ -917,6 +917,72 @@ So a read back can adopt a value the device reports differently, and cannot
 distinguish a lost write from one not yet republished. D-122 has what follows
 from that.
 
+## 14. What folding a burst of `changed()` calls is worth
+
+**2026-10-22**, branch `candidate/enaon-retest`, nice!nano running
+`espruino/bench/many-writables.js` -- @enaon's three writable entries, all with
+a `get`, a battery advertised at five minutes, two PWM channels being
+reconfigured fifty times a second -- driven with `bench.loop(20, 50)`: twenty
+simulated button presses 50 ms apart, so 950 ms of pressing. The same board,
+the same sketch and the same burst on either side of D-124, with the module
+before it taken from the commit before the fix. `NRF.setAdvertising` was wrapped
+on the console to count publications.
+
+| 20 presses in 950 ms | before | after |
+|---|---|---|
+| `bw.changed()`, per call | **375 ms** (worst 397) | **2 ms** |
+| publications | **20** | **3** |
+| thread time in rebuilds | ~7.5 s | ~1.1 s |
+| the fade ran during the burst | no, `bri` stayed 0.00 | yes, `bri` moved |
+| error flags after | none | none |
+| free JsVars after | 8055 | 8013 |
+
+Seven and a half seconds of work for one second of presses is the finding. The
+thread was oversubscribed eight to one, which is why the application's own fade
+never got a step in edgeways: `bri` is still 0.00 twenty presses later. After the
+fold it is 3 publications for 20 presses, the call itself is arming a timer, and
+the fade runs.
+
+Three rather than the four a 250 ms window suggests, because each publication
+blocks for 375 ms and pushes the next window out behind it.
+
+`LOW_MEMORY` did not appear on this board either way. It has 12 000 JsVars and
+8 000 free at the worst of it, where @enaon's lamp reported `LOW_MEMORY` with
+13 000 and 363 collections counted; its console was also on USB here rather than
+on the BLE link. So the saturation reproduces and the exhaustion does not, which
+is honest to state: what the bench shows is the cause, not his whole chain.
+
+### Conformance, from outside the device
+
+The same burst with `SEALED = false`, watched from this host's adapter:
+
+```
+t= 0.47s  400001015365a5ff031e1e09  pid=1 rev=165
+t= 6.86s  400003015365a7ff031e1e09  pid=3 rev=167
+t= 7.55s  400004015365a8ff031e1e09  pid=4 rev=168
+```
+
+The settings revision advances by exactly one per window, 165 to 168 for three
+publications, the declaration is still last and the packet is still twelve
+bytes. One bump per window is all S3.2 asks for: that the revision change when a
+value moves by itself, not how often. A payload the scanner missed is a payload
+the next window replaced.
+
+Home Assistant, on the Pi's own adapter, re-read the device once per window:
+
+```
+14:08:39  entry 1: read object 0x1E | entry 2: read object 0x1E | entry 3: read object 0x09
+14:08:51  entry 1: read object 0x1E | entry 2: read object 0x1E | entry 3: read object 0x09
+14:08:58  entry 1: read object 0x1E | entry 2: read object 0x1E | entry 3: read object 0x09
+```
+
+Every entry read as the object it declares, through a burst that would have been
+twenty rebuilds before. The run also caught, benignly,
+`[org.bluez.Error.InProgress]` inside `async_clear_service_cache` while two
+connection attempts overlapped: the same BlueZ error @enaon reported, recovered
+here by D-118's own path, which dropped the cached table and read the device
+again.
+
 ## Reproducing any of this
 
 Most of the tools above take `--address`; `tools.regression` and

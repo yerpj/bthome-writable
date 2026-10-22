@@ -7882,3 +7882,53 @@ counter cleanly, which version of `ew_m_btHwr` he is running, and the retest
 without his own `setTimeout` -- he replaced it with a rate limiter rather than
 removing it, so the receiver-side proof is still missing. The limiter is now
 redundant, and that is the thing to tell him.
+
+### Verified on hardware, 2026-10-22
+
+The nice!nano, @enaon's sketch, `bench.loop(20, 50)`, with `NRF.setAdvertising`
+wrapped on the console to count publications. The module from the commit before
+the fix, then this one, on the same board in the same session:
+
+| 20 presses in 950 ms | before | after |
+|---|---|---|
+| `bw.changed()` per call | **375 ms** (worst 397) | **2 ms** |
+| publications | **20** | **3** |
+| the application's own fade | never got a step in, `bri` 0.00 | ran, `bri` moved |
+| error flags, free JsVars | none, 8055 | none, 8013 |
+
+Seven and a half seconds of rebuilding for one second of pressing: the thread
+was oversubscribed eight to one, which is the defect, measured. `LOW_MEMORY`
+did not appear on this board either way -- 8 000 JsVars free at the worst of it,
+against @enaon's lamp reporting it with 13 000 and 363 collections, and our
+console on USB rather than on the BLE link. The saturation reproduces; his
+exhaustion does not. The bench shows the cause, not his whole chain.
+
+Conformance, watched from outside: with `SEALED = false` the settings revision
+advanced by exactly one per window, 165 to 168 for three publications, the
+declaration still last and the packet still twelve bytes. Home Assistant came
+and re-read once per window, three times, every entry as the object it declares
+(`entry 1: read object 0x1E`, `entry 2: 0x1E`, `entry 3: 0x09`). No wrong read
+through a burst that would have been twenty rebuilds. The run also caught
+`[org.bluez.Error.InProgress]` inside `async_clear_service_cache` while two
+connection attempts overlapped -- @enaon's own BlueZ error, recovered here by
+D-118's path, which dropped the cached table and read the device again.
+
+Then the puck, nRF52832 rather than nRF52840, deployed with this module in
+flash and its usual `light-loop` app, through `tools.regression --device puck`:
+24 commands, all delivered, none retried, against the baseline of 2026-10-20.
+
+```
+ok  first command, median              baseline 3.222   now 3.036
+ok  repeated command, median           baseline 0.328   now 0.371
+ok  the write itself, median ms        baseline 35.800  now 36.000
+ok  delivered / connected without a retry        1.000  now 1.000
+```
+
+`no regression`, which is the whole of what the guard says. The write path is
+untouched by this change and now measured to be.
+
+The bench was left as it was found with two exceptions, both deliberate: the
+puck carries this branch's module in flash where the nano still carries the one
+before D-123, because this host cannot open a GATT connection to the nano and
+`espruino_deploy` needs one; and the ESP32 proxy and the OLED automation, which
+an earlier campaign had left disabled, are back on.
