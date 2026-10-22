@@ -24,6 +24,14 @@ log, because the symptom is a receiver-side one.
     .venv-ha/Scripts/python.exe -m tools.repro_changed_race --sealed --defer 250
     python -m tools.bench_lock release
 
+D-124 has overtaken one of these knobs. The module now folds a burst of
+`bw.changed()` calls into one rebuild 250 ms after the first, so `--defer` and
+the default are the same experiment, and the `changed() took` line below times
+the arming of that window rather than a rebuild. What the script still does is
+drive presses against a busy board and read Home Assistant's verdict; to
+measure a burst again, count the calls reaching `NRF.setAdvertising` on the
+device instead of timing the call.
+
 The conditions are the point. `--plain` takes AES-CCM out of it entirely: if the
 symptom appears there, the forwarded diagnosis is wrong and the cause is the
 four GATT updates, not the 300 ms of cipher. `--defer 250` is his workaround, so

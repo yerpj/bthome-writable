@@ -175,6 +175,15 @@ function fadeTo(target) {
   }, FADE_STEP_MS);
 }
 
+/* What a press costs, which since D-124 is no longer what changed() costs.
+ *
+ * The module folds a burst of changed() calls into one rebuild 250 ms after the
+ * first of them, so the call measured here returns in microseconds and the
+ * number below is the cost of arming that window, not of a rebuild. The
+ * rebuild itself is 26 to 38 ms (D-106) and a sealed one 371 (D-122), and it
+ * now happens at most four times a second however fast the presses come. To
+ * measure a burst again, count the calls that reach NRF.setAdvertising.
+ */
 function announce() {
   var started = getTime() * 1000;
   try {
@@ -211,8 +220,9 @@ function press() {
 
 /* A dimmer that never stops, which is the load a lamp in use actually applies.
  *
- * A fade triggered by a press is over in 160 ms, and `bw.changed()` is 371 ms
- * of synchronous work, so on a single thread the fade simply waits its turn:
+ * A fade triggered by a press is over in 160 ms, and `bw.changed()` was 371 ms
+ * of synchronous work when this was written -- it is now one rebuild per 250 ms
+ * window (D-124) -- so on a single thread the fade simply waited its turn:
  * nothing of the application runs *during* `changed()`, and the first version
  * of this file could not have reproduced an interleaving even in principle.
  * What can genuinely overlap is the hardware -- the PWM peripheral and the
