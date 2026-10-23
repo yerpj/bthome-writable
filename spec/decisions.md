@@ -8245,3 +8245,52 @@ the baseline, which is where the advertisement fell and not a gain to claim. The
 bench was left as found: the puck's LED written off and the illuminance back to
 74 lux on the air, the OLED automation on, the proxy entry disabled, the lock
 released.
+
+## D-128 -- the slow first command is the advertising interval, not Home Assistant
+
+**2026-10-23, asked by @enaon on espruino#8024**, after he had moved both sides
+of his bench to `candidate/enaon-retest` and found the rest of it good:
+
+> The first command I send over the the lights after a period of inactivity, say
+> 3-5 minutes, takes a lot of time in my case. I tested the hci0 alone, the
+> ESPproxy alone, and both. The first command can take anywhere from 5-10
+> seconds. The next command is fast in the lasted versions, maybe 1-3 sec. This
+> seems not light/Espruino BT sleep mode related [...] This looks like a HA
+> assistant thing to me, is this the case in your bench too?
+
+**Answered: yes, we see it, and it is neither Home Assistant's doing nor a
+defect.** §1 of `docs/measurements.md` measured it on 2026-09-20 across seven
+advertising intervals and 444 commands: a first command's cost is opening the
+link, 2.0 to 3.2 times the idle interval on the Puck and 1.9 to 4.2 times on the
+nice!nano, because a central scans with a duty cycle over three channels and
+several advertising events go by before one is caught. A following command is
+flat, 0.33 s and 0.40 s, because the device is still advertising fast.
+
+What §1 did not answer is the part his question turns on, since it shortened the
+fast window to 8 s to make a campaign of that size possible: whether waiting
+*minutes* costs more than waiting just past the window. Measured today with the
+real 30 s window, `docs/measurements.md` §16: five first commands at a 1000 ms
+interval, three after 40 s of inactivity and two after 300 s, all in the same
+0.7 to 3.4 s band with one of the two slowest from each group. **The minutes buy
+nothing. The fast window closing is the threshold**, and any inactivity past it
+pays the same wait.
+
+At a 3200 ms interval the first command ran 4.5 and 6.7 s on two of three
+samples, which is his 5 to 10 s. So his number says what his lights' idle
+interval is -- around 3 s -- and the dials are both the device's:
+`bw.setFastTimeout(ms)` and `bw.setAdvertisingInterval(ms)`, paid for in current
+(§5, §6).
+
+His own evidence already pointed away from the receiver, and it is worth saying
+why: he saw the same delay on `hci0` alone, on the proxy alone and on both. A
+Home Assistant effect would have to be present in all three paths and absent
+from the second command on each of them, which is the device's two-speed
+advertising and nothing else. His remaining doubt -- a command to a *different*
+light arriving fast right afterwards -- is explained the same way if that light
+was inside its own fast window, which a command to it a minute earlier would
+have opened; he flagged that observation as unverified himself.
+
+Nothing follows for the protocol or either implementation. Eight samples settle
+no distribution, and the spread of a first command is wide by nature (D-060);
+what the run establishes is the absence of a minutes-long effect on top of a
+mechanism §1 had already measured properly.

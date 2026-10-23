@@ -1042,6 +1042,59 @@ adapter with every proxy disabled. What it does expose is upstream's: a path
 that connects and then lets a GATT operation time out costs that source nothing
 in the next choice.
 
+## 16. The slow first command, and what actually gates it
+
+**2026-10-23, the Puck, through Home Assistant on `hci0` alone.** @enaon asked
+whether his bench's behaviour is ours: his first command to a light after three
+to five minutes of inactivity takes 5 to 10 s, the next one 1 to 3 s, and he
+sees it on his local adapter alone, on an ESP32 proxy alone and on both. He
+reads it as a Home Assistant effect.
+
+§1 already measured the mechanism across seven advertising intervals, with the
+fast window shortened to 8 s so that a campaign of 444 commands could be run at
+all. What it did not answer is the part his question turns on: whether waiting
+*minutes* costs more than waiting just past the window. So three runs, this time
+with the module's real 30 s window.
+
+```
+python -m tools.latency_sweep_write --device puck --fast-timeout 30000     --intervals 1000 --idle 40  --first-reps 3 --burst 3
+python -m tools.latency_sweep_write --device puck --fast-timeout 30000     --intervals 1000 --idle 300 --first-reps 2 --burst 2
+python -m tools.latency_sweep_write --device puck --fast-timeout 30000     --intervals 3200 --idle 40  --first-reps 3 --burst 3
+```
+
+| Interval | Idle before the command | First command | Following |
+|---|---|---|---|
+| 1000 ms | 40 s | 0.72, 1.90, 3.39 s | 0.28, 0.79, 1.09 s |
+| 1000 ms | 300 s | 3.39, 1.18 s | 0.29, 0.91 s |
+| 3200 ms | 40 s | 0.47, 6.71, 4.51 s | 0.28, 0.77, 0.30 s |
+
+**The minutes buy nothing.** Five first commands at a 1000 ms interval, three
+taken 40 s after the last connection and two taken 300 s after it, all fall in
+the same 0.7 to 3.4 s band, and the two slowest of the five are one from each
+group. Eight samples settle no distribution, and the spread of a first command
+is wide by nature (D-060) -- but if waiting five minutes cost something the
+fast window does not, it would have to hide inside a band that a 40 s wait fills
+just as well. What gates the slow first command is the fast window closing,
+30 s by default, after which the device is back on its idle interval. Any
+inactivity past that buys the same wait.
+
+**And the interval is the dial.** At 3200 ms the first command runs 4.5 to 6.7 s
+on two of three samples, which is @enaon's 5 to 10 s; at 1000 ms it is about a
+third of that. Every sample's cost is the connection: `0.00 s queued` on all
+eight, 23 to 65 ms of write, and everything else inside
+`establish_connection` waiting for the central to catch an advertising event.
+That is §1's finding again, 2 to 3 events on this bench, and it says what his
+numbers mean: a device whose idle interval is around 3 s.
+
+**A following command is flat**, 0.28 to 1.09 s at either interval, because the
+device is still inside its fast window. Those are the two sides of the same
+mechanism, not two different problems.
+
+So: not Home Assistant's doing, and not a defect. The dials are the device's,
+both in the module: `bw.setFastTimeout(ms)` keeps it fast longer after a
+connection, and `bw.setAdvertisingInterval(ms)` lowers the idle interval. Both
+are paid for in current, which §5 and §6 price.
+
 ## Reproducing any of this
 
 Most of the tools above take `--address`; `tools.regression` and
