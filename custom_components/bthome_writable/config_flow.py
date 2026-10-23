@@ -15,13 +15,23 @@ from habluetooth import BluetoothServiceInfoBleak
 from homeassistant.components.bluetooth import async_discovered_service_info
 from homeassistant.config_entries import (
     SOURCE_REAUTH,
+    ConfigEntry,
     ConfigFlow,
     ConfigFlowResult,
+    OptionsFlow,
 )
 from homeassistant.const import CONF_ADDRESS
+from homeassistant.core import callback
 import voluptuous as vol
 
-from .const import BTHOME_SERVICE_UUID, CONF_BINDKEY, DOMAIN, REAUTH_SERVICE_INFO
+from .const import (
+    BTHOME_SERVICE_UUID,
+    CONF_BINDKEY,
+    CONF_MAX_CONNECTIONS,
+    DEFAULT_MAX_CONNECTIONS,
+    DOMAIN,
+    REAUTH_SERVICE_INFO,
+)
 from .protocol import (
     Declaration,
     ProtocolError,
@@ -30,11 +40,19 @@ from .protocol import (
     objects_at,
     parse_declaration,
 )
+from .slots import connection_slots
 
 _LOGGER = logging.getLogger(__name__)
 
 BINDKEY_LENGTH = 32
 """A BTHome bindkey as the user meets it: 32 hex characters, 16 bytes."""
+
+MAX_CONNECTIONS_CEILING = 8
+"""The highest cap the form will take.
+
+Not a protocol limit and not the host's: a single ESPHome proxy offers three
+slots, so this is already a host with several of them, and past that the
+adapter's own limit is the one that will answer first (D-132)."""
 
 
 def service_data(service_info: BluetoothServiceInfoBleak) -> bytes | None:
@@ -92,6 +110,12 @@ class BTHomeWritableConfigFlow(ConfigFlow, domain=DOMAIN):
     """Discover and confirm a writable BTHome device."""
 
     VERSION = 1
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(entry: ConfigEntry) -> BTHomeWritableOptionsFlow:
+        """The one thing worth asking after setup: the connection cap."""
+        return BTHomeWritableOptionsFlow()
 
     def __init__(self) -> None:
         self._discovery: BluetoothServiceInfoBleak | None = None
@@ -387,4 +411,43 @@ class BTHomeWritableConfigFlow(ConfigFlow, domain=DOMAIN):
                     )
                 }
             ),
+        )
+
+
+class BTHomeWritableOptionsFlow(OptionsFlow):
+    """How many connections this host can afford at once (D-003).
+
+    Zero configuration still stands (CLAUDE.md rule 4): the value has a working
+    default and nobody is asked for it. The form is for the two hosts the
+    default is wrong for -- one with several adapters or proxies, which can
+    afford more, and one whose single adapter is busy with other integrations,
+    which can afford less.
+    """
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Show the cap, and take a new one."""
+        if user_input is not None:
+            return self.async_create_entry(data=user_input)
+
+        asked = self.config_entry.options.get(
+            CONF_MAX_CONNECTIONS, DEFAULT_MAX_CONNECTIONS
+        )
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_MAX_CONNECTIONS, default=asked): vol.All(
+                        vol.Coerce(int), vol.Range(min=1, max=MAX_CONNECTIONS_CEILING)
+                    )
+                }
+            ),
+            description_placeholders={
+                # What the host is actually enforcing, which is the lowest value
+                # any configured device asks for and so not necessarily this
+                # device's own (D-132).
+                "effective": str(connection_slots().limit),
+                "ceiling": str(MAX_CONNECTIONS_CEILING),
+            },
         )

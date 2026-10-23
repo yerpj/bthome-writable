@@ -123,6 +123,8 @@ options flow". There is no options flow: `async_setup_entry` reads
 cap is effectively fixed at 2. Adding the flow is on the Home Assistant
 quality-scale list rather than here.
 
+**Done 2026-10-23, and the cap had to be repaired first: D-132.**
+
 A typical ESPHome Bluetooth proxy offers three connection slots; capping at two
 leaves room for an Espruino UART/Web-IDE session (the coexistence rule of §5).
 Made configurable for setups with several adapters or proxies. Zero-config is
@@ -8537,3 +8539,66 @@ write path's error are for. And it does not touch the host cap, which keeps its
 own job -- but it does remove the reason that cap could not be raised, since the
 device's constraint is now expressed where it belongs (D-003's own list of
 `[DECISION]` steps: per-device exclusion first, then the cap exposed).
+
+---
+
+## D-132 — One gate for the host, and an option that can reach it
+
+**Status:** ruled and done 2026-10-23, on the owner's instruction, after D-131
+removed the reason the cap could not be touched.
+
+**The cap did not cap anything once two devices disagreed.** It lived in a
+`dict[int, asyncio.Semaphore]` keyed by the limit, one gate created per distinct
+value, so an entry asking for 2 and an entry asking for 3 opened five
+connections between them on a host that had been told three. The dictionary was
+harmless only because nothing could write `CONF_MAX_CONNECTIONS`: every entry
+read the same default and the dictionary never held a second key. D-003's own
+correction had already recorded that the option was unreachable. Exposing it is
+exactly what would have made the bug real, which is why the order was this one
+and not the other.
+
+**One gate, in `slots.py`.** A counting gate of our own, first in first out,
+with the host's requests registered against it by address and **the lowest
+request in force**. That rule is the one defensible reading of a value that
+answers a question about the host, how many connections its adapters and proxies
+can afford: every entry's form edits the same host-wide meaning, so entries are
+expected to agree, and when they do not, the most cautious of them means nothing
+a user set is ever exceeded. The failure modes decide it. A cap set too low
+costs a queue; a cap set too high costs a refused write, which is the owner's
+own order of preference (D-131). The form says which value is in force, so a
+user who lowers one device and sees nothing change can tell why.
+
+**Why not a semaphore.** `asyncio.Semaphore` cannot be resized, and the gate has
+to move while connections are open: the option then takes effect on the next
+command instead of at the next restart, without reloading the entry, without
+re-creating entities and without dropping a link. Raising the cap admits whoever
+is already queued; lowering it never interrupts a slot already held, because an
+open connection is already costing the adapter its slot and cutting it would
+only turn a user's command into a failure. The class also leaves room for the
+next step on D-003's list, a command going ahead of a background read, which a
+semaphore's FIFO queue has no way to express.
+
+**The options flow** is one integer field, 1 to 8, defaulting to what the entry
+asks for now. Zero-config stands (CLAUDE.md rule 4): nobody is prompted and the
+default works. It is for the two hosts the default is wrong for, one with
+several adapters or proxies that can afford more, and one whose single adapter
+is busy with other integrations and can afford less. Changing it fires the
+entry's update listener, which re-registers the request and resizes the gate.
+That listener deliberately does **not** reload: every update to the entry
+arrives there, including the declaration and the write counter this integration
+persists as it runs (D-069, D-063), so reloading from it would re-create every
+entity each time a counter was saved.
+
+**Tests.** `ha/tests/test_connection_cap.py`, nine of them: one gate whatever
+each entry asks, a withdrawn request lifting the cap back, admission up to the
+limit, a raise letting a waiter through, a lowering that drains instead of
+cutting, a cancelled waiter leaving no slot behind, a slot granted to a caller
+that vanishes being passed on, and the form itself saving a value that takes
+effect without a reload. The gate is module state on purpose, so the suite
+resets it around every test: a request left behind would cap the next test, and
+a gate waited on in one event loop cannot be waited on in another.
+
+**Still open on D-003's list:** the adaptive default from
+`bluetooth.async_scanner_count`, which changes behaviour for everybody and is
+the owner's to rule; commands ahead of background reads; and treating
+`BleakOutOfConnectionSlotsError` as a wait rather than a failure.

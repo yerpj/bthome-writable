@@ -20,6 +20,13 @@ Everything here is on `main` and in no release yet: the integration's
 
 ### Added
 
+- **The connection cap can be changed.** An options form on each device, one
+  field, for a host with several adapters or proxies that can afford more
+  simultaneous connections than the default two, or with a single adapter that
+  can afford fewer. Nobody is prompted and the default still works, so there is
+  still nothing to configure. A new value takes effect on the next command
+  rather than at the next restart, and no connection is dropped to apply it
+  (D-003, D-132).
 - A write to an entry the device can also report is read back and checked. A
   device that applies a write slowly, a fade or a ramp, is logged rather than
   called broken, because §4.3's getter is published and not served on demand
@@ -71,6 +78,13 @@ Everything here is on `main` and in no release yet: the integration's
 
 ### Fixed
 
+- **The connection cap stopped capping as soon as two devices disagreed about
+  it.** It was one semaphore per distinct limit, so a device set to two
+  connections and a device set to three opened five between them on a host that
+  had been told three. There is now one gate for the whole host, and the most
+  cautious value any device asks for is the one in force. Unreachable until now,
+  since nothing could change the limit, and the reason exposing it came second
+  (D-132).
 - **Two of this integration's own connections could arrive at one device at
   once.** An Espruino serves one central at a time; the connection cap protects
   the host's adapters and proxies, not a device. So a command and the state read

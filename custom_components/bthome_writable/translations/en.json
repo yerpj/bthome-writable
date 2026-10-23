@@ -43,6 +43,20 @@
       "decryption_failed": "The provided bindkey did not work, sensor data could not be decrypted. Please check it and try again."
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Connections",
+        "description": "How many devices Home Assistant may be connected to at once in order to write to them. A Bluetooth adapter and an ESPHome proxy each have a limited number of connection slots, and an Espruino device needs one left free for its USB or Web IDE session. This is a property of your host rather than of this device, so the setting is shared with every other writable BTHome device: when they disagree the lowest value is the one in force, which right now is {effective}. Raise it if you have several adapters or proxies and want more than that many devices written at the same time; lower it if commands fail because the adapter has no slot left.",
+        "data": {
+          "max_connections": "Simultaneous connections"
+        },
+        "data_description": {
+          "max_connections": "Between 1 and {ceiling}. The default of 2 suits a single adapter or a single proxy."
+        }
+      }
+    }
+  },
   "exceptions": {
     "write_failed": {
       "message": "{name} could not be reached: the command was not delivered. {error}"

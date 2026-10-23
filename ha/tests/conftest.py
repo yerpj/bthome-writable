@@ -81,6 +81,22 @@ def _no_dbus_history():
         yield
 
 
+@pytest.fixture(autouse=True)
+def one_host_cap_per_test():
+    """A fresh connection cap, before and after every test.
+
+    The gate of D-132 is module state, deliberately: it is the host's, not any
+    entry's. So a request a test leaves behind would cap the next one, and a
+    gate that has been waited on in one event loop cannot be waited on in the
+    next test's loop.
+    """
+    from custom_components.bthome_writable import slots
+
+    slots.reset()
+    yield
+    slots.reset()
+
+
 @pytest.fixture
 def custom_integration(enable_custom_integrations, enable_bluetooth):
     """Make `custom_components/` loadable, with a mock Bluetooth stack up.

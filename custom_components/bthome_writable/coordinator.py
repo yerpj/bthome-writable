@@ -59,20 +59,9 @@ from .protocol import (
     seal_write,
     trigger_based,
 )
+from .slots import register_request
 
 _LOGGER = logging.getLogger(__name__)
-
-# Shared across every configured device: the cap protects the Bluetooth
-# adapter's and the proxies' connection slots, which are a host resource, not a
-# per-device one (decisions.md D-003).
-_connection_slots: dict[int, asyncio.Semaphore] = {}
-
-
-def connection_semaphore(limit: int = DEFAULT_MAX_CONNECTIONS) -> asyncio.Semaphore:
-    """The process-wide connection cap, created on first use."""
-    if limit not in _connection_slots:
-        _connection_slots[limit] = asyncio.Semaphore(limit)
-    return _connection_slots[limit]
 
 
 def _settle(waiter: asyncio.Future[None], error: Exception | None) -> None:
@@ -225,7 +214,12 @@ class BTHomeWritableCoordinator:
         self._pending: list[tuple[int, bytes, bool, float, asyncio.Future[None]]] = []
         self._pending_lock = asyncio.Lock()
         self._flush_task: asyncio.Task[None] | None = None
-        self._semaphore = connection_semaphore(max_connections)
+        self._slots = register_request(address, max_connections)
+        """The host's cap on connections, shared with every other device.
+
+        What this entry asks of it is registered here; the gate itself is one
+        object for the whole host, and the lowest request wins (D-003, D-132).
+        """
         self._device = asyncio.Lock()
         """This device's own turn to be connected to.
 
@@ -729,8 +723,8 @@ class BTHomeWritableCoordinator:
         """The right to connect to this device: its turn, then a host slot.
 
         Two locks, always in this order. The device's comes first because the
-        other way round would hold one of the host's scarce slots (D-003, two of
-        them for every configured device) while waiting for a device somebody
+        other way round would hold one of the host's scarce slots (D-003, two
+        of them for the whole host) while waiting for a device somebody
         else's connection is busy with -- making one device's queue everybody
         else's problem. Every path that connects takes both, so there is one
         acquisition order and no way to deadlock.
@@ -740,7 +734,7 @@ class BTHomeWritableCoordinator:
         given a client rather than making one (D-129, D-130), and the standalone
         counter question is called before the link, not inside it.
         """
-        async with self._device, self._semaphore:
+        async with self._device, self._slots:
             yield
 
     async def _write_now(

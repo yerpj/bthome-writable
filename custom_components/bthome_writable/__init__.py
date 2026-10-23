@@ -31,6 +31,7 @@ from .const import (
 )
 from .coordinator import BTHomeWritableCoordinator
 from .protocol import Declaration, entity_unique_id, event_unique_id
+from .slots import register_request, withdraw_request
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -200,6 +201,15 @@ async def async_setup_entry(
     )
     entry.runtime_data = coordinator
 
+    # A changed cap takes effect without a reload: re-registering the request
+    # resizes the one host gate, and raising it lets through whatever is already
+    # queued. Every update to the entry arrives here, including the declaration
+    # and the write counter this integration persists as it runs (D-069, D-063),
+    # which is why this listener must stay as cheap as it is -- reloading the
+    # entry from here would re-create every entity each time a counter was
+    # saved.
+    entry.async_on_unload(entry.add_update_listener(_cap_may_have_moved))
+
     if ALLOW_COUNTER_SYNC and bindkey is not None:
         # Before the first write rather than after it fails: a refused write is
         # silent (§4.2), so there is nothing to react to (D-075).
@@ -273,11 +283,27 @@ async def async_setup_entry(
     return True
 
 
+async def _cap_may_have_moved(
+    hass: HomeAssistant, entry: BTHomeWritableConfigEntry
+) -> None:
+    """Follow the connection cap of D-003 when the options form moves it."""
+    if entry.unique_id is not None:
+        register_request(
+            entry.unique_id,
+            entry.options.get(CONF_MAX_CONNECTIONS, DEFAULT_MAX_CONNECTIONS),
+        )
+
+
 async def async_unload_entry(
     hass: HomeAssistant, entry: BTHomeWritableConfigEntry
 ) -> bool:
     """Unload a config entry."""
-    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if unloaded and entry.unique_id is not None:
+        # Or a device that is gone would go on holding the host cap down for
+        # the ones that remain (D-132).
+        withdraw_request(entry.unique_id)
+    return unloaded
 
 
 __all__ = ["DOMAIN", "async_setup_entry", "async_unload_entry"]
