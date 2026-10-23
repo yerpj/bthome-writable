@@ -15,7 +15,9 @@ held a second key.
 from __future__ import annotations
 
 import asyncio
+import time
 
+from bleak_retry_connector import BleakOutOfConnectionSlotsError
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 import pytest
@@ -23,7 +25,13 @@ import pytest
 from custom_components.bthome_writable.const import (
     CONF_MAX_CONNECTIONS,
     DEFAULT_MAX_CONNECTIONS,
+    EVENT_WRITE,
 )
+from custom_components.bthome_writable.coordinator import (
+    BTHomeWritableCoordinator,
+    WriteFailed,
+)
+from custom_components.bthome_writable.protocol import Declaration
 from custom_components.bthome_writable.slots import (
     ConnectionSlots,
     connection_slots,
@@ -31,7 +39,7 @@ from custom_components.bthome_writable.slots import (
     withdraw_request,
 )
 
-from .conftest import setup_device
+from .conftest import settle, setup_device
 
 ONE = "A4:C1:38:8E:1F:2B"
 ANOTHER = "A4:C1:38:8E:1F:2C"
@@ -203,3 +211,127 @@ async def test_unloading_a_device_hands_its_share_of_the_cap_back(
     assert await hass.config_entries.async_unload(entry.entry_id)
     await hass.async_block_till_done()
     assert connection_slots().limit == DEFAULT_MAX_CONNECTIONS
+
+
+# --- and when the host has no slot left --------------------------------------
+#
+# D-133. `bleak_retry_connector` counts an exhausted adapter as a transient
+# error, so it has already tried nine times, four seconds apart, before it
+# raises. There is nothing to gain by trying a tenth; what there is to gain is
+# keeping the other devices out of the same wall for a moment.
+
+
+async def test_a_hold_off_makes_the_next_connection_wait() -> None:
+    gate = ConnectionSlots(2)
+    gate.hold_off(0.05)
+
+    started = time.monotonic()
+    await gate.acquire()
+
+    assert time.monotonic() - started >= 0.04, "it waited"
+    assert gate.in_flight == 1, "and then took its slot as usual"
+
+
+def test_a_shorter_hold_off_does_not_cut_a_longer_one_short() -> None:
+    gate = ConnectionSlots(2)
+    gate.hold_off(30)
+    gate.hold_off(0.1)
+    assert gate.holding_off > 1, "the host is still out of slots"
+
+
+async def test_a_command_that_finds_no_slot_says_which_it_was(
+    hass: HomeAssistant, gatt
+) -> None:
+    """The message a user gets decides what they do next.
+
+    "Could not be reached" sends them to look at the device, which may well be
+    sitting there advertising. The host is what ran out.
+    """
+    coordinator = BTHomeWritableCoordinator(hass, ONE)
+    coordinator.declaration = Declaration.restore({"layout": [0x1E]})
+    gatt.declare(1)
+    gatt.fail_on_connect = BleakOutOfConnectionSlotsError("No slot available")
+
+    with pytest.raises(WriteFailed, match="no connection slot was free"):
+        await coordinator._write_now(1, b"\x01")
+
+    assert connection_slots().holding_off > 0, "and the host is given a moment"
+    assert gatt.connections == 0
+
+
+async def test_a_read_that_finds_no_slot_leaves_the_state_alone(
+    hass: HomeAssistant, gatt
+) -> None:
+    """Nobody is waiting on a state read, so this is a deferral, not an error.
+
+    The deferral itself is a level up and predates this: whatever reads fail
+    with, the caller catches it, marks `_read_failed_at` and tries again after
+    `READ_RETRY` on the next advertisement. What D-133 adds is that the rest of
+    the host's devices hear about the exhaustion rather than each discovering
+    it for themselves.
+    """
+    coordinator = BTHomeWritableCoordinator(hass, ONE)
+    coordinator.declaration = Declaration.restore(
+        {"layout": [0x1E], "settings_revision": 4}
+    )
+    coordinator._revision_advertised = 4
+    coordinator._revision_read = 3
+    gatt.declare(1, readable={1: bytes.fromhex("1E01")})
+    gatt.fail_on_connect = BleakOutOfConnectionSlotsError("No slot available")
+
+    with pytest.raises(BleakOutOfConnectionSlotsError):
+        await coordinator.async_read_all()
+
+    assert connection_slots().holding_off > 0, "the host is given a moment"
+    assert coordinator.value_of(1) is None, "and nothing is invented for the state"
+
+
+async def test_the_wait_for_a_slot_is_reported_as_queueing(
+    hass: HomeAssistant, gatt
+) -> None:
+    """D-133: a cap doing its job must not read as a slow radio.
+
+    `connect_started` was taken before the gate, so the wait for a host slot
+    landed in `connect_ms` among the radio's own wait. On the bench a cap of
+    one made one command wait nine seconds behind another device, and
+    `queued_ms` reported two milliseconds.
+    """
+    first_device = BTHomeWritableCoordinator(hass, ONE, max_connections=1)
+    second_device = BTHomeWritableCoordinator(hass, ANOTHER, max_connections=1)
+    for coordinator in (first_device, second_device):
+        coordinator.declaration = Declaration.restore({"layout": [0x1E]})
+    gatt.declare(1)
+
+    events: list[dict] = []
+    hass.bus.async_listen(EVENT_WRITE, lambda event: events.append(event.data))
+
+    at_the_write = asyncio.Event()
+    carry_on = asyncio.Event()
+    served = gatt.write_gatt_char
+
+    async def hold_the_first_command(characteristic, payload, response=True):
+        if not carry_on.is_set():
+            at_the_write.set()
+            await carry_on.wait()
+        return await served(characteristic, payload, response)
+
+    gatt.write_gatt_char = hold_the_first_command
+
+    first = hass.async_create_task(first_device._write_now(1, b"\x01"))
+    second = None
+    try:
+        await asyncio.wait_for(at_the_write.wait(), 2)
+        second = hass.async_create_task(second_device._write_now(1, b"\x01"))
+        # Real time, because what is being measured is real time: the second
+        # command is at the gate and cannot proceed until the first lets go.
+        await asyncio.sleep(0.1)
+    finally:
+        carry_on.set()
+        await first
+        if second is not None:
+            await second
+    await settle(hass)
+
+    queued = {event["address"]: event["queued_ms"] for event in events}
+    assert queued[ANOTHER] >= 90, f"the wait for the one slot is here: {queued}"
+    assert queued[ONE] < 50, f"and the first command queued for nothing: {queued}"

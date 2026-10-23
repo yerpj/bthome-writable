@@ -8602,3 +8602,67 @@ a gate waited on in one event loop cannot be waited on in another.
 `bluetooth.async_scanner_count`, which changes behaviour for everybody and is
 the owner's to rule; commands ahead of background reads; and treating
 `BleakOutOfConnectionSlotsError` as a wait rather than a failure.
+
+---
+
+## D-133 — A host out of connection slots is a wait, not a broken device
+
+**Status:** ruled and done 2026-10-23, on the owner's instruction, as the fourth
+step of D-003's list and the one that makes the third safe to take.
+
+**What a refused slot costs today, measured by reading the library.** An
+exhausted adapter is a *transient* error in `bleak_retry_connector`, so
+`establish_connection` retries it up to nine times with
+`BLEAK_OUT_OF_SLOTS_BACKOFF_TIME` of four seconds between attempts, and only
+then raises `BleakOutOfConnectionSlotsError`. `max_attempts` does not bound it:
+that counter is for timeouts and connect errors, and transient errors have their
+own ceiling of nine. So a command can sit inside one call for over half a minute,
+holding this device's turn (D-131) and one of the host's slots (D-003) while it
+does, and then be reported to the user as a device that could not be reached.
+
+**Three changes, none of them a retry.**
+
+1. **One place connects.** `_connect()` replaces four copies of
+   `establish_connection`, and it is where the host's answer is interpreted. No
+   tenth attempt is added: nine have already been made, and the only thing left
+   to decide is who hears about it.
+2. **A host-wide hold-off.** The gate of D-132 stops admitting anyone for
+   `SLOT_COOLDOWN`, four seconds, which is the library's own figure for the
+   ESPHome race where a slot is reported free before it is. Whichever device
+   found out says so on behalf of all of them, so the others wait instead of
+   each spending their own nine attempts discovering the same wall. The
+   connection already in flight is left alone: it has its slot.
+3. **The error says what happened.** A command raises `WriteFailed` naming the
+   slot and the remedy, because "could not be reached" sends the user to look at
+   a device that is sitting there advertising. A background read says nothing new:
+   whatever a read fails with, the caller already defers it to the next
+   advertisement after `READ_RETRY`, which is the deferral this step is named
+   after and which predates it.
+
+**And a thing the bench found, which is why the bench was worth the hour**
+(`docs/measurements.md` §20). Two nice!nanos commanded at the same instant, with
+the cap moved to one through the new options form: one command waited nine
+seconds behind the other device and took fifteen, and `queued_ms` reported **two
+milliseconds**. Measured again after the fix, the same arm reports 3673 ms of
+queueing and 357 ms of connecting where it had reported 2 ms and 4307 ms. `connect_started`
+was being taken *before* the gate, so every wait for a device's turn or a host
+slot was landing in `connect_ms`, among the radio's own wait, which is what
+`connect_ms` exists to report. The claim made out loud when D-131 shipped -- that
+the delay is paid visibly in `queued_ms` -- was not true as implemented. The
+boundary is now taken inside the gate: `queued_ms` is everything before this
+command was allowed to open a link, `connect_ms` is the link. A cap doing its job
+is no longer indistinguishable from a slow radio.
+
+**Tests.** Five more in `ha/tests/test_connection_cap.py`: a hold-off making the
+next connection wait, a shorter hold-off not cutting a longer one short, a
+command naming the slot it could not get, a read leaving the state alone while
+telling the host, and the one that would have caught the measurement bug -- two
+devices, one slot, and the wait reported as queueing. `fail_on_connect` on the
+GATT fake is new, since nothing could refuse a connection before.
+
+**What is still not done.** The exhaustion itself has never been provoked on this
+bench: three devices and a three-slot proxy cannot fill it, so the path is
+covered by tests and by reading the library, not by hardware. The adaptive
+default of D-003's third step is now the safe one to take, since a cap set too
+high lands on a wait rather than on a refused write -- but it is still the
+owner's to rule.

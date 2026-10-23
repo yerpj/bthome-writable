@@ -157,6 +157,16 @@ READ_RETRY: Final = 10.0
 one central at a time, so a read can fail simply because a phone or the Web IDE
 holds the link; the next advertisement after this retries it."""
 
+SLOT_COOLDOWN: Final = 4.0
+"""Seconds the host stops opening connections after it ran out of slots.
+
+Not this device's problem and not this device's fault: the adapter or the proxy
+had no slot free, which every other configured device is about to discover for
+itself. `bleak_retry_connector` waits exactly this long between its own
+attempts, for the ESPHome race where a slot is reported free before it is
+(`BLEAK_OUT_OF_SLOTS_BACKOFF_TIME`), so it is the host's own figure rather than
+one of ours (D-133)."""
+
 CONFIRM_WRITES_BY_READING_BACK: Final = True
 """Whether an acknowledged write must be checked against the device (D-117)
  [DECISION]
@@ -208,11 +218,17 @@ the confirmation."""
 
 EVENT_WRITE: Final = "bthome_writable_write"
 """Fired after each acknowledged write, with where its time went: `queued_ms`,
-`connect_ms`, `write_ms`, `confirm_ms`, `total_ms`. `connect_ms` is mostly the
-wait to catch the device advertising, which is what its advertising interval buys
-or costs; `confirm_ms` is the read back of `CONFIRM_WRITES_BY_READING_BACK`, and
-0 when there was nothing to read. `total_ms` ends at the acknowledgement, so it
-excludes `confirm_ms`: a receiver's own latency is the two together."""
+`connect_ms`, `counter_ms`, `write_ms`, `confirm_ms`, `total_ms`.
+
+`queued_ms` is everything before the command was allowed to open a link: the
+coalescing window, this device's turn (D-131) and one of the host's connection
+slots (D-003). `connect_ms` is then the connection itself, mostly the wait to
+catch the device advertising, which is what its advertising interval buys or
+costs. The two were one until D-133, which made a cap doing its job look free.
+
+`confirm_ms` is the read back of `CONFIRM_WRITES_BY_READING_BACK`, and 0 when
+there was nothing to read. `total_ms` ends at the acknowledgement, so it excludes
+`confirm_ms`: a receiver's own latency is the two together."""
 
 CONF_BINDKEY: Final = "bindkey"
 CONF_WRITE_COUNTER: Final = "write_counter"

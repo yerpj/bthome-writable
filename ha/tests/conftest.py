@@ -166,6 +166,11 @@ class FakeGattClient:
         self.reads: list[str] = []
         self.fail_on_write: Exception | None = None
         self.fail_on_read: Exception | None = None
+        self.fail_on_connect: Exception | None = None
+        """What `establish_connection` raises, when it is to raise at all.
+
+        A host out of connection slots is the case this exists for (D-133): the
+        device is fine, and the connection never happens."""
         self.connections = 0
         self.disconnects = 0
         self.cache_cleared = 0
@@ -250,6 +255,8 @@ def gatt():
     client = FakeGattClient()
 
     async def connect(**_kwargs):
+        if client.fail_on_connect is not None:
+            raise client.fail_on_connect
         client.connections += 1
         return client
 

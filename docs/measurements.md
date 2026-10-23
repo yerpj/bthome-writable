@@ -1344,6 +1344,58 @@ it; and the harness is a scratchpad script rather than a tool in `tools/`,
 because what it drives -- a board on a USB console -- is not something a
 measurement tool here otherwise does.
 
+---
+
+## 20. Two devices at once, and the wait that was not being reported
+
+**2026-10-23, the two nice!nanos, both on USB power, through Home Assistant with
+the proxy disabled as every campaign here has it.** `COM6` takes a command on a
+switch; `COM15` takes one on a text entry. Different devices, so the lock of
+D-131 does not apply between them and the only thing that can make one wait for
+the other is the host cap of D-003, moved for this run through the options form
+of D-132.
+
+**What this found first was the instrument.** At a cap of one, with the two
+commands issued at the same instant, `queued_ms` reported **2 ms** while one of
+the commands plainly waited: its service call took 15 s against the other's 9 s.
+`connect_started` was being taken before the gate, so every wait for a device's
+turn or for a host slot was being counted as time spent connecting. The claim
+made when D-131 shipped, that the delay is paid visibly in `queued_ms`, was not
+true as implemented. The boundary now sits inside the gate (D-133), and the same
+measurement says so:
+
+| Cap of 1, four repetitions | `queued_ms` median | `connect_ms` median | `total_ms` median |
+|---|---|---|---|
+| the fast device (`COM6`) | 2.8 ms | 323 ms | 421 ms |
+| the slow device (`COM15`) | **3673 ms** | 357 ms | 3991 ms |
+
+| Cap of 2, four repetitions | `queued_ms` median | `connect_ms` median | `total_ms` median |
+|---|---|---|---|
+| the fast device (`COM6`) | 2.3 ms | 402 ms | 446 ms |
+| the slow device (`COM15`) | 4.2 ms | 381 ms | 443 ms |
+
+Before the fix the same cap of one reported 2 ms of queueing and 4307 ms of
+connecting on that device; after it, 3673 ms of queueing and 357 ms of
+connecting. The connection was never the slow part. One device was waiting for
+the other, which is what a cap of one means and is now what the event says.
+
+**Every command arrived, 8 of 8 in each arm.** Taken from Home Assistant's own
+history rather than from the event stream: eight alternations of the switch and
+`cap 1` through `cap 4` twice on the text entry. Three of the sixteen timing
+events were missed by the harness, whose collection window closed two seconds
+after the first of a pair -- which a cap of one is precisely designed to exceed.
+The delivery figure is the history's, not the harness's.
+
+**And one sample worth keeping.** At a cap of two, one command still queued for
+2528 ms. Four writable devices are configured on this bench, and nothing
+prioritises a command over a background state read: two reads can hold both
+slots while a user is waiting. That is the next item on D-003's list, and this is
+the first measurement of it costing anything.
+
+**What is still unmeasured:** the exhaustion itself. Three devices and a
+three-slot proxy cannot fill the host, so D-133's hold-off and its message are
+covered by tests and by reading `bleak_retry_connector`, not by hardware.
+
 ## Reproducing any of this
 
 Most of the tools above take `--address`; `tools.regression` and

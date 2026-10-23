@@ -16,7 +16,11 @@ import secrets
 import time
 from typing import Any
 
-from bleak_retry_connector import BleakClientWithServiceCache, establish_connection
+from bleak_retry_connector import (
+    BleakClientWithServiceCache,
+    BleakOutOfConnectionSlotsError,
+    establish_connection,
+)
 from habluetooth import BluetoothServiceInfoBleak
 from homeassistant.components import bluetooth
 from homeassistant.core import HomeAssistant, callback
@@ -41,6 +45,7 @@ from .const import (
     READ_RETRY,
     RESYNC_JUMP,
     SERVICE_UUID,
+    SLOT_COOLDOWN,
 )
 from .protocol import (
     Declaration,
@@ -737,6 +742,32 @@ class BTHomeWritableCoordinator:
         async with self._device, self._slots:
             yield
 
+    async def _connect(self, device: Any, *, max_attempts: int) -> Any:
+        """Open a link to the device, and say so when the host has none left.
+
+        There is no retry here, deliberately. `bleak_retry_connector` counts an
+        exhausted adapter as a transient error, so by the time it raises
+        `BleakOutOfConnectionSlotsError` it has already tried nine times, four
+        seconds apart (`BLEAK_OUT_OF_SLOTS_BACKOFF_TIME`). Trying again from
+        here would add a tenth attempt to a wait that is long enough.
+
+        What is worth doing is keeping the rest of this integration's devices
+        out of the same wall for a moment, which is the host-wide hold-off
+        (D-133). The exception itself goes on to the caller, because what to do
+        about it depends on whether anyone is waiting: a command says so, a
+        background read waits for the next advertisement.
+        """
+        try:
+            return await establish_connection(
+                client_class=BleakClientWithServiceCache,
+                device=device,
+                name=self.address,
+                max_attempts=max_attempts,
+            )
+        except BleakOutOfConnectionSlotsError:
+            self._slots.hold_off(SLOT_COOLDOWN)
+            raise
+
     async def _write_now(
         self,
         number: int,
@@ -832,12 +863,27 @@ class BTHomeWritableCoordinator:
         previous = self._values.get(number)
         started = time.monotonic()
         async with self._link():
-            client = await establish_connection(
-                client_class=BleakClientWithServiceCache,
-                device=device,
-                name=self.address,
-                max_attempts=2,
-            )
+            # After the gate, not before it: waiting for this device's turn
+            # (D-131) or for one of the host's slots (D-003) is queueing, and
+            # putting it in `connect_ms` hid it among the radio's own wait,
+            # which is what `connect_ms` is for. Measured on the bench, where
+            # a cap of one made a command wait nine seconds behind another
+            # device and `queued_ms` reported two milliseconds (D-133).
+            connect_started = time.monotonic()
+            try:
+                client = await self._connect(device, max_attempts=2)
+            except BleakOutOfConnectionSlotsError as exhausted:
+                # Not "the device could not be reached": the device may well be
+                # sitting there advertising. The host had no slot to spare, and
+                # the remedy is the user's to choose, so it is named (D-133).
+                raise WriteFailed(
+                    f"{self.address}: no connection slot was free on any "
+                    "adapter or proxy, so the command never went out. Either "
+                    "something else is holding them -- a phone, the Web IDE, "
+                    "another integration -- or this host is writing to more "
+                    "devices at once than it has slots for. Fewer simultaneous "
+                    "connections, or another Bluetooth proxy, is what fixes it"
+                ) from exhausted
             connected = time.monotonic()
             try:
                 if self._resync_counter:
@@ -877,7 +923,7 @@ class BTHomeWritableCoordinator:
         self._report_timing(
             number,
             queued_at=started if queued_at is None else queued_at,
-            connect_started=started,
+            connect_started=connect_started,
             connected=connected,
             asked=asked,
             write_started=write_started,
@@ -966,6 +1012,12 @@ class BTHomeWritableCoordinator:
         `counter_ms` is the §5.6 question when this command carried one, zero
         otherwise: it used to be a connection of its own and is now three
         packets on this one (D-129), so what it costs has to be visible.
+
+        `queued_ms` is everything before this command was allowed to open a
+        link: the coalescing window of D-124, this device's turn (D-131) and
+        one of the host's slots (D-003). It is where the cost of serialising
+        shows up, and it has to be separate from `connect_ms` for the two to
+        mean anything (D-133).
         """
         self.hass.bus.async_fire(
             EVENT_WRITE,
@@ -1101,12 +1153,7 @@ class BTHomeWritableCoordinator:
             # nothing at all the first time it was ever needed -- which, on a
             # device whose firmware changes, is every time (D-080).
             for attempt in (1, 2):
-                client = await establish_connection(
-                    client_class=BleakClientWithServiceCache,
-                    device=device,
-                    name=self.address,
-                    max_attempts=2,
-                )
+                client = await self._connect(device, max_attempts=2)
                 try:
                     report = await self._counter_report(client, challenge)
                 finally:
@@ -1363,12 +1410,7 @@ class BTHomeWritableCoordinator:
                     self.address,
                 )
                 return True
-            client = await establish_connection(
-                client_class=BleakClientWithServiceCache,
-                device=device,
-                name=self.address,
-                max_attempts=2,
-            )
+            client = await self._connect(device, max_attempts=2)
             self._read_connected = True
             try:
                 return await self._read_entries(client, declaration)
@@ -1553,12 +1595,7 @@ class BTHomeWritableCoordinator:
         if device is None:
             return
         async with self._link():
-            client = await establish_connection(
-                client_class=BleakClientWithServiceCache,
-                device=device,
-                name=self.address,
-                max_attempts=1,
-            )
+            client = await self._connect(device, max_attempts=1)
             try:
                 await client.clear_cache()
             finally:

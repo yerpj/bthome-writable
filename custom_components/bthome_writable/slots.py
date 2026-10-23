@@ -24,9 +24,13 @@ from __future__ import annotations
 import asyncio
 from collections import deque
 import contextlib
+import logging
+import time
 from types import TracebackType
 
 from .const import DEFAULT_MAX_CONNECTIONS
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class ConnectionSlots:
@@ -43,6 +47,7 @@ class ConnectionSlots:
         self._limit = max(1, limit)
         self._in_flight = 0
         self._waiting: deque[asyncio.Future[None]] = deque()
+        self._held_off_until = 0.0
 
     @property
     def limit(self) -> int:
@@ -74,8 +79,33 @@ class ConnectionSlots:
         self._limit = limit
         self._admit()
 
+    def hold_off(self, seconds: float) -> None:
+        """Stop opening connections for a while: the host has no slot free.
+
+        Said by whichever device found out, on behalf of all of them. The one
+        in flight is left alone -- it already has its slot -- and the error is
+        not the device's to answer for, so this is the only sanction: everyone
+        else waits instead of walking into the same wall, where each would
+        otherwise spend `bleak_retry_connector`'s nine attempts discovering it
+        (D-133).
+        """
+        until = time.monotonic() + seconds
+        if until > self._held_off_until:
+            self._held_off_until = until
+            _LOGGER.debug("no connection slot was free; holding off %.1fs", seconds)
+
+    @property
+    def holding_off(self) -> float:
+        """Seconds still to wait before a connection may be opened."""
+        return max(0.0, self._held_off_until - time.monotonic())
+
     async def acquire(self) -> None:
         """Wait for a slot. Every caller that returns owes a `release`."""
+        # Before the queue rather than after it: the point is not to take a
+        # slot and sit on it, it is not to connect yet.
+        while (cooling := self.holding_off) > 0:
+            await asyncio.sleep(cooling)
+
         if not self._waiting and self._in_flight < self._limit:
             self._in_flight += 1
             return

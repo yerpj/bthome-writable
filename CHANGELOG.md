@@ -78,6 +78,19 @@ Everything here is on `main` and in no release yet: the integration's
 
 ### Fixed
 
+- **A command that waited its turn said it had been slow to connect.** The
+  moment a command was allowed to open a link was taken before it queued, not
+  after, so waiting for a device's turn or for one of the host's connection
+  slots was counted as time spent connecting. On the bench a command that waited
+  nine seconds behind another device reported two milliseconds of queueing.
+  `queued_ms` now covers everything before the link is opened and `connect_ms`
+  only the link itself (D-133).
+- **A host with no connection slot free was reported as an unreachable
+  device.** It is neither the device's fault nor its problem: the adapter or the
+  proxy had nothing to spare. A command now says so, and names what fixes it,
+  while the rest of this integration's devices stand off for a moment instead of
+  each spending `bleak_retry_connector`'s nine attempts discovering the same
+  thing (D-133).
 - **The connection cap stopped capping as soon as two devices disagreed about
   it.** It was one semaphore per distinct limit, so a device set to two
   connections and a device set to three opened five between them on a host that
