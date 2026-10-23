@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
+from contextlib import asynccontextmanager
 import logging
 import secrets
 import time
@@ -225,6 +226,17 @@ class BTHomeWritableCoordinator:
         self._pending_lock = asyncio.Lock()
         self._flush_task: asyncio.Task[None] | None = None
         self._semaphore = connection_semaphore(max_connections)
+        self._device = asyncio.Lock()
+        """This device's own turn to be connected to.
+
+        An Espruino serves one central at a time, and until D-131 the only thing
+        in the way of two of *our* connections arriving at once was the host cap
+        of D-003 -- which is two, and which exists to protect the adapter's and
+        the proxies' slots, not a device. So a command and the read §3.2 calls
+        for could each take a host slot and reach for the same device: one then
+        waited on a link the other held, retried, and arrived 13 to 34 s later
+        or fell into its `READ_RETRY` backoff. Measured, on the one bench device
+        that both takes commands and reports state."""
 
     # --- Advertising side ---------------------------------------------------
 
@@ -712,6 +724,25 @@ class BTHomeWritableCoordinator:
                     WriteFailed(f"{self.address}: the write queue stopped"),
                 )
 
+    @asynccontextmanager
+    async def _link(self):
+        """The right to connect to this device: its turn, then a host slot.
+
+        Two locks, always in this order. The device's comes first because the
+        other way round would hold one of the host's scarce slots (D-003, two of
+        them for every configured device) while waiting for a device somebody
+        else's connection is busy with -- making one device's queue everybody
+        else's problem. Every path that connects takes both, so there is one
+        acquisition order and no way to deadlock.
+
+        **Not reentrant**, `asyncio.Lock` never is: nothing inside a link may
+        open another. The folded paths are safe by construction, since they are
+        given a client rather than making one (D-129, D-130), and the standalone
+        counter question is called before the link, not inside it.
+        """
+        async with self._device, self._semaphore:
+            yield
+
     async def _write_now(
         self,
         number: int,
@@ -806,7 +837,7 @@ class BTHomeWritableCoordinator:
 
         previous = self._values.get(number)
         started = time.monotonic()
-        async with self._semaphore:
+        async with self._link():
             client = await establish_connection(
                 client_class=BleakClientWithServiceCache,
                 device=device,
@@ -1068,7 +1099,7 @@ class BTHomeWritableCoordinator:
 
         challenge = secrets.token_bytes(CHALLENGE_LENGTH)
         report: bytes | None = None
-        async with self._semaphore:
+        async with self._link():
             # Twice, because the first look can be defeated by our own cache: a
             # device that has just gained the characteristic is exactly a device
             # whose GATT table changed, and the copy we hold does not have it
@@ -1324,7 +1355,7 @@ class BTHomeWritableCoordinator:
         may have replaced it, and that case is already handled where it belongs,
         by dropping the cache on a layout change.
         """
-        async with self._semaphore:
+        async with self._link():
             if (
                 self._revision_advertised is not None
                 and self._revision_advertised == self._revision_read
@@ -1527,7 +1558,7 @@ class BTHomeWritableCoordinator:
         )
         if device is None:
             return
-        async with self._semaphore:
+        async with self._link():
             client = await establish_connection(
                 client_class=BleakClientWithServiceCache,
                 device=device,

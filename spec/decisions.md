@@ -8505,14 +8505,35 @@ it was invisible because the Puck.js advertises no settings revision and the
 nice!nano's text entry has no `get`, so neither device has ever had a read and a
 command in flight together on this bench.
 
-**The fix is not the fold.** D-130 removes the collision for the subset of reads
-a command happens to carry, which is why its delivery figures improved, and
-leaves it everywhere else. What the receiver needs is one lock per coordinator
-around every connection, with the host cap staying where it is and keeping its
-own job. That is about ten lines and two tests, and it is the first of the
-`[DECISION]` steps the owner was offered for the connection cap: per-device
-exclusion first, then the cap exposed, in that order and not the other.
+**The fold was not the fix.** D-130 removes the collision for the subset of
+reads a command happens to carry, which is why its delivery figures improved,
+and leaves it everywhere else -- a button pressed *before* the command, which is
+the more ordinary order, is untouched by it.
 
-Not done here, deliberately: this branch carries D-129 and D-130, each behind
-its own constant, and a change to how every connection is serialised belongs on
-its own with its own measurement.
+**Ruled and done, on the owner's go-ahead the same day.** One `asyncio.Lock`
+per coordinator, in `_link()`, which is now the single place that says what
+connecting to a device requires: the device's own turn first, then a host slot
+from D-003's cap. That order and never the other, because holding one of two
+scarce host slots while waiting for a busy device makes one device's queue
+everybody else's problem. All four paths that connect take it -- a command, the
+standalone counter question, a read pass, forgetting the GATT table -- and the
+folded paths take nothing, since they are handed a client rather than making
+one. `asyncio.Lock` is not reentrant, so that distinction is load-bearing and is
+written where it can be read.
+
+**Measured, nine samples per arm on the same harness as D-130**
+(`docs/measurements.md` §19): the worst command went from 17.2 s without either
+change, and 33.6 s with the fold alone, to **6.6 s**; four of nine commands took
+13 s or more in each of the first two arms and none did in the third; and the
+knob's value reached Home Assistant **9 times out of 9**, against 4 of 9 before
+either change. The median moved from 2.8 s to 3.1 s, which is the trade and is
+the right way round: a command that would have collided now queues, and the
+delay that was being paid in retries and lost reads is paid visibly in
+`queued_ms`.
+
+**What it does not do.** It serialises *us*. A phone, the Web IDE or the other
+Espruino integration can still hold the link, which is what `READ_RETRY` and the
+write path's error are for. And it does not touch the host cap, which keeps its
+own job -- but it does remove the reason that cap could not be raised, since the
+device's constraint is now expressed where it belongs (D-003's own list of
+`[DECISION]` steps: per-device exclusion first, then the cap exposed).

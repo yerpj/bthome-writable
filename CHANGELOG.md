@@ -71,6 +71,15 @@ Everything here is on `main` and in no release yet: the integration's
 
 ### Fixed
 
+- **Two of this integration's own connections could arrive at one device at
+  once.** An Espruino serves one central at a time; the connection cap protects
+  the host's adapters and proxies, not a device. So a command and the state read
+  a moved settings revision calls for could each take a host slot and reach for
+  the same device: one waited on a link the other held, retried, and arrived up
+  to 34 s later or gave up and left the user's button press unreported. Every
+  device now has its own turn. Measured on a board that does both: the worst
+  command fell from 33.6 s to 6.6 s and every local change arrived, 9 of 9
+  against 4 of 9 (D-131).
 - A command no longer waits for the integration's own housekeeping: the caller
   is released when the device acknowledges the write, which is what §4.2 makes
   the confirmation (D-130).

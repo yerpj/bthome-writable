@@ -1297,6 +1297,53 @@ offering the report, which means a board whose firmware has crypto:
 both of which are shared and in use. The procedure and the tool
 (`tools/counter_question_cost.py`) are in §17.
 
+---
+
+## 19. One central at a time, and what enforcing it is worth
+
+**2026-10-23, the `COM6` nice!nano, through Home Assistant on `hci0` alone.**
+§18 found a collision while measuring something else: a command and the read
+§3.2 calls for, each holding one of the host's two connection slots (D-003) and
+both reaching for a device that serves one central. D-131 gives every device its
+own turn -- one lock per coordinator, taken before the host slot and never after
+it -- and this is the same nine-sample harness again, three arms.
+
+| Nine samples each | command, median | command, worst | the knob's value within 20 s |
+|---|---|---|---|
+| Before: no fold, no lock | 5.9 s | 17.2 s | 4 of 9 |
+| The fold alone (D-130) | 2.8 s | 33.6 s | 8 of 9 |
+| The fold and the lock (D-131) | 3.1 s | **6.6 s** | **9 of 9** |
+
+```
+python -m tools.espruino_upload --port COM6 --eval "bench.reset()"
+# a command, then bench.knob() 0.2 s later, then bench.conns()
+```
+
+**The worst case is the result.** Four of nine commands took 13 s or more in
+each of the first two arms; none did in the third, where the slowest was 6.6 s.
+That is the collision closing: the read now waits for the device instead of
+reaching for it, and nothing retries against a link somebody else holds.
+
+**The median barely moves, and that is the trade, stated honestly.** 2.8 s
+becomes 3.1 s, because a command that would have collided now queues behind a
+read that is already connected. The delay was always being paid -- as retries,
+as a 33 s command and as a lost read -- and it is now paid visibly, in
+`queued_ms`, which is what the owner asked for when he said that queueing is
+cheaper than failing.
+
+**And every knob movement arrives.** Nine of nine, against four of nine before
+either change. On a device that reports its own state, a local change that never
+reaches the receiver is the one failure §3.2 exists to prevent, and it was
+happening on more than half of them.
+
+Three caveats, because nine samples are nine samples. The arms were taken over
+about an hour on an unchanged bench, in this order, so a drift in radio
+conditions would show up as a difference between them; the 20 s window decides
+what counts as delivered, and one sample in the first arm arrived just outside
+it; and the harness is a scratchpad script rather than a tool in `tools/`,
+because what it drives -- a board on a USB console -- is not something a
+measurement tool here otherwise does.
+
 ## Reproducing any of this
 
 Most of the tools above take `--address`; `tools.regression` and
