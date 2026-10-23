@@ -45,7 +45,14 @@ a different GATT path: the central is then an ESP32 on the far side of Wi-Fi,
 with its own connection slots and its own service cache."""
 
 OLED_AUTOMATION = "automation.puck_illuminance_oled"
-"""The automation that writes the Puck's illuminance to the nice!nano."""
+"""The automation that writes the Puck's illuminance to the nice!nano.
+
+**Off since 2026-10-23, by the owner, who does not need it.** It is left off:
+`bench_prepared` restores only what it changed, so a run that finds it already
+off leaves it off, and nothing here should switch it on again. It is still named
+because a measurement that wants traffic on the adapter can use it -- and must
+then put it back off.
+"""
 
 
 def _base() -> str:

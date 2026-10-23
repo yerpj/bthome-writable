@@ -9,6 +9,12 @@ One Home Assistant instance at `http://haosjry.local:8123`, one Bluetooth
 adapter that instance owns, one Puck.js, two nice!nanos and one OOTY debug board
 on `COM8` that switches a 3V3 rail. There is exactly one of each.
 
+**The OLED automation is off since 2026-10-23**, by the owner, who does not
+need it. It wrote the Puck's illuminance to the `COM15` nice!nano every 30 s
+over the same adapter, which is traffic every measurement had to turn off first
+(`tools.ha_bench.bench_prepared`). Leave it off; a run that wants it on must put
+it back.
+
 **The second nice!nano, on `COM6`, arrived 2026-10-23** and runs
 `espruino/bench/revision-lamp.js`: the bench's only device whose writable
 entries are also readable, so it is the only one that advertises a settings
