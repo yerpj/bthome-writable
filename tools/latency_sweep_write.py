@@ -105,8 +105,16 @@ class Bus:
         await self.ws.send_json({"id": mine, **payload})
         return await asyncio.wait_for(future, 60)
 
-    async def call_service(self, domain: str, service: str, data: dict) -> None:
-        await self.command(
+    async def call_service(self, domain: str, service: str, data: dict) -> str | None:
+        """Call one service, and say what Home Assistant said if it refused.
+
+        A refused command and a command whose timing never arrives look the
+        same from the outside -- both end up as a sample with no event -- and
+        the difference is the whole diagnosis: the first is the radio or the
+        device, the second is this integration not reporting. So the reason is
+        carried through rather than dropped (D-130).
+        """
+        result = await self.command(
             {
                 "type": "call_service",
                 "domain": domain,
@@ -114,6 +122,10 @@ class Bus:
                 "service_data": data,
             }
         )
+        if result.get("success", True):
+            return None
+        error = result.get("error") or {}
+        return str(error.get("message") or error.get("code") or "refused")
 
     async def close(self) -> None:
         if self._reader is not None:
@@ -174,22 +186,24 @@ async def command(bus: Bus, config: dict, index: int, timeout: float) -> dict:
         bus.timings.get_nowait()
 
     if config["kind"] == "switch":
-        await bus.call_service(
+        refused = await bus.call_service(
             "switch",
             "turn_on" if index % 2 == 0 else "turn_off",
             {"entity_id": config["entity"]},
         )
     else:
-        await bus.call_service(
+        refused = await bus.call_service(
             "text",
             "set_value",
             {"entity_id": config["entity"], "value": f"sweep {index:04d}"},
         )
+    if refused is not None:
+        return {"failed": True, "error": refused}
 
     try:
         return await asyncio.wait_for(bus.timings.get(), timeout)
     except TimeoutError:
-        return {"failed": True}
+        return {"failed": True, "error": "acknowledged, but no timing event"}
 
 
 async def set_fast_timeout(config: dict, ms: int) -> None:
@@ -335,6 +349,14 @@ async def run(args) -> int:
             with contextlib.suppress(Exception):
                 await set_fast_timeout(config, 30000)
                 print("fast window restored to 30000 ms", flush=True)
+            if config["kind"] == "switch":
+                # Dark, whatever the last command happened to be: the commands
+                # alternate on and off, so a run can leave a board's LED lit on
+                # a coin cell until someone notices (docs/shared-bench.md).
+                with contextlib.suppress(Exception):
+                    await bus.call_service(
+                        "switch", "turn_off", {"entity_id": config["entity"]}
+                    )
             await bus.close()
 
     for row in results:

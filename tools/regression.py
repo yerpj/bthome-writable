@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 from dataclasses import dataclass
 import json
 import os
@@ -242,12 +243,25 @@ async def measure(bus, config: dict, index: int) -> dict:
         print(f"  repeat {_line(got)}", flush=True)
         await asyncio.sleep(GAP_S)
 
+    if config["kind"] == "switch":
+        # Left off, always. The commands alternate on and off by index and the
+        # last one is an `on`, so twenty-four commands ended with the board's
+        # LED lit -- on a coin cell, for however long until someone noticed.
+        # Reported by the owner, who noticed (docs/shared-bench.md).
+        with contextlib.suppress(Exception):
+            await bus.call_service(
+                "switch", "turn_off", {"entity_id": config["entity"]}
+            )
+
     return {"first": first, "repeat": repeat, "index": index}
 
 
 def _line(got: dict) -> str:
     if got.get("failed"):
-        return "FAILED"
+        # With the reason, because "FAILED" on its own has sent two
+        # investigations down the wrong path: a command the integration refused
+        # and a command whose timing never arrived look identical here (D-130).
+        return f"FAILED  {got.get('error', 'no timing event')}"
     flag = (
         "" if got.get("fast_window_ok", True) else "  << wrong side of the fast window"
     )
