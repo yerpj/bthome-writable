@@ -6,9 +6,17 @@ there is really only one rule, and one list of things that rule does not cover.
 ## The bench
 
 One Home Assistant instance at `http://haosjry.local:8123`, one Bluetooth
-adapter that instance owns, one Puck.js, one nice!nano with an SSD1306, and one
-OOTY debug board on `COM8` that switches a 3V3 rail. There is exactly one of
-each.
+adapter that instance owns, one Puck.js, two nice!nanos and one OOTY debug board
+on `COM8` that switches a 3V3 rail. There is exactly one of each.
+
+**The second nice!nano, on `COM6`, arrived 2026-10-23** and runs
+`espruino/bench/revision-lamp.js`: the bench's only device whose writable
+entries are also readable, so it is the only one that advertises a settings
+revision and owes the receiver a read (D-130). Its firmware has no crypto --
+`MODULES` is `timer,Flash,Storage,heatshrink,neopixel` -- so it cannot run a
+sealed sketch, which is why §5.6's counter report is still unmeasured on
+hardware. Its sketch lives in RAM, so a reset or a power cut leaves it silent
+until it is uploaded again.
 
 **The Puck.js is no longer on that rail.** Since 2026-10-09 it runs from a
 CR2032 and is power-cycled by hand. `tools.ooty` still switches the rail, and

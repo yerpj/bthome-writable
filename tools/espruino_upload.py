@@ -63,6 +63,32 @@ PREAMBLE = "clearInterval();clearWatch();\n"
 # module fits, so injected modules are assembled from pieces this size.
 MODULE_CHUNK = 512
 
+BUILT_IN = frozenset(
+    {
+        "Storage",
+        "Flash",
+        "heatshrink",
+        "crypto",
+        "AES",
+        "fs",
+        "net",
+        "dgram",
+        "http",
+        "tls",
+        "Wifi",
+        "ESP32",
+        "neopixel",
+    }
+)
+"""Modules the firmware already has, which must not be fetched or injected.
+
+`require("Storage")` is the one that matters here: this project's own module
+uses it to persist its counters, so every bundle built from it carries one, and
+the resolver went looking for it on espruino.com and got a 404. The Web IDE
+knows the same list; a board that is missing one of these says so itself, which
+is a better error than a download that cannot work.
+"""
+
 
 class Board:
     """A connected Espruino, with flow control and console capture."""
@@ -237,6 +263,7 @@ def resolve_modules(source: str) -> str:
     discover a typo.
     """
     names = sorted(set(re.findall(r"""require\(\s*["']([\w.-]+)["']\s*\)""", source)))
+    names = [name for name in names if name not in BUILT_IN]
     if not names:
         return source
 

@@ -18,6 +18,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 MODULE = ROOT / "espruino" / "BTHomeWritable.js"
 EXAMPLES = ROOT / "espruino" / "examples"
+BENCH = ROOT / "espruino" / "bench"
+"""Bundled as well, since 2026-10-23: a bench fixture has to be installable on
+a board reachable only over USB, and `espruino_upload` does not follow a
+`require()` inside a module it injects. A bundle has none left to follow."""
 OUTPUT_DIR = ROOT / "espruino" / "dist"
 
 HEADER = """/* bthome-writable — {example}, self-contained.
@@ -152,7 +156,8 @@ def repl_unsafe_lines(source: str) -> list[tuple[int, str]]:
 
 def main() -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    for example in sorted(EXAMPLES.glob("*.js")):
+    sketches = sorted(EXAMPLES.glob("*.js")) + sorted(BENCH.glob("*.js"))
+    for example in sketches:
         text = bundle(example)
         compact = strip_comments(text)
 
