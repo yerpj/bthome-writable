@@ -8294,3 +8294,85 @@ Nothing follows for the protocol or either implementation. Eight samples settle
 no distribution, and the spread of a first command is wide by nature (D-060);
 what the run establishes is the absence of a minutes-long effect on top of a
 mechanism §1 had already measured properly.
+
+
+## D-129 -- the counter question rides the command's own connection
+
+**2026-10-23, from @enaon's correction on espruino#8024.** An hour after the
+answer of D-128 went out, he corrected the premise it had been built on:
+
+> I am at 1sec interval, but I was restarting HA, so it was doing counter sync
+> (read write counter), two connections, sorry.
+
+So his 5 to 10 s was not a slow advertising interval. It was **our** two
+connections, and the measurement that explains it is already in this
+repository: a first command at a 1000 ms interval costs 0.7 to 3.4 s of waiting
+for an advertising event (`docs/measurements.md` §16), and he was paying that
+twice -- once for the counter question of §5.6, once for the command behind it.
+§16's own extrapolation, that his lights idle at around 3 s, is withdrawn there.
+
+**What the receiver did.** `ALLOW_COUNTER_SYNC` is on (D-080), because §5.3 has
+a device resume strictly above anything it accepted and nothing on the air tells
+the receiver, so every reboot otherwise refuses every write in silence (D-078
+fault 1, D-079). The question was asked over a connection of its own: one
+started as a background task at setup, in `__init__.py`, and one before any
+command whose device had moved its settings revision, in `_write_now` *before*
+the connection semaphore. A restart of Home Assistant therefore put a
+connection in front of the first command of every sealed device -- and a
+restart is exactly when a user reaches for a switch.
+
+**What changed.** The exchange is unchanged and it is now carried on the
+connection the command itself makes. §5.6 specifies the exchange -- write a
+fresh 8-byte challenge, read back `seal(challenge || counter)` -- and says
+nothing about which connection carries it, so **this is receiver policy and not
+a protocol change**: no version bump, no fixtures, no vectors.
+
+- `FOLD_THE_COUNTER_QUESTION_INTO_A_WRITE`, on, reverts to the old shape when
+  turned off.
+- Setup no longer connects: it arms the question
+  (`async_ask_the_counter_on_the_next_write`) and the first command carries it.
+- `async_sync_write_counter` keeps its own connection for the standalone case
+  and is now three pieces: `_counter_report` is the exchange over a connection
+  in hand, `_ask_for_the_counter_here` is the folded form, `_adopt_counter` is
+  the adoption and its guard.
+- The sealing of a write **moved inside the connection**. This is the one thing
+  the change could get wrong: `next_write_counter()` hands out a value and the
+  adoption replaces it, so a payload sealed before the question would go out
+  behind what the device has already accepted and be refused in silence, §4.2
+  acknowledging before it validates. That is D-083 item 11 in the other
+  direction, and the backwards guard it added is kept.
+- The two looks of D-080 are spread over two commands rather than two
+  connections. A device that has just gained the characteristic is a device
+  whose GATT table changed, so the copy we hold cannot be trusted to say the
+  characteristic is absent: the first look drops the table and stays armed, the
+  second decides on a table the stack has rediscovered, and a device without
+  the report is then left alone (D-092).
+- `bthome_writable_write` carries `counter_ms`, so what the exchange costs
+  inside the connection is visible rather than hidden in `total_ms`.
+
+**What it is worth, and what it costs.** One connection, whenever the command
+arrives before the question's own connection has finished -- which on this bench
+is one to three seconds at a 1000 ms interval and more at a slower one. Nothing,
+when the question would have finished long before the command: there the fold
+*costs* the exchange, tens of milliseconds, inside the connection. Both rows are
+in `docs/measurements.md` §17, and the second one is why this is behind a
+constant.
+
+**What is measured.** Five tests in `ha/tests/test_encryption.py`: one
+connection where the old shape took two, the counter drawn after the adoption,
+setup connecting to nobody, a failed question still writing on the counter we
+hold, and a device without the report decided over two commands and then let
+be. On hardware, the clear path through the regression guard, because the
+sealing moved for every device and not only for sealed ones: no regression, 24
+of 24 delivered, the write itself 43.5 ms against a 35.8 ms baseline, inside the
+spread D-065 measured on an unchanged device.
+
+**What is not measured.** `[HW]` The folded exchange has never run against a
+real device: neither bench board is sealed today, both config entries hold no
+bindkey, and without one no question is ever owed. The procedure, the tool
+(`tools/counter_question_cost.py`) and the expected results are written out in
+`docs/measurements.md` §17, and running it needs the Puck reflashed with
+`espruino/examples/encrypted-light.js` and its configured device keyed -- a
+bench write on a shared board, so the owner's call. Until that runs, the claim
+stands on the connection count, which the tests settle, times the cost of a
+connection, which §16 measured.

@@ -26,6 +26,7 @@ from .const import (
     COUNTER_EPOCH_SEED,
     DEFAULT_MAX_CONNECTIONS,
     DOMAIN,
+    FOLD_THE_COUNTER_QUESTION_INTO_A_WRITE,
     REAUTH_SERVICE_INFO,
 )
 from .coordinator import BTHomeWritableCoordinator
@@ -202,11 +203,20 @@ async def async_setup_entry(
     if ALLOW_COUNTER_SYNC and bindkey is not None:
         # Before the first write rather than after it fails: a refused write is
         # silent (§4.2), so there is nothing to react to (D-075).
-        entry.async_create_background_task(
-            hass,
-            coordinator.async_sync_write_counter(),
-            name=f"{address} counter sync",
-        )
+        if FOLD_THE_COUNTER_QUESTION_INTO_A_WRITE:
+            # Armed rather than asked. The question needs a connection, this
+            # device may never be commanded at all, and when it is commanded the
+            # command brings a connection the question can ride on. Asking here
+            # instead put two connections in front of the first command after a
+            # restart, which is what a user measured as a slow first command
+            # (D-129).
+            coordinator.async_ask_the_counter_on_the_next_write()
+        else:
+            entry.async_create_background_task(
+                hass,
+                coordinator.async_sync_write_counter(),
+                name=f"{address} counter sync",
+            )
 
     # Seed from whatever the Bluetooth stack has already seen, so entities exist
     # at the end of setup rather than one advertising interval later.

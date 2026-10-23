@@ -35,6 +35,7 @@ from .const import (
     DEFAULT_MAX_CONNECTIONS,
     DEFAULT_MTU_PAYLOAD,
     EVENT_WRITE,
+    FOLD_THE_COUNTER_QUESTION_INTO_A_WRITE,
     READ_RETRY,
     RESYNC_JUMP,
     SERVICE_UUID,
@@ -197,6 +198,15 @@ class BTHomeWritableCoordinator:
         self._offers_counter_report: bool | None = None
         """None until we have looked. False stops the arming above, so a device
         without the characteristic is not reconnected to on every revision."""
+        self._counter_table_dropped = False
+        """Whether a folded look has already missed the characteristic once.
+
+        The separate question of `async_sync_write_counter` looks twice on two
+        connections, because the first look can be defeated by our own cache
+        (D-080). Folded into a write there is only one connection, so the two
+        looks are spread over two writes instead: the first drops the table and
+        leaves the question armed, the second decides on a table the stack has
+        rediscovered. Same two looks, no connection of their own (D-129)."""
 
         self._listeners: list[Callable[[], None]] = []
         self._write_listeners: list[WriteListener] = []
@@ -726,7 +736,7 @@ class BTHomeWritableCoordinator:
                 f"{self.address}: entry {number} is not in the declaration"
             )
 
-        if self._resync_counter:
+        if self._resync_counter and not FOLD_THE_COUNTER_QUESTION_INTO_A_WRITE:
             # Before the counter is taken, not after: `next_write_counter()`
             # hands out a value and the adoption replaces it, so a write that
             # had already drawn one would go out behind the device (D-083
@@ -749,11 +759,9 @@ class BTHomeWritableCoordinator:
             else:
                 self._resync_counter = False
 
-        payload = encode_object(entry, value)
-        if self.bindkey is not None:
-            payload = seal_write(
-                payload, self.bindkey, self.address, self.next_write_counter()
-            )
+        # Encoded before the connection, so that a value this entry cannot
+        # carry is refused without waking the device; sealed inside it, below.
+        plain = encode_object(entry, value)
 
         previous = self._values.get(number)
         started = time.monotonic()
@@ -766,6 +774,20 @@ class BTHomeWritableCoordinator:
             )
             connected = time.monotonic()
             try:
+                if self._resync_counter:
+                    await self._ask_for_the_counter_here(client)
+                asked = time.monotonic()
+                # Sealed here rather than before the connection, because the
+                # question above can move the counter: the value
+                # `next_write_counter()` hands out has to be drawn *after* the
+                # adoption, or the write goes out behind what the device has
+                # already accepted and is refused in silence, §4.2
+                # acknowledging before it validates (D-083 item 11).
+                payload = plain
+                if self.bindkey is not None:
+                    payload = seal_write(
+                        plain, self.bindkey, self.address, self.next_write_counter()
+                    )
                 await self._check_mtu(client, payload)
                 write_started = time.monotonic()
                 await self._write_characteristic(client, entry, payload)
@@ -822,6 +844,7 @@ class BTHomeWritableCoordinator:
             queued_at=started if queued_at is None else queued_at,
             connect_started=started,
             connected=connected,
+            asked=asked,
             write_started=write_started,
             acknowledged=acknowledged,
             confirmed=confirmed,
@@ -834,6 +857,7 @@ class BTHomeWritableCoordinator:
         queued_at: float,
         connect_started: float,
         connected: float,
+        asked: float,
         write_started: float,
         acknowledged: float,
         confirmed: float,
@@ -845,6 +869,10 @@ class BTHomeWritableCoordinator:
         the device advertising -- is answered by `connect_ms`, and the answer
         depends on the device's advertising interval rather than on anything
         Home Assistant does (`docs/measurements.md`).
+
+        `counter_ms` is the §5.6 question when this command carried one, zero
+        otherwise: it used to be a connection of its own and is now three
+        packets on this one (D-129), so what it costs has to be visible.
         """
         self.hass.bus.async_fire(
             EVENT_WRITE,
@@ -853,6 +881,7 @@ class BTHomeWritableCoordinator:
                 "entry": entry,
                 "queued_ms": round((connect_started - queued_at) * 1000, 1),
                 "connect_ms": round((connected - connect_started) * 1000, 1),
+                "counter_ms": round((asked - connected) * 1000, 1),
                 "write_ms": round((acknowledged - write_started) * 1000, 1),
                 "confirm_ms": round((confirmed - acknowledged) * 1000, 1),
                 "total_ms": round((acknowledged - queued_at) * 1000, 1),
@@ -922,8 +951,27 @@ class BTHomeWritableCoordinator:
                 "next command will rediscover it"
             ) from wrong
 
+    @callback
+    def async_ask_the_counter_on_the_next_write(self) -> None:
+        """Ask the device for its write counter when something next commands it.
+
+        The same arming a moving settings revision does (`_notice_revision`),
+        exposed for setup: a receiver whose configuration is younger than the
+        device has to ask, and the connection to ask on is the one the first
+        command makes (D-129).
+        """
+        if self.bindkey is None or self._offers_counter_report is False:
+            return
+        self._resync_counter = True
+
     async def async_sync_write_counter(self) -> int | None:
-        """Ask the device what counter it is at, and resume from there (D-075).
+        """Ask the device what counter it is at, over a connection of our own.
+
+        This is the standalone form (D-075). The default is now to fold the
+        same exchange into the connection a command already holds, which is
+        `_ask_for_the_counter_here`; this one remains for a receiver that turns
+        `FOLD_THE_COUNTER_QUESTION_INTO_A_WRITE` off, and for asking without a
+        command to carry it.
 
         The counter is the one thing a receiver cannot work out for itself. When
         its configuration is younger than the device — re-created, restored from
@@ -967,35 +1015,116 @@ class BTHomeWritableCoordinator:
                     max_attempts=2,
                 )
                 try:
-                    if client.services.get_characteristic(COUNTER_UUID) is None:
-                        await client.clear_cache()
-                        if attempt == 1:
-                            _LOGGER.debug(
-                                "%s: no counter report in the cached GATT table; "
-                                "dropped it and looking again",
-                                self.address,
-                            )
-                            continue
-                        _LOGGER.debug(
-                            "%s: the device does not offer a counter report; "
-                            "keeping the seeded counter",
-                            self.address,
-                        )
-                        # Remembered, so that a revision change does not arm a
-                        # resynchronisation this device cannot answer -- which
-                        # would be a connection per change, for ever (D-092).
-                        self._offers_counter_report = False
-                        return None
-                    self._offers_counter_report = True
-                    await client.write_gatt_char(COUNTER_UUID, challenge, response=True)
-                    report = bytes(await client.read_gatt_char(COUNTER_UUID))
-                    break
+                    report = await self._counter_report(client, challenge)
                 finally:
                     await client.disconnect()
+                if report is not None:
+                    break
+                if attempt == 1:
+                    _LOGGER.debug(
+                        "%s: no counter report in the cached GATT table; "
+                        "dropped it and looking again",
+                        self.address,
+                    )
+                    continue
+                _LOGGER.debug(
+                    "%s: the device does not offer a counter report; keeping "
+                    "the seeded counter",
+                    self.address,
+                )
+                # Remembered, so that a revision change does not arm a
+                # resynchronisation this device cannot answer -- which would be
+                # a connection per change, for ever (D-092).
+                self._offers_counter_report = False
+                return None
 
         if report is None:
             return None
+        self._offers_counter_report = True
+        return self._adopt_counter(report, challenge)
 
+    async def _counter_report(self, client: Any, challenge: bytes) -> bytes | None:
+        """The device's sealed answer to `challenge`, over a connection in hand.
+
+        None means the characteristic is not in the GATT table we hold -- and
+        the table has been dropped, because the copy we hold cannot be trusted
+        to say the characteristic is absent: a device that has just gained one
+        is exactly a device whose table changed (D-012, D-080). So the answer
+        here is *not this time*, and calling a device one that does not offer
+        the report takes a second look, at a table the stack rediscovered.
+        """
+        if client.services.get_characteristic(COUNTER_UUID) is None:
+            await client.clear_cache()
+            return None
+        await client.write_gatt_char(COUNTER_UUID, challenge, response=True)
+        return bytes(await client.read_gatt_char(COUNTER_UUID))
+
+    async def _ask_for_the_counter_here(self, client: Any) -> None:
+        """Spend an armed resynchronisation on the connection a write holds.
+
+        §5.6 specifies an exchange, not a connection: write a challenge, read
+        the sealed report. Carrying it on the write's own link is three packets
+        on a link that is already up, where a connection of its own is 0.7 to
+        3.4 s of waiting for an advertising event at a 1000 ms advertising
+        interval and more at a slower one (`docs/measurements.md` §16). That
+        doubling is what a user measured as a slow first command after a
+        restart of Home Assistant (D-129).
+
+        Nothing here raises: the write is what the caller came for, and this
+        question failing leaves it to go out on the counter we hold, which is
+        what the separate path did when its own connection failed.
+        """
+        challenge = secrets.token_bytes(CHALLENGE_LENGTH)
+        try:
+            report = await self._counter_report(client, challenge)
+        except Exception:  # whatever a GATT exchange is entitled to raise
+            # Left armed, so the next command asks again.
+            _LOGGER.debug(
+                "%s: could not ask for the write counter on this connection; "
+                "writing on the counter we hold",
+                self.address,
+                exc_info=True,
+            )
+            return
+
+        if report is None:
+            if not self._counter_table_dropped:
+                # First miss: the table has just been dropped, so this says
+                # nothing about the device yet. Stay armed for the next write,
+                # which looks at a table the stack has rediscovered.
+                self._counter_table_dropped = True
+                _LOGGER.debug(
+                    "%s: no counter report in the cached GATT table; dropped it "
+                    "and the next command will look again",
+                    self.address,
+                )
+                return
+            _LOGGER.debug(
+                "%s: the device does not offer a counter report; keeping the "
+                "seeded counter",
+                self.address,
+            )
+            self._offers_counter_report = False
+            self._resync_counter = False
+            return
+
+        self._counter_table_dropped = False
+        self._offers_counter_report = True
+        self._adopt_counter(report, challenge)
+        # Answered, so the question is spent whether or not the answer moved us:
+        # a report that does not authenticate is the case §5.6 tells us to
+        # ignore, and asking again on every command would be a packet pair per
+        # command for ever.
+        self._resync_counter = False
+
+    def _adopt_counter(self, report: bytes, challenge: bytes) -> int | None:
+        """Resume above the counter a report carries, if it authenticates.
+
+        Returns the counter adopted, or None when the report does not open, does
+        not answer the challenge we sent, or names a counter we are already
+        ahead of.
+        """
+        assert self.bindkey is not None
         reported = open_counter_report(report, self.bindkey, self.address, challenge)
         if reported is None:
             _LOGGER.warning(
@@ -1010,13 +1139,15 @@ class BTHomeWritableCoordinator:
         #
         # This ran unconditionally, and the two numbers are not the same order
         # of magnitude: a receiver seeds from its clock, so it starts near
-        # 1.76e9 (D-064), while a freshly flashed device resumes near 1. This
-        # method is a background task started during setup, and `_write_now`
-        # takes its counter before the connection semaphore -- so a command
-        # issued in that window goes out sealed at ~1.76e9, is accepted, and
-        # then the adoption drops us to 2. Every later write is behind what the
-        # device just accepted, and refused in silence because §4.2
-        # acknowledges before validating (D-083).
+        # 1.76e9 (D-064), while a freshly flashed device resumes near 1. The
+        # question used to run as a background task started during setup while
+        # `_write_now` took its counter before the connection semaphore -- so a
+        # command issued in that window went out sealed at ~1.76e9, was
+        # accepted, and then the adoption dropped us to 2. Every later write is
+        # behind what the device just accepted, and refused in silence because
+        # §4.2 acknowledges before validating (D-083). A folded question cannot
+        # open that window, since the counter is drawn after it (D-129), but a
+        # command racing the separate path still can, and the guard is cheap.
         #
         # In the case this exists for -- the receiver behind a device that
         # restarted ahead -- `reported + 1` is larger and wins, so the guard

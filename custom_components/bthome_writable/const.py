@@ -58,8 +58,27 @@ The alternative remedies are both worse: a button the user has to find after a
 failure they cannot see, or one flash write per command on a coin cell.
 
 A device that does not offer the characteristic is unaffected — the read finds
-nothing, the clock seed of D-064 stands, and the cost is one short connection per
-configured device per restart. Plain devices are never asked at all."""
+nothing, the clock seed of D-064 stands, and the cost is at most one exchange on
+a connection a command was going to make anyway. Plain devices are never asked
+at all."""
+
+FOLD_THE_COUNTER_QUESTION_INTO_A_WRITE: Final = True
+"""Whether to ask for the counter on the connection a write already holds.
+
+The question above used to be a connection of its own: one at setup, and one
+before any command whose device had moved its settings revision. Nothing in
+§5.6 asks for that — it specifies an exchange, write a challenge and read the
+report, and says nothing about which connection carries it. So this carries it
+on the write's, three packets on a link that is already up.
+
+What that is worth is the connection, not the exchange. Opening one costs
+whatever the device's advertising interval makes it, 0.7 to 3.4 s at 1000 ms on
+this bench and 4.5 to 6.7 s at 3200 ms (`docs/measurements.md` §16), while the
+exchange itself is tens of milliseconds on a link that exists. A restart with a
+command right behind it therefore paid for two connections where one does
+(D-129, reported by @enaon).
+
+Off, both reverts to a separate connection, which is what shipped until now."""
 
 # BTHome's device-information byte is a bitfield, not a value (§2.1). Reading
 # it as a value is how this integration came to work with exactly one firmware:

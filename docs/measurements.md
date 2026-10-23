@@ -1083,8 +1083,17 @@ on two of three samples, which is @enaon's 5 to 10 s; at 1000 ms it is about a
 third of that. Every sample's cost is the connection: `0.00 s queued` on all
 eight, 23 to 65 ms of write, and everything else inside
 `establish_connection` waiting for the central to catch an advertising event.
-That is §1's finding again, 2 to 3 events on this bench, and it says what his
-numbers mean: a device whose idle interval is around 3 s.
+That is §1's finding again, 2 to 3 events on this bench.
+
+**What it does not say is what his lights idle at.** This section first read his
+5 to 10 s back through the 3200 ms row and concluded that his interval was
+around 3 s. He corrected it an hour later, on the thread: he is at 1000 ms, and
+the commands he had timed came while Home Assistant was restarting, so the
+receiver was asking each light for its write counter before commanding it --
+*two* connections, not one. Two connections at a 1000 ms interval land in the
+same 5 to 10 s band from the table above without any slower interval being
+involved. The receiver's half of that is §17; the figures in this section stand,
+and the extrapolation from them to his bench did not.
 
 **A following command is flat**, 0.28 to 1.09 s at either interval, because the
 device is still inside its fast window. Those are the two sides of the same
@@ -1094,6 +1103,102 @@ So: not Home Assistant's doing, and not a defect. The dials are the device's,
 both in the module: `bw.setFastTimeout(ms)` keeps it fast longer after a
 connection, and `bw.setAdvertisingInterval(ms)` lowers the idle interval. Both
 are paid for in current, which §5 and §6 price.
+
+---
+
+## 17. The counter question, carried on the command's own connection
+
+**2026-10-23, the Puck, through Home Assistant on `hci0` alone.** §16's
+correction says where @enaon's 5 to 10 s came from: a restart of Home Assistant,
+and the §5.6 counter question going first. This section is the receiver change
+that follows (D-129) and what it is worth.
+
+**What the question cost.** `ALLOW_COUNTER_SYNC` is on (D-080), so a configured
+sealed device is asked what write counter it is at before anything is written to
+it: at setup, and again before the first command after its settings revision
+moves. The exchange is three packets -- write an 8-byte challenge, read back
+`seal(challenge || counter)` -- and it used to take **a connection of its own**.
+§5.6 asks for no such thing; it specifies the exchange and says nothing about
+which connection carries it. So the question now rides the connection the
+command itself makes.
+
+**What that is worth, and what it is not.** The exchange is tens of milliseconds
+on a link that is already up. A connection is 0.7 to 3.4 s at a 1000 ms
+advertising interval and 4.5 to 6.7 s at 3200 ms (§16, §1). So:
+
+| When the command arrives | Separate question | Folded |
+|---|---|---|
+| While the question's connection is pending or not yet made | two connections, the command queued behind the first | one connection |
+| Long after the question has finished | one connection | one connection, plus the exchange inside it |
+
+The first row is @enaon's case and the reason for the change. The second row is
+what it costs, and it is not zero: a device whose revision moves while nobody is
+commanding it used to have its question answered in the background, and now
+pays for it on the next command. The exchange is the price, and §13's reads say
+what to expect of it on a sealed board: one sealed read back took 832 ms median
+on a nice!nano sealing on a single thread, and 23 to 65 ms on this Puck.
+
+**Measured here so far, on the clear path.** The restructuring moves the sealing
+of a write *inside* the connection, because the counter has to be drawn after
+the adoption (D-083 item 11). That is the write path of every device, sealed or
+not, so it was run against the regression guard first:
+
+```
+python -m tools.regression --device puck
+```
+
+| | Baseline | This change |
+|---|---|---|
+| First command, median | 3.22 s | 2.07 s |
+| Repeated command, median | 0.33 s | 0.42 s |
+| The write itself, median | 35.8 ms | 43.5 ms |
+| Delivered | 24/24 | 24/24 |
+| Connected without a retry | 100 % | 100 % |
+
+**No regression.** The write itself is 7.7 ms above the baseline, and the same
+figure came back twice in a row on a bench whose five access points all sit on
+WiFi channel 1 (§8); the guard allows twice the baseline plus 20 ms, and this is
+inside the run-to-run spread D-065 measured on an unchanged device. Worth
+recording honestly: the first of the two runs was started two minutes after the
+restart and had **4 of its 24 commands undelivered**, with nothing in the log;
+the second, ten minutes later, delivered 24 of 24. A bench whose Bluetooth stack
+has just come up is not a bench to judge a release on.
+
+### What is not measured yet, and the procedure to measure it  [HW]
+
+Neither bench device is sealed today -- both config entries hold no bindkey --
+so **the folded exchange has never run against a real device**. Nothing in the
+clear path exercises it: without a bindkey no question is ever owed. The two
+numbers still missing are the exchange's own cost inside the connection
+(`counter_ms`, which this change adds to the `bthome_writable_write` event) and
+the first-command latency of the two arms in the table above.
+
+The run needs the Puck sealed, which means a sketch with a bindkey and
+`counterReport: true`, and the configured device holding the same key:
+
+```
+python -m tools.bench_lock acquire --note "D-129 sealed A/B"
+python -m tools.espruino_deploy --address C8:80:32:AD:F7:B9 \
+    --app espruino/examples/encrypted-light.js
+# then, in Home Assistant: Settings > Devices > Puck.js f7b9 > Reconfigure,
+# and give it 231d39c1d7cc1ab1aee224cd096db932 (the test-vector key, public).
+python -m tools.counter_question_cost --arm folded --reps 3 \
+    --out docs/data/counter-question-folded.json
+```
+
+Then the other arm: set `FOLD_THE_COUNTER_QUESTION_INTO_A_WRITE = False` in the
+deployed `custom_components/bthome_writable/const.py`, restart Home Assistant,
+and run the same command with `--arm separate`. Afterwards put the board back
+(`--app espruino/examples/light-loop.js`), clear the bindkey through Reconfigure,
+restore the constant, and release the lock.
+
+**Expected, if the reasoning above holds:** the *immediate* case about one
+connection faster folded, which on this bench is one to three seconds; the
+*settled* case equal within the spread, the fold's own `counter_ms` being tens
+of milliseconds against a connection of seconds; and `counter_ms` zero on every
+sample of the separate arm, because there the question was answered elsewhere.
+A folded sample whose write is refused would say the counter was drawn in the
+wrong order, which is the one thing this change could get wrong.
 
 ## Reproducing any of this
 

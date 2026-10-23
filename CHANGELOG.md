@@ -15,7 +15,8 @@ its first non-draft release. Every entry names the decision behind it:
 
 ## [Unreleased]
 
-Everything here is on `candidate/enaon-retest` and not yet on `main`.
+Everything here is on `main` and in no release yet: the integration's
+`manifest.json` carries the version a tag will take.
 
 ### Added
 
@@ -24,7 +25,8 @@ Everything here is on `candidate/enaon-retest` and not yet on `main`.
   called broken, because §4.3's getter is published and not served on demand
   (D-117, D-120, D-122).
 - The `bthome_writable_write` event carries `confirm_ms`, the time the read back
-  took (D-122).
+  took (D-122), and `counter_ms`, the time the counter question of §5.6 took
+  when the command carried one (D-129).
 - The Espruino module is offered to EspruinoDocs as a tutorial page as well as a
   reference page (D-112).
 
@@ -38,6 +40,12 @@ Everything here is on `candidate/enaon-retest` and not yet on `main`.
   the stack's also knows what an integration cannot see: connect failures per
   source, connections in flight, whether a source has a free slot at all
   (D-127).
+- **The counter question of §5.6 rides the connection a command already makes.**
+  It used to take one of its own: one connection at setup per configured sealed
+  device, and one before any command whose device had moved its settings
+  revision. A user measured the result as a first command taking 5 to 10 s after
+  a restart of Home Assistant, which is two connections at a 1000 ms advertising
+  interval and nothing else (D-129).
 - **The module rebuilds its advertising packet when an encoded value has moved,
   not on every interval.** BTHome's own format asks for exactly this, the packet
   id being what tells a receiver the data is new. @enaon's PPK2 measured 235 µA

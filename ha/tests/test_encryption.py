@@ -48,7 +48,7 @@ from custom_components.bthome_writable.protocol import (
     trigger_based,
 )
 
-from .conftest import settle, setup_device
+from .conftest import DEFAULT_ADDRESS, settle, setup_device
 
 VECTORS = json.loads(
     (
@@ -646,11 +646,15 @@ async def test_asking_never_moves_the_counter_backwards(
 
     The two numbers are not the same order of magnitude. A receiver seeds from
     its clock, so it starts near 1.76e9 (D-064); a freshly flashed device
-    resumes near 1. This runs as a background task during setup while
-    `_write_now` takes its counter *before* the connection semaphore -- so a
-    command issued in that window goes out at ~1.76e9, is accepted, and the
-    adoption then drops the receiver to 2. Every later write is behind what the
-    device just accepted, and refused in silence.
+    resumes near 1. This ran as a background task during setup while
+    `_write_now` took its counter *before* the connection semaphore -- so a
+    command issued in that window went out at ~1.76e9, was accepted, and the
+    adoption then dropped the receiver to 2. Every later write is behind what
+    the device just accepted, and refused in silence.
+
+    The window is narrower now that a command carries the question itself and
+    draws its counter after it (D-129), and the guard is kept: this method is
+    still callable on its own, and the adoption must never drag us back.
     """
     key, address = bytes(range(16)), "A4:C1:38:8E:1F:2B"
     marks: list[int] = []
@@ -1057,3 +1061,175 @@ def test_the_counter_characteristic_is_not_an_entry() -> None:
     assert characteristic_uuid(1) != COUNTER_UUID
     assert characteristic_uuid(0x1000) == COUNTER_UUID
     assert characteristic_uuid(255) != COUNTER_UUID, "past every possible entry"
+
+
+async def test_a_command_carries_the_counter_question_on_its_own_connection(
+    hass: HomeAssistant, gatt
+) -> None:
+    """D-129: the exchange of §5.6 on the link the command already has.
+
+    §5.6 specifies a challenge and a sealed answer, and says nothing about
+    which connection carries them. Carrying them on the command's own link
+    costs three packets; a connection of its own costs whatever the device's
+    advertising interval makes it, 0.7 to 3.4 s at 1000 ms on this bench
+    (`docs/measurements.md` §16). A user measured the difference as a first
+    command taking 5 to 10 s after a restart of Home Assistant, where the
+    counter question went first and the command waited behind it.
+    """
+    key, address = bytes(range(16)), "A4:C1:38:8E:1F:2B"
+    coordinator = BTHomeWritableCoordinator(
+        hass, address, bindkey=key, write_counter=10
+    )
+    gatt.declare(1)
+    gatt.offer_counter_report(
+        lambda: counter_report(900_000, gatt.writes[-1][1], key, address)
+    )
+
+    with patch.object(coordinator, "async_request_read"):
+        feed(coordinator, sealed_advertisement(5_000, key, address, 7), address)
+        coordinator.async_ask_the_counter_on_the_next_write()
+        await coordinator._write_now(1, b"")
+
+    assert gatt.connections == 1, "one connection, carrying both"
+    assert gatt.disconnects == 1
+    from custom_components.bthome_writable.const import COUNTER_UUID
+
+    assert [uuid for uuid, _ in gatt.writes] == [COUNTER_UUID, characteristic_uuid(1)]
+    assert gatt.reads[0] == COUNTER_UUID, "the challenge is answered, not guessed"
+    assert write_counter_of(gatt.writes[-1][1]) > 900_000, (
+        "the counter has to be drawn after the adoption, or the write goes out "
+        "behind the device and is refused in silence (D-083 item 11)"
+    )
+
+
+async def test_the_same_command_costs_two_connections_with_the_fold_off(
+    hass: HomeAssistant, gatt
+) -> None:
+    """What the fold is worth, measured in the only unit that matters here.
+
+    The exchange is unchanged either way: the same challenge, the same sealed
+    answer, the same counter on the write. The difference is one connection,
+    and on a device advertising every second that is seconds (D-129).
+    """
+    key, address = bytes(range(16)), "A4:C1:38:8E:1F:2B"
+    coordinator = BTHomeWritableCoordinator(
+        hass, address, bindkey=key, write_counter=10
+    )
+    gatt.declare(1)
+    gatt.offer_counter_report(
+        lambda: counter_report(900_000, gatt.writes[-1][1], key, address)
+    )
+
+    with (
+        patch.object(
+            coordinator_module, "FOLD_THE_COUNTER_QUESTION_INTO_A_WRITE", False
+        ),
+        patch.object(coordinator, "async_request_read"),
+    ):
+        feed(coordinator, sealed_advertisement(5_000, key, address, 7), address)
+        coordinator.async_ask_the_counter_on_the_next_write()
+        await coordinator._write_now(1, b"")
+
+    assert gatt.connections == 2, "the question used to bring its own"
+    assert write_counter_of(gatt.writes[-1][1]) > 900_000, "and the same counter"
+
+
+@pytest.mark.usefixtures("custom_integration")
+async def test_setting_up_a_sealed_device_does_not_connect_to_it(
+    hass: HomeAssistant, radio, gatt
+) -> None:
+    """The restart case @enaon measured, from the receiver's side.
+
+    Setup used to start a background task that asked for the counter at once:
+    one connection per configured sealed device per restart of Home Assistant,
+    taken whether or not anyone was about to command the device -- and taken
+    just as the user, having restarted, reaches for a switch. Now the question
+    is armed and the first command carries it (D-129).
+
+    The read of §3.2 that first sight also triggers is a different mechanism
+    and still connects; what must not happen here is the counter exchange.
+    """
+    from custom_components.bthome_writable.const import COUNTER_UUID
+
+    key = bytes(range(16))
+    entry = await setup_device(
+        hass,
+        radio,
+        "single-light",
+        entry_data={CONF_BINDKEY: key.hex(), CONF_WRITE_COUNTER: 10},
+        service_data=sealed_advertisement(5_000, key, DEFAULT_ADDRESS, 7),
+    )
+    await settle(hass)
+
+    assert COUNTER_UUID not in [uuid for uuid, _ in gatt.writes], (
+        "no challenge went out, so no connection was spent on asking"
+    )
+    assert COUNTER_UUID not in gatt.reads
+    assert entry.runtime_data._resync_counter is True, (
+        "the question is owed, and the first command will carry it"
+    )
+
+
+async def test_a_question_this_connection_cannot_answer_still_writes(
+    hass: HomeAssistant, gatt
+) -> None:
+    """The write is what the caller came for.
+
+    A counter question that fails on an open link leaves the command to go out
+    on the counter we hold -- exactly what the separate path did when its own
+    connection failed -- and stays armed, so the next command asks again.
+    """
+    key, address = bytes(range(16)), "A4:C1:38:8E:1F:2B"
+    coordinator = BTHomeWritableCoordinator(
+        hass, address, bindkey=key, write_counter=10
+    )
+    gatt.declare(1)
+    gatt.offer_counter_report(lambda: (_ for _ in ()).throw(TimeoutError("no answer")))
+
+    with patch.object(coordinator, "async_request_read"):
+        feed(coordinator, sealed_advertisement(5_000, key, address, 7), address)
+        coordinator.async_ask_the_counter_on_the_next_write()
+        await coordinator._write_now(1, b"")
+
+    assert gatt.writes[-1][0] == characteristic_uuid(1), "the command went out"
+    assert write_counter_of(gatt.writes[-1][1]) < 900_000, "on the counter we hold"
+    assert coordinator._resync_counter is True, "and the question is still owed"
+
+
+async def test_a_device_without_the_report_is_decided_over_two_commands(
+    hass: HomeAssistant, gatt
+) -> None:
+    """The two looks of D-080, with no connection of their own.
+
+    The first look can be defeated by our own cache: a device that has just
+    gained the characteristic is one whose GATT table changed, so the copy we
+    hold does not have it. The separate question looked twice on two
+    connections. Folded there is one connection per command, so the two looks
+    fall on two commands: the first drops the table, the second decides on a
+    table the stack has rediscovered -- and then the device is left alone.
+    """
+    key, address = bytes(range(16)), "A4:C1:38:8E:1F:2B"
+    coordinator = BTHomeWritableCoordinator(
+        hass, address, bindkey=key, write_counter=10
+    )
+    gatt.declare(1)
+
+    with patch.object(coordinator, "async_request_read"):
+        feed(coordinator, sealed_advertisement(5_000, key, address, 7), address)
+        coordinator.async_ask_the_counter_on_the_next_write()
+
+        await coordinator._write_now(1, b"")
+        assert coordinator._resync_counter is True, "the table was only dropped"
+        assert gatt.cache_cleared == 1
+
+        await coordinator._write_now(1, b"")
+        assert coordinator._offers_counter_report is False, "decided, on a fresh table"
+        assert coordinator._resync_counter is False
+
+        feed(coordinator, sealed_advertisement(5_001, key, address, 8), address)
+        await coordinator._write_now(1, b"")
+
+    assert gatt.connections == 3, "one per command, and never one for the question"
+    assert coordinator._resync_counter is False, (
+        "a device without the report is not asked again on every revision (D-092)"
+    )
