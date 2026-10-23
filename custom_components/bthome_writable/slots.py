@@ -23,10 +23,11 @@ from __future__ import annotations
 
 import asyncio
 from collections import deque
+from collections.abc import AsyncIterator
 import contextlib
+from contextlib import asynccontextmanager
 import logging
 import time
-from types import TracebackType
 
 from .const import DEFAULT_MAX_CONNECTIONS
 
@@ -34,19 +35,28 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class ConnectionSlots:
-    """A counting gate, first in first out, whose limit can change.
+    """A counting gate whose limit can change, and which takes commands first.
 
-    Used as an async context manager, so a slot is released on every way out of
-    the block including an exception and a cancellation:
+    Used through `taken()`, so a slot is released on every way out of the block
+    including an exception and a cancellation:
 
-        async with connection_slots():
+        async with connection_slots().taken(urgent=True):
             ...
+
+    Two queues, each first in first out: a command is urgent because somebody
+    is waiting for it, and this integration's own housekeeping -- a state read,
+    a cached GATT table to forget -- is not. Nothing guarantees an ordinary
+    waiter gets through while commands keep arriving, and that is accepted: a
+    read that waits is retried on the next advertisement (`READ_RETRY`), where
+    a command that waits is a user watching a switch that has not moved
+    (D-134).
     """
 
     def __init__(self, limit: int = DEFAULT_MAX_CONNECTIONS) -> None:
         self._limit = max(1, limit)
         self._in_flight = 0
-        self._waiting: deque[asyncio.Future[None]] = deque()
+        self._urgent: deque[asyncio.Future[None]] = deque()
+        self._ordinary: deque[asyncio.Future[None]] = deque()
         self._held_off_until = 0.0
 
     @property
@@ -62,7 +72,7 @@ class ConnectionSlots:
     @property
     def waiting(self) -> int:
         """How many callers are queued for one."""
-        return len(self._waiting)
+        return len(self._urgent) + len(self._ordinary)
 
     def resize(self, limit: int) -> None:
         """Move the cap, under live traffic.
@@ -99,19 +109,24 @@ class ConnectionSlots:
         """Seconds still to wait before a connection may be opened."""
         return max(0.0, self._held_off_until - time.monotonic())
 
-    async def acquire(self) -> None:
-        """Wait for a slot. Every caller that returns owes a `release`."""
+    async def acquire(self, *, urgent: bool = False) -> None:
+        """Wait for a slot. Every caller that returns owes a `release`.
+
+        `urgent` is for a connection somebody is waiting for, which goes ahead
+        of any queued housekeeping and behind any queued command.
+        """
         # Before the queue rather than after it: the point is not to take a
         # slot and sit on it, it is not to connect yet.
         while (cooling := self.holding_off) > 0:
             await asyncio.sleep(cooling)
 
-        if not self._waiting and self._in_flight < self._limit:
+        if not self.waiting and self._in_flight < self._limit:
             self._in_flight += 1
             return
 
+        queue = self._urgent if urgent else self._ordinary
         waiter = asyncio.get_running_loop().create_future()
-        self._waiting.append(waiter)
+        queue.append(waiter)
         try:
             await waiter
         except asyncio.CancelledError:
@@ -123,7 +138,7 @@ class ConnectionSlots:
                 self._admit()
             else:
                 with contextlib.suppress(ValueError):
-                    self._waiting.remove(waiter)
+                    queue.remove(waiter)
             raise
 
     def release(self) -> None:
@@ -133,25 +148,28 @@ class ConnectionSlots:
         self._admit()
 
     def _admit(self) -> None:
-        """Let as many waiters through as the current limit allows."""
-        while self._waiting and self._in_flight < self._limit:
-            waiter = self._waiting.popleft()
+        """Let as many waiters through as the current limit allows.
+
+        Commands first, in the order they arrived, then housekeeping in the
+        order it arrived.
+        """
+        while self.waiting and self._in_flight < self._limit:
+            queue = self._urgent if self._urgent else self._ordinary
+            waiter = queue.popleft()
             # A cancelled waiter is done and wants nothing: skip it, and do not
             # spend the slot on it.
             if not waiter.done():
                 self._in_flight += 1
                 waiter.set_result(None)
 
-    async def __aenter__(self) -> None:
-        await self.acquire()
-
-    async def __aexit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc: BaseException | None,
-        traceback: TracebackType | None,
-    ) -> None:
-        self.release()
+    @asynccontextmanager
+    async def taken(self, *, urgent: bool = False) -> AsyncIterator[None]:
+        """One slot, held for the block and released on every way out."""
+        await self.acquire(urgent=urgent)
+        try:
+            yield
+        finally:
+            self.release()
 
 
 _host = ConnectionSlots()

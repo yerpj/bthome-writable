@@ -335,3 +335,101 @@ async def test_the_wait_for_a_slot_is_reported_as_queueing(
     queued = {event["address"]: event["queued_ms"] for event in events}
     assert queued[ANOTHER] >= 90, f"the wait for the one slot is here: {queued}"
     assert queued[ONE] < 50, f"and the first command queued for nothing: {queued}"
+
+
+# --- and who goes first ------------------------------------------------------
+#
+# D-134, the last of D-003's steps. Measured first: at a cap of two, with four
+# writable devices configured, a command queued 2528 ms behind this
+# integration's own reads (`docs/measurements.md` §20).
+
+
+async def test_a_command_goes_ahead_of_queued_housekeeping() -> None:
+    gate = ConnectionSlots(1)
+    await gate.acquire(urgent=True)
+    order: list[str] = []
+
+    async def housekeeping() -> None:
+        await gate.acquire()
+        order.append("read")
+
+    async def a_user_waiting() -> None:
+        await gate.acquire(urgent=True)
+        order.append("command")
+
+    read = asyncio.create_task(housekeeping())
+    await let_the_others_run()
+    command = asyncio.create_task(a_user_waiting())
+    await let_the_others_run()
+    assert order == [], "the only slot is held, so neither has gone"
+
+    gate.release()
+    await asyncio.wait_for(command, 1)
+    assert order == ["command"], "the command was taken out of turn, by design"
+
+    gate.release()
+    await asyncio.wait_for(read, 1)
+    assert order == ["command", "read"], "and the read was not forgotten"
+
+
+async def test_two_commands_keep_the_order_they_arrived_in() -> None:
+    """Urgency is a class, not a scramble: each queue is still first in first
+    out, so two commands cannot overtake each other."""
+    gate = ConnectionSlots(1)
+    await gate.acquire(urgent=True)
+    order: list[int] = []
+
+    async def command(number: int) -> None:
+        await gate.acquire(urgent=True)
+        order.append(number)
+
+    first = asyncio.create_task(command(1))
+    await let_the_others_run()
+    second = asyncio.create_task(command(2))
+    await let_the_others_run()
+
+    for _ in range(2):
+        gate.release()
+    await asyncio.wait_for(asyncio.gather(first, second), 1)
+    assert order == [1, 2]
+
+
+async def test_a_command_overtakes_another_devices_queued_read(
+    hass: HomeAssistant, gatt
+) -> None:
+    """The case §20 measured, in one test: a read of one device holding the
+    host's only slot while a command for another waits behind it."""
+    reader = BTHomeWritableCoordinator(hass, ONE, max_connections=1)
+    reader.declaration = Declaration.restore({"layout": [0x1E], "settings_revision": 4})
+    reader._revision_advertised = 4
+    reader._revision_read = 3
+    commanded = BTHomeWritableCoordinator(hass, ANOTHER, max_connections=1)
+    commanded.declaration = Declaration.restore({"layout": [0x1E]})
+    gatt.declare(1, readable={1: bytes.fromhex("1E01")})
+
+    order: list[str] = []
+    served_write, served_read = gatt.write_gatt_char, gatt.read_gatt_char
+
+    async def note_write(characteristic, payload, response=True):
+        order.append("command")
+        return await served_write(characteristic, payload, response)
+
+    async def note_read(characteristic):
+        order.append("read")
+        return await served_read(characteristic)
+
+    gatt.write_gatt_char = note_write
+    gatt.read_gatt_char = note_read
+
+    gate = connection_slots()
+    await gate.acquire(urgent=True)  # something else holds the one slot
+    read = asyncio.create_task(reader.async_read_all())
+    await let_the_others_run()
+    command = asyncio.create_task(commanded._write_now(1, b"\x01"))
+    await let_the_others_run()
+
+    gate.release()
+    await asyncio.wait_for(command, 2)
+    assert order[0] == "command", f"the command went first: {order}"
+    await asyncio.wait_for(read, 2)
+    assert "read" in order, "and the read still happened"

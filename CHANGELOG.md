@@ -78,6 +78,11 @@ Everything here is on `main` and in no release yet: the integration's
 
 ### Fixed
 
+- **A command could wait behind this integration's own housekeeping.** Nothing
+  told a user's command apart from a background state read, so on a host with
+  several devices two reads could hold every connection slot while somebody
+  waited for a switch to move: 2528 ms of it, measured. Commands now go first,
+  and a read that waits is retried on the device's next advertisement (D-134).
 - **A command that waited its turn said it had been slow to connect.** The
   moment a command was allowed to open a link was taken before it queued, not
   after, so waiting for a device's turn or for one of the host's connection

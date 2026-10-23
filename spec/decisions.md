@@ -8666,3 +8666,53 @@ covered by tests and by reading the library, not by hardware. The adaptive
 default of D-003's third step is now the safe one to take, since a cap set too
 high lands on a wait rather than on a refused write -- but it is still the
 owner's to rule.
+
+---
+
+## D-134 — A command does not queue behind our own housekeeping
+
+**Status:** ruled and done 2026-10-23, on the owner's instruction. The last of
+the steps D-003 was given, and the only one of them that was measured as a cost
+before it was fixed.
+
+**Measured first.** `docs/measurements.md` §20: at a cap of two, with four
+writable devices configured on the bench, a command queued **2528 ms**. Nothing
+distinguished it from a state read, so two reads could hold both of the host's
+slots while a user waited for a switch to move. The cap was doing its job and
+the wrong work was in front.
+
+**Two queues, each still first in first out.** `ConnectionSlots.acquire` takes
+`urgent`, and `_admit` drains the urgent queue before the ordinary one. Urgent
+means somebody is waiting: a command, and the counter question of §5.6 when a
+command is blocked on it. Ordinary is this integration's own housekeeping: a
+read pass, a cached GATT table to forget, the counter sync that setup starts in
+the background. Urgency is a class and not a scramble, so two commands cannot
+overtake each other.
+
+**`__aenter__` is gone from the gate**, replaced by `taken(urgent=...)`. A slot
+is a thing one asks for on somebody's behalf, and `async with gate` hid that
+question behind a default. Four call sites, four explicit answers.
+
+**Starvation is accepted, and it is the right way round.** Nothing promises an
+ordinary waiter a slot while commands keep arriving. A read that waits is
+retried on the next advertisement after `READ_RETRY`, and the revision it was
+going to read is still there to be read; a command that waits is a user watching
+a switch that has not moved. The coalescing window of D-124 also bounds how fast
+commands can arrive from one device.
+
+**Tests.** Three in `ha/tests/test_connection_cap.py`: a command taken out of
+turn ahead of queued housekeeping and the housekeeping still served afterwards,
+two commands keeping their arrival order, and the case §20 measured -- one
+device's read holding the host's only slot while another device's command waits
+behind it, and overtakes it.
+
+**Not measured on hardware.** Provoking it needs the same four-device contention
+§20 found by accident, and the §20 sample is the measurement of the fault rather
+than of the fix. What the bench can show is that nothing regressed, which the
+campaign of §20 already covers for the paths it exercises.
+
+**D-003's list is now done** apart from its third step, the adaptive default
+from `bluetooth.async_scanner_count`, which changes behaviour for every
+installation and stays the owner's to rule. It is the safer of the two
+directions now: a cap set too high lands on a wait (D-133) rather than on a
+refused write.

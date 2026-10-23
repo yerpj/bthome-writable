@@ -724,7 +724,7 @@ class BTHomeWritableCoordinator:
                 )
 
     @asynccontextmanager
-    async def _link(self):
+    async def _link(self, *, urgent: bool = False):
         """The right to connect to this device: its turn, then a host slot.
 
         Two locks, always in this order. The device's comes first because the
@@ -738,8 +738,12 @@ class BTHomeWritableCoordinator:
         open another. The folded paths are safe by construction, since they are
         given a client rather than making one (D-129, D-130), and the standalone
         counter question is called before the link, not inside it.
+
+        `urgent` says somebody is waiting: a command, or the counter question a
+        command is blocked on. Housekeeping leaves it alone and queues behind
+        them, which is the last of D-003's steps (D-134).
         """
-        async with self._device, self._slots:
+        async with self._device, self._slots.taken(urgent=urgent):
             yield
 
     async def _connect(self, device: Any, *, max_attempts: int) -> Any:
@@ -839,7 +843,7 @@ class BTHomeWritableCoordinator:
             # had already drawn one would go out behind the device (D-083
             # item 11 is the same mistake in the other direction).
             try:
-                await self.async_sync_write_counter()
+                await self.async_sync_write_counter(urgent=True)
             except Exception:  # whatever a connection is entitled to raise
                 # Left armed, and the write goes out on the counter we hold. A
                 # device that could not be reached for the question will fail
@@ -862,7 +866,7 @@ class BTHomeWritableCoordinator:
 
         previous = self._values.get(number)
         started = time.monotonic()
-        async with self._link():
+        async with self._link(urgent=True):
             # After the gate, not before it: waiting for this device's turn
             # (D-131) or for one of the host's slots (D-003) is queueing, and
             # putting it in `connect_ms` hid it among the radio's own wait,
@@ -1109,7 +1113,7 @@ class BTHomeWritableCoordinator:
             return
         self._resync_counter = True
 
-    async def async_sync_write_counter(self) -> int | None:
+    async def async_sync_write_counter(self, *, urgent: bool = False) -> int | None:
         """Ask the device what counter it is at, over a connection of our own.
 
         This is the standalone form (D-075). The default is now to fold the
@@ -1145,7 +1149,7 @@ class BTHomeWritableCoordinator:
 
         challenge = secrets.token_bytes(CHALLENGE_LENGTH)
         report: bytes | None = None
-        async with self._link():
+        async with self._link(urgent=urgent):
             # Twice, because the first look can be defeated by our own cache: a
             # device that has just gained the characteristic is exactly a device
             # whose GATT table changed, and the copy we hold does not have it
