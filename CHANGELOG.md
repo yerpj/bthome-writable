@@ -40,6 +40,14 @@ Everything here is on `main` and in no release yet: the integration's
   the stack's also knows what an integration cannot see: connect failures per
   source, connections in flight, whether a source has a free slot at all
   (D-127).
+- **A read the settings revision called for rides a command's connection.** A
+  device whose knob or button moved reports it by moving its revision (§3.2),
+  and the read that answers used to be a connection of its own, taken moments
+  after a command's. A read whose revision has since been read now returns
+  without connecting at all. Measured on a device that does both: a local change
+  reached Home Assistant within 20 s in eight of nine commands, against four of
+  nine before (D-130). Reading *everything* on every command, which is what
+  prompted the question, is not what this does and is explained in D-130.
 - **The counter question of §5.6 rides the connection a command already makes.**
   It used to take one of its own: one connection at setup per configured sealed
   device, and one before any command whose device had moved its settings
@@ -62,6 +70,10 @@ Everything here is on `main` and in no release yet: the integration's
   which bought the margin the fold above needed (D-123).
 
 ### Fixed
+
+- A command no longer waits for the integration's own housekeeping: the caller
+  is released when the device acknowledges the write, which is what §4.2 makes
+  the confirmation (D-130).
 
 - **A value read from the wrong entry.** An Espruino device rebuilds its GATT
   table on every upload while the object ids it declares stay the same, and only

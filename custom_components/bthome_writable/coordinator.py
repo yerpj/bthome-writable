@@ -35,6 +35,7 @@ from .const import (
     DEFAULT_MAX_CONNECTIONS,
     DEFAULT_MTU_PAYLOAD,
     EVENT_WRITE,
+    FOLD_A_DUE_READ_INTO_A_WRITE,
     FOLD_THE_COUNTER_QUESTION_INTO_A_WRITE,
     READ_RETRY,
     RESYNC_JUMP,
@@ -186,6 +187,16 @@ class BTHomeWritableCoordinator:
         self._read_failed_at: float | None = None
         self._read_task: asyncio.Task[None] | None = None
         self._reading = False
+        self._read_connected = False
+        """Whether a read currently *holds* a connection, as opposed to waiting
+        for one.
+
+        The difference is the whole of D-130. `_notice_revision` asks for a read
+        the moment the revision moves, so `_reading` is true within
+        milliseconds and stays true while the read queues for a connection
+        slot -- which is where a command can overtake it. A read that has not
+        connected yet is a read a command can carry; a read that is connected
+        cannot be taken over, and must be left to finish."""
 
         self._resync_counter = False
         """Whether to ask the device for its write counter before writing again.
@@ -651,15 +662,44 @@ class BTHomeWritableCoordinator:
                         return
                     entry, value, coalesce, queued_at, waiter = self._pending.pop(0)
 
+                answered = False
+
+                def done(
+                    entry: int = entry,
+                    waiter: asyncio.Future[None] = waiter,
+                ) -> None:
+                    # The command is what the caller is waiting for, and §4.2
+                    # says the write response is the confirmation. Anything
+                    # this connection does afterwards -- a read the revision
+                    # had already called for (D-130) -- is ours, not theirs.
+                    nonlocal answered
+                    answered = True
+                    self._report({entry}, None)
+                    _settle(waiter, None)
+
                 try:
-                    await self._write_now(entry, value, coalesce, queued_at)
+                    await self._write_now(
+                        entry, value, coalesce, queued_at, on_acknowledged=done
+                    )
                 except Exception as caught:  # broad on purpose: reported to callers
+                    if answered:
+                        # The command landed and something after it did not:
+                        # the folded read swallows its own failures, so this is
+                        # the disconnect or the timing report. Saying the write
+                        # failed here would contradict the device.
+                        _LOGGER.debug(
+                            "%s: the command was acknowledged, but the "
+                            "connection ended badly: %s",
+                            self.address,
+                            caught,
+                        )
+                        continue
                     _LOGGER.warning("%s: write failed: %s", self.address, caught)
                     self._report({entry}, caught)
                     _settle(waiter, caught)
                 else:
-                    self._report({entry}, None)
-                    _settle(waiter, None)
+                    if not answered:
+                        done()
         finally:
             # Whatever ends this loop -- an unload, a cancellation, a fault of
             # its own -- must not leave a caller awaiting a write that will now
@@ -678,6 +718,7 @@ class BTHomeWritableCoordinator:
         value: bytes,
         coalesce: bool = True,
         queued_at: float | None = None,
+        on_acknowledged: Callable[[], None] | None = None,
     ) -> None:
         """Deliver one command: connect, write with response, close.
 
@@ -794,9 +835,46 @@ class BTHomeWritableCoordinator:
                 acknowledged = time.monotonic()
                 reported = await self._read_back(client, entry)
                 confirmed = time.monotonic()
+                read_back = reported
+                self._settle_written_value(number, value, reported, previous, coalesce)
+                # Released here, not after the connection closes: the command
+                # is confirmed and anything this link does next is ours
+                # (D-130).
+                if on_acknowledged is not None:
+                    on_acknowledged()
+                if FOLD_A_DUE_READ_INTO_A_WRITE and self._read_is_due():
+                    await self._read_due_here(
+                        client, skip=number if read_back is not None else None
+                    )
             finally:
                 await client.disconnect()
 
+        self._report_timing(
+            number,
+            queued_at=started if queued_at is None else queued_at,
+            connect_started=started,
+            connected=connected,
+            asked=asked,
+            write_started=write_started,
+            acknowledged=acknowledged,
+            confirmed=confirmed,
+        )
+
+    def _settle_written_value(
+        self,
+        number: int,
+        value: bytes,
+        reported: bytes | None,
+        previous: bytes | None,
+        coalesce: bool,
+    ) -> None:
+        """Decide what this entry is worth now the device has answered.
+
+        Inside the connection rather than after it, because what follows on the
+        same link is a read that must not undo this decision: the read path
+        adopts what the device reports, and this path knows what the write
+        asked for and what the device reported before it (D-117, D-122, D-130).
+        """
         if reported is not None and reported != value and coalesce:
             # The device answered, and with something other than what it was
             # given. Either it did not get the write, or it has its own idea of
@@ -839,16 +917,6 @@ class BTHomeWritableCoordinator:
             # is the device's own answer when there is one: ours is what we
             # asked for, which is not the same thing.
             self._values[number] = value if reported is None else reported
-        self._report_timing(
-            number,
-            queued_at=started if queued_at is None else queued_at,
-            connect_started=started,
-            connected=connected,
-            asked=asked,
-            write_started=write_started,
-            acknowledged=acknowledged,
-            confirmed=confirmed,
-        )
 
     def _report_timing(
         self,
@@ -1203,6 +1271,20 @@ class BTHomeWritableCoordinator:
                 self.address,
             )
             return False
+        if (
+            self._revision_advertised is not None
+            and self._revision_advertised == self._revision_read
+        ):
+            # Nothing left to do, and the cheapest possible way to find out.
+            # A read waits for a connection slot, and whatever held that slot
+            # may have been a command that carried this very read (D-130). It
+            # used to connect anyway and read values it had just stored.
+            _LOGGER.debug(
+                "%s: no read: settings revision %s has already been read",
+                self.address,
+                self._revision_read,
+            )
+            return True
         device = bluetooth.async_ble_device_from_address(
             self.hass, self.address, connectable=True
         )
@@ -1242,69 +1324,170 @@ class BTHomeWritableCoordinator:
         may have replaced it, and that case is already handled where it belongs,
         by dropping the cache on a layout change.
         """
-        changed = False
-        failed = False
         async with self._semaphore:
+            if (
+                self._revision_advertised is not None
+                and self._revision_advertised == self._revision_read
+            ):
+                # Checked again on this side of the wait, not only before it:
+                # the slot this read was queueing for may have been held by a
+                # command that carried the read with it (D-130).
+                _LOGGER.debug(
+                    "%s: no read: the revision was read while this one waited "
+                    "for a connection slot",
+                    self.address,
+                )
+                return True
             client = await establish_connection(
                 client_class=BleakClientWithServiceCache,
                 device=device,
                 name=self.address,
                 max_attempts=2,
             )
+            self._read_connected = True
             try:
-                for entry in declaration.offered:
-                    characteristic = client.services.get_characteristic(entry.uuid)
-                    if characteristic is None:
-                        # Declared in the advertising, absent from the table we
-                        # hold: the same evidence the write path acts on, and
-                        # until D-116 the one case the read path skipped in
-                        # silence -- leaving the entry stale and *reporting
-                        # success*, so nothing ever came back to it.
-                        await client.clear_cache()
-                        raise StaleTable(
-                            f"entry {entry.entry}: characteristic {entry.uuid} is "
-                            "declared but not in the cached GATT table"
-                        )
-                    if "read" not in characteristic.properties:
-                        # A write-only entry, which is legal: a lamp that takes
-                        # commands and reports nothing (§4.3). Logged because
-                        # from the outside it looks exactly like a value Home
-                        # Assistant refuses to refresh.
-                        _LOGGER.debug(
-                            "%s: entry %d: write-only, nothing to read",
-                            self.address,
-                            entry.entry,
-                        )
-                        continue
-                    raw = bytes(await client.read_gatt_char(characteristic))
-                    try:
-                        value = self._open_read(entry, raw)
-                    except StaleEntry as wrong:
-                        await client.clear_cache()
-                        raise StaleTable(str(wrong)) from wrong
-                    if value is None:
-                        # Refused, unauthenticated or undecodable. `_open_read`
-                        # has said why; what matters here is that this entry's
-                        # value is not the one the revision promised.
-                        failed = True
-                        continue
-                    _LOGGER.debug(
-                        "%s: entry %d: read object 0x%02X, %d value bytes%s",
-                        self.address,
-                        entry.entry,
-                        entry.object_id,
-                        len(value),
-                        "" if self._values.get(entry.entry) == value else ", new",
-                    )
-                    if self._values.get(entry.entry) != value:
-                        self._values[entry.entry] = value
-                        changed = True
+                return await self._read_entries(client, declaration)
             finally:
+                self._read_connected = False
                 await client.disconnect()
 
-        if changed:
-            self._notify()
+    async def _read_entries(
+        self, client: Any, declaration: Declaration, *, skip: int | None = None
+    ) -> bool:
+        """Read every offered, readable entry over a connection in hand.
+
+        Returns whether all of them were read, which is what lets `_read_loop`
+        mark the settings revision read (D-083). Raises `StaleTable` when the
+        cached GATT table has to be dropped and the device read again.
+
+        `skip` is an entry this connection has already settled: a command's own
+        read back has decided it, under rules this loop does not have -- what
+        was written, and what the device reported before it (D-117, D-122). The
+        revision may still be marked read, because that entry *was* read, by
+        the command (D-130).
+
+        A value adopted before a `StaleTable` is kept and announced: it decoded
+        and carried its own object id, so it is as good as any other read, and
+        the pass that follows the dropped table re-reads the rest.
+        """
+        changed = False
+        failed = False
+        try:
+            for entry in declaration.offered:
+                if entry.entry == skip:
+                    continue
+                characteristic = client.services.get_characteristic(entry.uuid)
+                if characteristic is None:
+                    # Declared in the advertising, absent from the table we
+                    # hold: the same evidence the write path acts on, and
+                    # until D-116 the one case the read path skipped in
+                    # silence -- leaving the entry stale and *reporting
+                    # success*, so nothing ever came back to it.
+                    await client.clear_cache()
+                    raise StaleTable(
+                        f"entry {entry.entry}: characteristic {entry.uuid} is "
+                        "declared but not in the cached GATT table"
+                    )
+                if "read" not in characteristic.properties:
+                    # A write-only entry, which is legal: a lamp that takes
+                    # commands and reports nothing (§4.3). Logged because
+                    # from the outside it looks exactly like a value Home
+                    # Assistant refuses to refresh.
+                    _LOGGER.debug(
+                        "%s: entry %d: write-only, nothing to read",
+                        self.address,
+                        entry.entry,
+                    )
+                    continue
+                raw = bytes(await client.read_gatt_char(characteristic))
+                try:
+                    value = self._open_read(entry, raw)
+                except StaleEntry as wrong:
+                    await client.clear_cache()
+                    raise StaleTable(str(wrong)) from wrong
+                if value is None:
+                    # Refused, unauthenticated or undecodable. `_open_read`
+                    # has said why; what matters here is that this entry's
+                    # value is not the one the revision promised.
+                    failed = True
+                    continue
+                _LOGGER.debug(
+                    "%s: entry %d: read object 0x%02X, %d value bytes%s",
+                    self.address,
+                    entry.entry,
+                    entry.object_id,
+                    len(value),
+                    "" if self._values.get(entry.entry) == value else ", new",
+                )
+                if self._values.get(entry.entry) != value:
+                    self._values[entry.entry] = value
+                    changed = True
+        finally:
+            if changed:
+                self._notify()
         return not failed
+
+    def _read_is_due(self) -> bool:
+        """Whether §3.2 has called for a read that has not been made.
+
+        The same question `_notice_revision` asks before starting one, asked
+        again where a connection already exists. A read already in flight is
+        not due: it has its own connection, and this one cannot cancel it.
+        """
+        if self.declaration is None or self._read_connected:
+            return False
+        if self._revision_advertised is None:
+            return False
+        # `READ_RETRY` is not consulted, and deliberately: a read in its backoff
+        # is still due, and the backoff exists to stop us *connecting* again
+        # after a failed read. This connection is already open, so carrying the
+        # read costs nothing the backoff was protecting and ends the stale
+        # window early rather than waiting it out.
+        return self._revision_advertised != self._revision_read
+
+    async def _read_due_here(self, client: Any, *, skip: int | None = None) -> None:
+        """Make the read §3.2 called for, on the connection a command holds.
+
+        Nothing here raises: the command has been acknowledged and reported,
+        and a read that fails leaves the revision unread, which is exactly what
+        `_read_loop` would have recorded. The retry follows on a later
+        advertisement, as it does for any failed read (D-130).
+        """
+        declaration = self.declaration
+        if declaration is None:
+            return
+        target = self._revision_advertised
+        # Held for the duration, so that an advertisement arriving mid-read
+        # does not start a second one over a connection of its own (D-087), and
+        # so that a second command does not fold the same read again.
+        was_reading = self._reading
+        self._reading = True
+        self._read_connected = True
+        try:
+            done = await self._read_entries(client, declaration, skip=skip)
+        except Exception as error:  # a stale table, a refused read, the link
+            _LOGGER.debug(
+                "%s: the read folded into this command failed: %s",
+                self.address,
+                error,
+            )
+            done = False
+        finally:
+            self._read_connected = False
+            # A read loop that is waiting for a slot keeps its own flag: it
+            # will find the revision read and stand down by itself.
+            self._reading = was_reading
+
+        if done:
+            self._revision_read = target
+            self._read_failed_at = None
+            _LOGGER.debug(
+                "%s: settings revision %s read on the command's own connection",
+                self.address,
+                target,
+            )
+        else:
+            self._read_failed_at = time.monotonic()
 
     def _open_read(self, entry: WritableEntry, raw: bytes) -> bytes | None:
         """A read's value, or None -- with the reason logged -- if unusable.

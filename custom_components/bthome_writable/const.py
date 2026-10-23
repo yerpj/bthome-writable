@@ -80,6 +80,28 @@ command right behind it therefore paid for two connections where one does
 
 Off, both reverts to a separate connection, which is what shipped until now."""
 
+FOLD_A_DUE_READ_INTO_A_WRITE: Final = True
+"""Whether a command also makes the read §3.2 has already called for.
+
+A device moves its settings revision when one of its writable values changed on
+the device, and the receiver answers by reading every readable entry over a
+connection of its own. When a command is going out anyway, that read can ride
+with it: the entries are on the same device, the link is already up, and a
+connection on a user's bench cost 9.5 s through an ESPHome proxy (D-130).
+
+**What this does not reach**, and it is the case that prompted the question:
+writing a value and then reading what the device made of it is inherently two
+connections, because the device publishes the settled value *after* the
+command's connection has closed -- 250 ms after `changed()` at the earliest
+(D-124), seconds after a fade. §4.3's getter is published, not served on
+demand, so there is nothing newer to read while the link is open (D-122).
+
+What it does reach is the other order: a knob or a button moved the revision,
+and a command follows. Then the command carries the read, and the read that was
+queued behind it finds nothing left to do (`async_read_all` says so without
+connecting). Also a read in its `READ_RETRY` backoff, which a command can now
+carry rather than wait out."""
+
 # BTHome's device-information byte is a bitfield, not a value (§2.1). Reading
 # it as a value is how this integration came to work with exactly one firmware:
 # a sleepy encrypted device transmits 0x45 rather than 0x41, and comparing for

@@ -8376,3 +8376,143 @@ bindkey, and without one no question is ever owed. The procedure, the tool
 bench write on a shared board, so the owner's call. Until that runs, the claim
 stands on the connection count, which the tests settle, times the cost of a
 connection, which §16 measured.
+
+
+## D-130 -- a read the revision called for rides a command's connection
+
+**2026-10-23, from the same thread as D-129, and from the measurement that
+closed it.** @enaon asked why Home Assistant does not read every writable value
+whenever it connects to write one:
+
+> Say I have an on/off switch, and a dimmer value on a light, both writable. If
+> I write either of them from HA, say switch state, I will then have to trigger
+> a changed() on the light, so the HA can connect againg and get the dimmer
+> value. Since changed() makes HA read all values, could write not do so as
+> well?
+
+**The answer to his question as asked is no, and his own case is the reason.**
+§4.3's getter is *published*, not served on demand: the module keeps each
+readable entry's characteristic current and republishes it when something moves,
+250 ms after `changed()` at the earliest (D-124) and seconds after a fade. So a
+read taken while the command's link is still open returns the value from before
+the write landed, which is the trap D-122 cost two days to find. His dimmer in a
+fade is exactly that. And reading everything on every command would spend one
+sealed read per readable entry per command, 832 ms median on a sealed nice!nano
+(§13), to adopt values nobody asked for.
+
+**What is worth doing is the other order.** A device moves its settings revision
+when one of its writable values changed *on the device* -- a knob, a button, a
+schedule (§3.2) -- and the receiver answers with a read over a connection of its
+own. When a command is going out anyway, that read can ride with it. Why it is
+worth anything at all is the cost of a connection, which this day measured
+twice: 0.7 to 3.4 s at a 1000 ms advertising interval on this bench (§16), and
+**9.5 s on his**, through an ESPHome proxy that stopped scanning for 7.9 s of it
+while it tried (§17, his log of 11:30).
+
+**So, behind `FOLD_A_DUE_READ_INTO_A_WRITE`:**
+
+- after the write is acknowledged and the entry's value settled, a command makes
+  the read §3.2 already called for, on the link it holds;
+- the entry just written is left alone. The write path has decided it, under
+  rules the read loop does not have: what was asked for, what the device
+  reported before it, and D-122's rule that an unchanged answer is not a lost
+  write. The revision may still be marked read, because that entry *was* read,
+  by the command's own read back;
+- the caller is released the moment the device acknowledges, before the folded
+  read. §4.2 makes the write response the confirmation, so the command's clock
+  stops there; anything the link does afterwards is the integration's business
+  and not the user's. `_flush_soon` passes the acknowledgement in, and a failure
+  *after* it is logged rather than reported, since the device did take the
+  command;
+- `async_read_all` returns without connecting when the revision it would read
+  has since been read. **This is what makes the fold bite**: a read waits for a
+  connection slot, and the thing holding that slot may have been a command that
+  carried the read. It is worth having on its own -- that read used to connect
+  and re-read values it had just stored.
+
+**The honest scope.** The fold reaches a command that follows a local change,
+and a read inside its `READ_RETRY` backoff, which a command can now carry
+instead of waiting the ten seconds out. It does **not** reach @enaon's own
+sequence: write, then `changed()`, then read. Those are two connections because
+the device learns the settled value after the command's link has closed, and no
+receiver policy can change that. Said plainly in the thread, it is a smaller
+claim than "your two connections become one".
+
+**Measured, and where.** Eight tests in `ha/tests/test_folded_reads.py`, the
+first of them the same script run twice against the constant: a command and a
+due read cost **one connection folded, two separate**, with the same values
+adopted and the same revision settled either way. The rest hold the invariants
+the fold could have broken: the written entry keeps what the command decided
+(D-122), the caller is released before the read begins, a failed folded read
+leaves the revision owed and does not fail the command (D-083), a read already
+in flight is left alone (D-087), and a read in backoff is carried early.
+
+Nothing in those tests is a latency measurement and none of them needs a radio:
+what they prove is an ordering.
+
+**On hardware it came out differently, and better in one way than in the one
+expected.** A third nice!nano was set up for this, because neither bench board
+owes a read at all: `espruino/bench/revision-lamp.js`, two entries writable and
+readable, plus `bench.knob()` to move one locally, and the board counts the
+connections itself. Nine samples per arm, the same deployed code, the constant
+flipped between them (`docs/measurements.md` §18):
+
+| Nine samples each | folded | separate |
+|---|---|---|
+| Connections per sample | 1 eight times, 2 once | 1 seven times, 2 twice |
+| The knob's value in Home Assistant within 20 s | **8 of 9** | **4 of 9** |
+| Command, median | 2.8 s | 5.9 s |
+
+**The connection count barely moved.** With the fold off the second connection
+frequently never happens: the read is requested, it reaches for a device a
+command is already reaching for, and it *fails* rather than queueing. So what
+the fold buys on this bench is not a connection saved but a local change that
+arrives, 8 of 9 against 4 of 9. The command's own latency says nothing: both
+arms are bimodal, 1.5 to 2.1 s when nothing collides and 13 to 34 s when
+something does, and nine samples settle no distribution.
+
+The clear path also went through the regression guard, because the value
+decision and the caller's release moved inside the connection for every device,
+sealed or not.
+
+**And §5.6's half of this day is still unmeasured.** D-129's folded counter
+question needs a sealed device offering the report; this new board's firmware has
+no crypto at all, so `AES` is not defined and a sealed sketch throws on its first
+packet. It stays `[HW]`.
+
+
+## D-131 -- two of our own connections, on a device that serves one central
+
+**2026-10-23, found while measuring D-130, and it is not D-130's.** The bench's
+new board is the first here that both takes commands and reports state, and it
+made a hazard visible that the other two never could: commands to it took 1.5 to
+2.1 s when nothing else was happening and **13 to 34 s** when a read was due at
+the same moment, and in those cases the read itself often never arrived at all.
+
+**The mechanism.** `DEFAULT_MAX_CONNECTIONS` is 2 and the semaphore is
+process-wide, shared by every configured device (D-003): it protects the host's
+adapters and proxies, which are a host resource. The serialisation a *device*
+needs is a different thing, and nothing provides it: an Espruino serves one
+central at a time, so our read and our command can hold the two host slots and
+reach for the same device at once. One of them then waits on a link the other
+holds, retries, and either arrives late or gives up and falls into its
+`READ_RETRY` backoff. §13 and `const.py`'s own comment knew that a read "can
+fail simply because a phone or the Web IDE" holds the link; what is new is that
+**we are the other central**.
+
+**This is in `main`, not on a branch.** It is as old as the connection cap, and
+it was invisible because the Puck.js advertises no settings revision and the
+nice!nano's text entry has no `get`, so neither device has ever had a read and a
+command in flight together on this bench.
+
+**The fix is not the fold.** D-130 removes the collision for the subset of reads
+a command happens to carry, which is why its delivery figures improved, and
+leaves it everywhere else. What the receiver needs is one lock per coordinator
+around every connection, with the host cap staying where it is and keeping its
+own job. That is about ten lines and two tests, and it is the first of the
+`[DECISION]` steps the owner was offered for the connection cap: per-device
+exclusion first, then the cap exposed, in that order and not the other.
+
+Not done here, deliberately: this branch carries D-129 and D-130, each behind
+its own constant, and a change to how every connection is serialised belongs on
+its own with its own measurement.

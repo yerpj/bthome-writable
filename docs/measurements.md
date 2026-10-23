@@ -1200,6 +1200,103 @@ sample of the separate arm, because there the question was answered elsewhere.
 A folded sample whose write is refused would say the counter was drawn in the
 wrong order, which is the one thing this change could get wrong.
 
+---
+
+## 18. A read folded into a command: the connection count, and what it is worth
+
+**2026-10-23, a third nice!nano, through Home Assistant on `hci0` alone.** D-130
+makes a command carry the read §3.2 has already called for. This section has
+three parts, and they do not all say what was expected.
+
+### The fixture, and why one had to be built
+
+Neither bench board can exercise this. The Puck.js advertises no settings
+revision, and the nice!nano's text entry has a `set` and no `get`, so neither
+owes a read at all. A third board, on `COM6`, now runs
+[`espruino/bench/revision-lamp.js`](../espruino/bench/revision-lamp.js): a
+`light` and a `count`, both writable **and** readable, so the device advertises a
+revision, plus `bench.knob()`, which moves the count locally and calls
+`bw.changed()` the way a knob would. The board counts connections itself
+(`NRF.on('connect')`, `bench.conns()`), which is the only count that cannot be
+argued with.
+
+Its firmware has no crypto -- `MODULES` is
+`timer,Flash,Storage,heatshrink,neopixel`, so `AES` is not defined -- so it
+cannot run a sealed sketch, and §5.6's counter report (D-129) is still
+unmeasured on hardware.
+
+### The measurement, and the honest result
+
+Per sample: reset the board's counter, issue a command, and move the knob
+0.2 s later, while the command still holds the connection slot. Then wait 20 s
+and ask the board how many centrals connected, and Home Assistant what the
+count entity says. Nine samples per arm, the same deployed code, one constant
+flipped between them and Home Assistant restarted.
+
+| Nine samples each | `FOLD_A_DUE_READ_INTO_A_WRITE = True` | `= False` |
+|---|---|---|
+| Connections per sample | 1 eight times, 2 once | 1 seven times, 2 twice |
+| The knob's value in Home Assistant within 20 s | **8 of 9** | **4 of 9** |
+| Command, median | 2.8 s | 5.9 s |
+| Command, range | 1.5 to 33.6 s | 1.7 to 17.2 s |
+
+**The connection count barely moved, and that is the finding.** The expectation
+was two connections becoming one. What happens instead is that with the fold off
+the second connection *frequently never happens*: the read is requested, it
+competes with the command for the device, and it fails rather than queueing --
+an Espruino serves one central at a time, and the integration's own cap of two
+connections per host (D-003) lets a read and a command reach for the same device
+at once. So the saving does not show up as a connection removed. It shows up as
+**a local change that arrives**: 8 of 9 against 4 of 9.
+
+**The command's own latency says nothing here.** Both arms are bimodal, 1.5 to
+2.1 s when nothing collides and 13 to 34 s when something does, in both arms,
+and nine samples settle no distribution. The medians differ in the fold's favour
+and the ranges overlap; the first three folded samples read 1.8, 1.5 and 2.8 s
+and would have supported a much stronger claim than the next six allow. Recorded
+as it came out.
+
+**What this measurement also found, and it is not D-130's.** Those 13 to 34 s
+commands, and the reads that vanish, are two of our own connections arriving at
+one device. That is the hazard named in D-003's discussion and it is in `main`
+as much as on this branch: the connection cap is per host and the serialisation a
+device needs is per device. The fix is a lock per coordinator, and the fold is
+not it -- the fold only removes the collision for the subset of reads a command
+happens to carry.
+
+### What it put at risk: the write path of every device
+
+The value a write leaves behind is now decided inside the connection, and the
+caller is released at the acknowledgement rather than when the link closes. That
+is every command, sealed or not, so:
+
+```
+python -m tools.regression --device puck
+```
+
+| | Baseline | This change |
+|---|---|---|
+| First command, median | 3.22 s | 1.69 s |
+| Repeated command, median | 0.33 s | 0.48 s |
+| The write itself, median | 35.8 ms | 35.8 ms |
+| Delivered | 24/24 | 24/24 |
+| Connected without a retry | 100 % | 100 % |
+
+**No regression**, and the write itself to the tenth of a millisecond of the
+baseline. Two earlier runs of this branch each lost 4 of their 24 commands and a
+baseline run between them lost none, which is why `tools.regression` now prints
+*why* a sample failed: a command the integration refused and a command whose
+timing event never arrived were both just `FAILED`, and the difference is the
+whole diagnosis. The next time it happens the output will say which.
+
+### Still unmeasured  [HW]
+
+§5.6's counter question folded into a command (D-129) needs a sealed device
+offering the report, which means a board whose firmware has crypto:
+`espruino/bench/many-writables.js` on the `COM15` nice!nano, or the Puck.js,
+both of which are shared and in use. The procedure and the tool
+(`tools/counter_question_cost.py`) are in §17.
+
 ## Reproducing any of this
 
 Most of the tools above take `--address`; `tools.regression` and
