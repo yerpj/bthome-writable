@@ -8772,3 +8772,80 @@ but Home Assistant core's `verify_cleanup` would see a lingering timer.
 fill the host (§20), which is why this was reachable at all: the only thing that
 exercises the hold-off today is the tests, and the tests asserted the mechanism
 one level too late.
+
+---
+
+## D-136 — What the audit of the integration found, and what is the owner's  [DECISION]
+
+**2026-10-24, branch `fix/hold-off-reaches-the-queue`.** A neutral audit of
+`custom_components/bthome_writable/` was commissioned with the instruction used
+for the module in D-123: find simplifications, change no behaviour, and measure
+every finding by applying it rather than arguing it. It returned one defect
+(D-135), five simplifications, and four things that are not ours to settle.
+
+### Taken, each applied with the suites green
+
+1. **`_write_now`'s options are keyword-only.** `coalesce` was being passed
+   positionally from the flush loop, so the call read as four anonymous values
+   and the one that decides whether state is kept at all was the third. Adding
+   the `*` failed 31 tests, which is how the single positional caller was
+   located.
+2. **`_Queued`, a named tuple for the pending write queue.** The coalescing
+   pass and the shutdown path reached into the item by position, and `item[4]`
+   was the caller's future.
+3. **One `parse_bindkey`.** The discovery step and the reconfigure step each
+   decided what a valid key is, in two different shapes. Note the order inside
+   it: `bytes.fromhex` before the length test, because `fromhex` tolerates
+   internal whitespace and both steps accept a key copied in with spaces.
+4. **`_revision_is_read()`**, named once instead of the same four-line
+   predicate in both halves of D-130's decision, where the comments explained
+   the second occurrence rather than the condition.
+5. Two one-line removals: a never-reassigned alias in the write path, and
+   `self._urgent if self._urgent else self._ordinary`.
+
+### The owner's, not taken
+
+**A queued read cannot be carried by a command for the same device.**
+`coordinator.py` says *"a read that has not connected yet is a read a command
+can carry"*, and `_read_connected` exists to draw that line. But `_link()` takes
+the device's turn first and queues for a host slot second (D-131), so a read
+merely waiting for a slot is already holding the device's turn; a command for
+that device then blocks on the device lock, never reaches the gate, and its
+urgency (D-134) is never expressed. Measured with the project's own harness: cap
+of 1 with the slot held elsewhere, a device whose revision has moved, read
+requested and then a command -- **two connections**, the second being exactly
+the one D-130 was written to remove. The obvious repair, making the device lock
+a one-slot gate with the same priority, does not work: `urgent` reorders waiters
+and the read is not waiting, it is holding. **The trade:** either take the host
+slot before the device turn, uniformly, which is the deadlock D-131 chose this
+order to avoid, or give the read path a cancellable wait and a stand-down, which
+is machinery rather than a reordering. Against one extra connection per
+occurrence, in a case that needs the cap already exhausted. Note
+`ha/tests/test_one_central.py` asserts `_device.locked() is False`, which pins
+it to being an `asyncio.Lock`.
+
+**The cache-drop task outlives its config entry.** A layout change fires
+`hass.async_create_task(self.async_clear_service_cache())`, so after an unload
+or a reload it can still be queued for a device whose entry is gone.
+`entry.async_create_background_task` would tie it to the entry. **The trade:**
+the cache would then not be dropped when the layout change is the last thing
+before a reload, and dropping it is what stops the next write meeting D-012's
+stale table. Pre-existing, not from this week.
+
+**`self._candidates[address]` is unguarded** in `config_flow.py`, reachable only
+by entering the user step with input without having built the list in the same
+flow instance, which the UI does not do. `.get()` plus an abort would make it a
+clean refusal. **The trade:** one more abort reason to translate for a case
+nothing reaches.
+
+**Untried: `client: Any` to `BleakClientWithServiceCache`** in eight signatures
+where the class is already imported, which is what rule 5 asks for. Neither
+virtualenv has mypy, so it could not be type-checked, and the test double is
+duck-typed rather than a subclass, so a checker pointed at the tests would
+complain about the fake rather than the code.
+
+### What the audit said was already sound
+
+`const.py`, `__init__.py` and the five entity platforms. The three
+`_remember_*` callbacks look duplicated and are not worth factoring: the
+sharing costs their per-key comments and one of them needs a transform.

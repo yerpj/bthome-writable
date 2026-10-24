@@ -55,6 +55,21 @@ slots, so this is already a host with several of them, and past that the
 adapter's own limit is the one that will answer first (D-132)."""
 
 
+def parse_bindkey(text: str) -> bytes | None:
+    """The sixteen bytes a user typed, or None if that is not what they typed.
+
+    One place decides what a bindkey is, because two steps ask for one -- the
+    discovery flow and the reconfigure flow -- and a rule that lives twice is a
+    rule that can come to differ. Separators are tolerated: a key is copied
+    from somewhere, and the somewhere writes it with dashes or colons.
+    """
+    try:
+        bindkey = bytes.fromhex(text.strip().replace("-", "").replace(":", ""))
+    except ValueError:
+        return None
+    return bindkey if len(bindkey) * 2 == BINDKEY_LENGTH else None
+
+
 def service_data(service_info: BluetoothServiceInfoBleak) -> bytes | None:
     payload = service_info.service_data.get(BTHOME_SERVICE_UUID)
     return payload if payload and len(payload) >= 2 else None
@@ -170,12 +185,8 @@ class BTHomeWritableConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            text = user_input[CONF_BINDKEY].strip().replace("-", "").replace(":", "")
-            try:
-                bindkey = bytes.fromhex(text)
-            except ValueError:
-                bindkey = b""
-            if len(bindkey) * 2 != BINDKEY_LENGTH:
+            bindkey = parse_bindkey(user_input[CONF_BINDKEY])
+            if bindkey is None:
                 errors[CONF_BINDKEY] = "expected_32_characters"
             else:
                 declaration = declaration_from(self._discovery, bindkey)
@@ -320,11 +331,8 @@ class BTHomeWritableConfigFlow(ConfigFlow, domain=DOMAIN):
                         entry, data_updates={CONF_BINDKEY: None}
                     )
             else:
-                try:
-                    bindkey = bytes.fromhex(text)
-                except ValueError:
-                    bindkey = b""
-                if len(bindkey) * 2 != BINDKEY_LENGTH:
+                bindkey = parse_bindkey(text)
+                if bindkey is None:
                     errors[CONF_BINDKEY] = "expected_32_characters"
                 elif declaration_from(discovery, bindkey) is None:
                     errors[CONF_BINDKEY] = "decryption_failed"

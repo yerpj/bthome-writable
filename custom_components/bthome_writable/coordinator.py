@@ -14,7 +14,7 @@ from contextlib import asynccontextmanager
 import logging
 import secrets
 import time
-from typing import Any
+from typing import Any, NamedTuple
 
 from bleak_retry_connector import (
     BleakClientWithServiceCache,
@@ -100,6 +100,21 @@ class StaleTable(Exception):
 
 
 type WriteListener = Callable[[set[int], Exception | None], None]
+
+
+class _Queued(NamedTuple):
+    """One command waiting for a connection.
+
+    A named tuple rather than a plain one: the coalescing pass and the shutdown
+    path reach into the item by position, and `item[4]` says nothing about what
+    it is.
+    """
+
+    entry: int
+    value: bytes
+    coalesce: bool
+    queued_at: float
+    waiter: asyncio.Future[None]
 
 
 class BTHomeWritableCoordinator:
@@ -216,7 +231,7 @@ class BTHomeWritableCoordinator:
 
         self._listeners: list[Callable[[], None]] = []
         self._write_listeners: list[WriteListener] = []
-        self._pending: list[tuple[int, bytes, bool, float, asyncio.Future[None]]] = []
+        self._pending: list[_Queued] = []
         self._pending_lock = asyncio.Lock()
         self._flush_task: asyncio.Task[None] | None = None
         self._slots = register_request(address, max_connections)
@@ -626,15 +641,17 @@ class BTHomeWritableCoordinator:
             if coalesce:
                 keep = []
                 for item in self._pending:
-                    if item[0] == entry and item[2]:
-                        _settle(item[4], None)
+                    if item.entry == entry and item.coalesce:
+                        _settle(item.waiter, None)
                     else:
                         keep.append(item)
                 self._pending = keep
             # Stamped here, where the command arrives, so that what is reported
             # afterwards measures the whole journey rather than the part that
             # happens to be easy to see.
-            self._pending.append((entry, value, coalesce, time.monotonic(), waiter))
+            self._pending.append(
+                _Queued(entry, value, coalesce, time.monotonic(), waiter)
+            )
             if self._flush_task is None or self._flush_task.done():
                 self._flush_task = self.hass.async_create_task(self._flush_soon())
         await waiter
@@ -690,7 +707,11 @@ class BTHomeWritableCoordinator:
 
                 try:
                     await self._write_now(
-                        entry, value, coalesce, queued_at, on_acknowledged=done
+                        entry,
+                        value,
+                        coalesce=coalesce,
+                        queued_at=queued_at,
+                        on_acknowledged=done,
                     )
                 except Exception as caught:  # broad on purpose: reported to callers
                     if answered:
@@ -719,7 +740,7 @@ class BTHomeWritableCoordinator:
                 stranded, self._pending = self._pending, []
             for item in stranded:
                 _settle(
-                    item[4],
+                    item.waiter,
                     WriteFailed(f"{self.address}: the write queue stopped"),
                 )
 
@@ -776,6 +797,7 @@ class BTHomeWritableCoordinator:
         self,
         number: int,
         value: bytes,
+        *,
         coalesce: bool = True,
         queued_at: float | None = None,
         on_acknowledged: Callable[[], None] | None = None,
@@ -910,7 +932,6 @@ class BTHomeWritableCoordinator:
                 acknowledged = time.monotonic()
                 reported = await self._read_back(client, entry)
                 confirmed = time.monotonic()
-                read_back = reported
                 self._settle_written_value(number, value, reported, previous, coalesce)
                 # Released here, not after the connection closes: the command
                 # is confirmed and anything this link does next is ours
@@ -919,7 +940,7 @@ class BTHomeWritableCoordinator:
                     on_acknowledged()
                 if FOLD_A_DUE_READ_INTO_A_WRITE and self._read_is_due():
                     await self._read_due_here(
-                        client, skip=number if read_back is not None else None
+                        client, skip=number if reported is not None else None
                     )
             finally:
                 await client.disconnect()
@@ -1347,10 +1368,7 @@ class BTHomeWritableCoordinator:
                 self.address,
             )
             return False
-        if (
-            self._revision_advertised is not None
-            and self._revision_advertised == self._revision_read
-        ):
+        if self._revision_is_read():
             # Nothing left to do, and the cheapest possible way to find out.
             # A read waits for a connection slot, and whatever held that slot
             # may have been a command that carried this very read (D-130). It
@@ -1401,10 +1419,7 @@ class BTHomeWritableCoordinator:
         by dropping the cache on a layout change.
         """
         async with self._link():
-            if (
-                self._revision_advertised is not None
-                and self._revision_advertised == self._revision_read
-            ):
+            if self._revision_is_read():
                 # Checked again on this side of the wait, not only before it:
                 # the slot this read was queueing for may have been held by a
                 # command that carried the read with it (D-130).
@@ -1497,6 +1512,17 @@ class BTHomeWritableCoordinator:
             if changed:
                 self._notify()
         return not failed
+
+    def _revision_is_read(self) -> bool:
+        """Whether the revision being advertised is the one in `_values`.
+
+        False while no revision has been advertised at all: a device that does
+        not report state (§3.1) has nothing that could have been read.
+        """
+        return (
+            self._revision_advertised is not None
+            and self._revision_advertised == self._revision_read
+        )
 
     def _read_is_due(self) -> bool:
         """Whether §3.2 has called for a read that has not been made.
