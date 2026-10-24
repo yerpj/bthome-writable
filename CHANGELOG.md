@@ -34,8 +34,6 @@ Everything here is on `main` and in no release yet: the integration's
 - The `bthome_writable_write` event carries `confirm_ms`, the time the read back
   took (D-122), and `counter_ms`, the time the counter question of §5.6 took
   when the command carried one (D-129).
-- The Espruino module is offered to EspruinoDocs as a tutorial page as well as a
-  reference page (D-112).
 
 ### Changed
 
@@ -112,10 +110,9 @@ Everything here is on `main` and in no release yet: the integration's
   device now has its own turn. Measured on a board that does both: the worst
   command fell from 33.6 s to 6.6 s and every local change arrived, 9 of 9
   against 4 of 9 (D-131).
-- A command no longer waits for the integration's own housekeeping: the caller
-  is released when the device acknowledges the write, which is what §4.2 makes
-  the confirmation (D-130).
-
+- A command no longer stays open while this integration finishes its own
+  bookkeeping after the write: the caller is released when the device
+  acknowledges it, which is what §4.2 makes the confirmation (D-130).
 - **A value read from the wrong entry.** An Espruino device rebuilds its GATT
   table on every upload while the object ids it declares stay the same, and only
   a change to that list used to drop the cached table: a wrong value was
