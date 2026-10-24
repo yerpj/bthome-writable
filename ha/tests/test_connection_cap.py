@@ -19,9 +19,10 @@ import time
 
 from bleak_retry_connector import BleakOutOfConnectionSlotsError
 from homeassistant.core import HomeAssistant
-from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.data_entry_flow import FlowResultType, InvalidData
 import pytest
 
+from custom_components.bthome_writable.config_flow import MAX_CONNECTIONS_CEILING
 from custom_components.bthome_writable.const import (
     CONF_MAX_CONNECTIONS,
     DEFAULT_MAX_CONNECTIONS,
@@ -39,21 +40,10 @@ from custom_components.bthome_writable.slots import (
     withdraw_request,
 )
 
-from .conftest import settle, setup_device
+from .conftest import hold_the_first, let_the_others_run, settle, setup_device
 
 ONE = "A4:C1:38:8E:1F:2B"
 ANOTHER = "A4:C1:38:8E:1F:2C"
-
-
-async def let_the_others_run(times: int = 5) -> None:
-    """Yield until every runnable task has reached its next real wait.
-
-    Not a sleep: a task held at the gate never reaches a timer, so sleeping for
-    it would wait for ever in this harness. Yielding is also the right
-    granularity here, since what is asserted is that a caller *cannot* proceed.
-    """
-    for _ in range(times):
-        await asyncio.sleep(0)
 
 
 # --- the host's one gate -----------------------------------------------------
@@ -169,6 +159,38 @@ async def test_a_slot_granted_to_a_caller_that_vanishes_is_passed_on() -> None:
     assert gate.in_flight == 1
 
 
+async def test_a_slot_comes_back_however_the_block_ends() -> None:
+    """`taken()` is the whole interface, and this is the whole reason for it.
+
+    Every path that connects leaves through an exception sooner or later -- a
+    refused write, a link that went away, a host with no slot free -- and a
+    slot leaked on one of them tightens the cap by one per failure until
+    nothing can connect at all.
+    """
+    gate = ConnectionSlots(1)
+
+    with pytest.raises(TimeoutError):
+        async with gate.taken(urgent=True):
+            raise TimeoutError("the link went away")
+    assert gate.in_flight == 0, "an exception"
+
+    async def a_caller_that_is_cancelled() -> None:
+        async with gate.taken():
+            await asyncio.Event().wait()
+
+    cancelled = asyncio.create_task(a_caller_that_is_cancelled())
+    await let_the_others_run()
+    assert gate.in_flight == 1, "it is inside the block"
+
+    cancelled.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await cancelled
+    assert gate.in_flight == 0, "and a cancellation"
+
+    await gate.acquire()
+    assert gate.in_flight == 1, "so the slot is still there to be had"
+
+
 # --- and the form ------------------------------------------------------------
 
 
@@ -211,6 +233,29 @@ async def test_unloading_a_device_hands_its_share_of_the_cap_back(
     assert await hass.config_entries.async_unload(entry.entry_id)
     await hass.async_block_till_done()
     assert connection_slots().limit == DEFAULT_MAX_CONNECTIONS
+
+
+@pytest.mark.usefixtures("custom_integration")
+async def test_the_form_refuses_a_cap_no_host_could_have(
+    hass: HomeAssistant, radio, gatt
+) -> None:
+    """One to eight, and the bounds are the form's to keep (D-132).
+
+    `register_request` clamps a zero to one, so a form that let one through
+    would silently mean something other than what the user typed; and a cap far
+    above what any adapter has is a cap that caps nothing.
+    """
+    entry = await setup_device(hass, radio, "single-light")
+
+    for refused in (0, MAX_CONNECTIONS_CEILING + 1):
+        form = await hass.config_entries.options.async_init(entry.entry_id)
+        with pytest.raises(InvalidData):
+            await hass.config_entries.options.async_configure(
+                form["flow_id"], user_input={CONF_MAX_CONNECTIONS: refused}
+            )
+
+    assert CONF_MAX_CONNECTIONS not in entry.options, "nothing was saved"
+    assert connection_slots().limit == DEFAULT_MAX_CONNECTIONS, "and nothing moved"
 
 
 # --- and when the host has no slot left --------------------------------------
@@ -282,6 +327,51 @@ def test_a_shorter_hold_off_does_not_cut_a_longer_one_short() -> None:
     assert gate.holding_off > 1, "the host is still out of slots"
 
 
+async def test_a_held_off_caller_waits_without_taking_a_slot() -> None:
+    """The wait is before the queue, not after it (D-133).
+
+    The point of a hold-off is not to connect yet, not to take a slot and sit
+    on it: a slot held by somebody who is waiting is a slot no connection is
+    using, and with the cap at the default of two it takes a command's place.
+    """
+    gate = ConnectionSlots(1)
+    # Long enough that no amount of slowness ends it during the test: what the
+    # hold-off is worth in seconds is the test above.
+    gate.hold_off(30)
+    cooling = asyncio.create_task(gate.acquire())
+    await let_the_others_run()
+
+    assert (gate.in_flight, gate.waiting) == (0, 0), "nobody is holding anything"
+
+    cooling.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await cooling
+    assert gate.in_flight == 0, "and a caller that gave up held nothing either"
+
+
+async def test_a_waiter_cancelled_before_the_slot_arrives_costs_nothing() -> None:
+    """The other order of the race above, and the one `_admit` guards.
+
+    There the slot had been handed over and the caller then vanished. Here the
+    cancellation lands first and the future is still in the queue when the slot
+    comes back, so `_admit` meets a waiter that wants nothing: spending the
+    slot on it would lose it for the lifetime of the process.
+    """
+    gate = ConnectionSlots(1)
+    await gate.acquire()
+    doomed = asyncio.create_task(gate.acquire())
+    next_in_line = asyncio.create_task(gate.acquire())
+    await let_the_others_run()
+
+    doomed.cancel()  # cancelled, and still queued: the task has not resumed
+    gate.release()
+
+    with pytest.raises(asyncio.CancelledError):
+        await doomed
+    await asyncio.wait_for(next_in_line, 1)
+    assert gate.in_flight == 1
+
+
 async def test_a_command_that_finds_no_slot_says_which_it_was(
     hass: HomeAssistant, gatt
 ) -> None:
@@ -348,17 +438,7 @@ async def test_the_wait_for_a_slot_is_reported_as_queueing(
     events: list[dict] = []
     hass.bus.async_listen(EVENT_WRITE, lambda event: events.append(event.data))
 
-    at_the_write = asyncio.Event()
-    carry_on = asyncio.Event()
-    served = gatt.write_gatt_char
-
-    async def hold_the_first_command(characteristic, payload, response=True):
-        if not carry_on.is_set():
-            at_the_write.set()
-            await carry_on.wait()
-        return await served(characteristic, payload, response)
-
-    gatt.write_gatt_char = hold_the_first_command
+    at_the_write, carry_on = hold_the_first(gatt, write=True)
 
     first = hass.async_create_task(first_device._write_now(1, b"\x01"))
     second = None

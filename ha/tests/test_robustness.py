@@ -17,7 +17,6 @@ import pytest
 
 from custom_components.bthome_writable.const import EVENT_WRITE
 from custom_components.bthome_writable.entity import LOGBOOK_ENTRY
-from custom_components.bthome_writable.slots import register_request
 
 from .conftest import DEFAULT_ADDRESS, UUID_TEMPLATE, settle, setup_device
 
@@ -160,18 +159,6 @@ async def test_a_write_failure_does_not_wedge_the_queue(
 
     assert gatt.writes == [(UUID_TEMPLATE.format(1), bytes.fromhex("1e01"))]
     assert hass.states.get(LIGHT).state == STATE_ON
-
-
-def test_the_connection_cap_is_one_gate_for_the_whole_host() -> None:
-    """D-003: the cap protects the adapter's slots, a host resource.
-
-    This used to assert that two different limits were two different gates,
-    which is the bug of D-132 recorded as a property. The rest of the cap's
-    behaviour is in `test_connection_cap.py`.
-    """
-    assert register_request("A4:C1:38:8E:1F:2B", 2) is register_request(
-        "A4:C1:38:8E:1F:2C", 3
-    )
 
 
 async def test_a_write_reports_where_its_time_went(

@@ -21,37 +21,11 @@ from unittest.mock import patch
 from homeassistant.core import HomeAssistant
 
 from custom_components.bthome_writable import coordinator as coordinator_module
-from custom_components.bthome_writable.coordinator import BTHomeWritableCoordinator
-from custom_components.bthome_writable.protocol import Declaration
 
-from .conftest import UUID_TEMPLATE, settle
+from .conftest import a_lamp_and_a_dimmer, hold_the_first, let_the_others_run, settle
 
-LIGHT, COUNT = 0x1E, 0x09
 LIT = bytes.fromhex("1E01")
 DIM = bytes.fromhex("0905")
-
-
-def lamp(hass: HomeAssistant, address: str, *, due: bool = True):
-    """A device with a readable writable entry, and a read owed or not."""
-    coordinator = BTHomeWritableCoordinator(hass, address)
-    coordinator.declaration = Declaration.restore(
-        {"layout": [LIGHT, COUNT], "settings_revision": 4}
-    )
-    coordinator._revision_advertised = 4
-    coordinator._revision_read = 3 if due else 4
-    return coordinator
-
-
-async def let_the_others_run(times: int = 10) -> None:
-    """Yield until every runnable task has reached its next real wait.
-
-    Not a sleep: with a task held at a gate, this harness does not advance a
-    timer, so `asyncio.sleep(0.05)` here waits for ever. Yielding is also the
-    right granularity for a serialisation test -- what is being asserted is
-    that a task *cannot proceed*, not that it is slow.
-    """
-    for _ in range(times):
-        await asyncio.sleep(0)
 
 
 async def test_a_read_waits_for_the_command_to_let_go_of_the_device(
@@ -63,22 +37,9 @@ async def test_a_read_waits_for_the_command_to_let_go_of_the_device(
     not the case where the command carries the read. Two host slots are free,
     so nothing but the device's own turn can hold the read back.
     """
-    coordinator = lamp(hass, "A4:C1:38:8E:1F:2B")
+    coordinator = a_lamp_and_a_dimmer(hass, "A4:C1:38:8E:1F:2B")
     gatt.declare(2, readable={1: LIT, 2: DIM})
-    at_the_read_back = asyncio.Event()
-    carry_on = asyncio.Event()
-    served = gatt.read_gatt_char
-
-    async def hold_the_command_in_its_connection(characteristic):
-        uuid = (
-            characteristic if isinstance(characteristic, str) else characteristic.uuid
-        )
-        if uuid == UUID_TEMPLATE.format(1) and not carry_on.is_set():
-            at_the_read_back.set()
-            await carry_on.wait()
-        return await served(characteristic)
-
-    gatt.read_gatt_char = hold_the_command_in_its_connection
+    at_the_read_back, carry_on = hold_the_first(gatt, read=1)
 
     with patch.object(coordinator_module, "FOLD_A_DUE_READ_INTO_A_WRITE", False):
         command = hass.async_create_task(coordinator.async_write(1, b"\x01"))
@@ -111,23 +72,10 @@ async def test_two_devices_are_not_made_to_wait_for_each_other(
     worse fault than the one being fixed. The host cap stays the only thing that
     limits how many devices are talked to at once (D-003).
     """
-    one = lamp(hass, "A4:C1:38:8E:1F:2B", due=False)
-    two = lamp(hass, "A4:C1:38:8E:1F:2C", due=False)
+    one = a_lamp_and_a_dimmer(hass, "A4:C1:38:8E:1F:2B", due=False)
+    two = a_lamp_and_a_dimmer(hass, "A4:C1:38:8E:1F:2C", due=False)
     gatt.declare(2, readable={1: LIT, 2: DIM})
-    at_the_read_back = asyncio.Event()
-    carry_on = asyncio.Event()
-    served = gatt.read_gatt_char
-
-    async def hold_the_first_command(characteristic):
-        uuid = (
-            characteristic if isinstance(characteristic, str) else characteristic.uuid
-        )
-        if uuid == UUID_TEMPLATE.format(1) and not carry_on.is_set():
-            at_the_read_back.set()
-            await carry_on.wait()
-        return await served(characteristic)
-
-    gatt.read_gatt_char = hold_the_first_command
+    at_the_read_back, carry_on = hold_the_first(gatt, read=1)
 
     first = hass.async_create_task(one.async_write(1, b"\x01"))
     second = None
@@ -152,18 +100,58 @@ async def test_a_connection_that_fails_does_not_keep_the_device_to_itself(
     hass: HomeAssistant, gatt
 ) -> None:
     """A lock held by a failure is a device nothing can reach again."""
-    coordinator = lamp(hass, "A4:C1:38:8E:1F:2B", due=False)
+    coordinator = a_lamp_and_a_dimmer(hass, "A4:C1:38:8E:1F:2B", due=False)
     gatt.declare(1, readable={1: LIT})
     gatt.fail_on_write = TimeoutError("the link went away")
 
     with patch.object(coordinator_module, "FOLD_A_DUE_READ_INTO_A_WRITE", False):
-        # The write is expected to fail; what matters is the lock after it.
+        # The write is expected to fail; what matters is that the next one
+        # is not shut out, which is the device's turn having been handed
+        # back. Asserted through a second command rather than by reading
+        # the lock: what the lock *is* may change (D-003's remaining step),
+        # what it guarantees may not.
         with contextlib.suppress(Exception):
             await coordinator._write_now(1, b"\x01")
-
-        assert coordinator._device.locked() is False, "released on the way out"
 
         gatt.fail_on_write = None
         await coordinator._write_now(1, b"\x00")
 
     assert coordinator.value_of(1) == b"\x00", "and the next command gets through"
+
+
+async def test_a_command_waiting_for_a_device_does_not_sit_on_a_host_slot(
+    hass: HomeAssistant, gatt
+) -> None:
+    """The order the two locks are taken in, which is the rest of D-131.
+
+    The device's turn first, then a host slot, and never the other way round: a
+    command that waited for a busy device while holding one of the host's two
+    slots would make one device's queue every other device's problem.
+
+    So: one command in flight on a device, a second queued behind it, and a
+    third for a different device. The third must get through.
+    """
+    busy = a_lamp_and_a_dimmer(hass, "A4:C1:38:8E:1F:2B", due=False)
+    elsewhere = a_lamp_and_a_dimmer(hass, "A4:C1:38:8E:1F:2C", due=False)
+    gatt.declare(2, readable={1: LIT, 2: DIM})
+    at_the_write, carry_on = hold_the_first(gatt, write=True)
+
+    in_flight = hass.async_create_task(busy._write_now(1, b"\x01"))
+    queued = other_device = None
+    try:
+        await asyncio.wait_for(at_the_write.wait(), 2)
+        queued = hass.async_create_task(busy._write_now(2, b"\x05"))
+        await let_the_others_run()
+        other_device = hass.async_create_task(elsewhere._write_now(1, b"\x01"))
+        await let_the_others_run()
+
+        assert gatt.connections == 2, (
+            "the other device connected, so the queued command is waiting for "
+            "its device rather than holding one of the host's two slots"
+        )
+    finally:
+        carry_on.set()
+        await settle(hass)
+        for command in (in_flight, queued, other_device):
+            if command is not None:
+                await command

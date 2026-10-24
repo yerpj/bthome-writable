@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 import sys
@@ -347,8 +348,81 @@ async def setup_device(
     return entry
 
 
-async def settle(hass, seconds: float = 0.05) -> None:
-    import asyncio
+LIGHT, COUNT = 0x1E, 0x09
+"""@enaon's pair: the lamp, and the count his dimmer rides on."""
 
+
+def a_lamp_and_a_dimmer(
+    hass,
+    address: str = DEFAULT_ADDRESS,
+    *,
+    due: bool = True,
+    revision: int = 4,
+    **kwargs,
+):
+    """A two-entry device, owing the read of §3.2 or not.
+
+    `due` is the only thing the read tests vary: the revision the device
+    advertises against the one we have read (§3.2). Shared because D-130's
+    tests and D-131's are about the same device -- one that both takes commands
+    and reports state, which is what made the collision visible at all.
+    """
+    from custom_components.bthome_writable.coordinator import BTHomeWritableCoordinator
+    from custom_components.bthome_writable.protocol import Declaration
+
+    coordinator = BTHomeWritableCoordinator(hass, address, **kwargs)
+    coordinator.declaration = Declaration.restore(
+        {"layout": [LIGHT, COUNT], "settings_revision": revision}
+    )
+    coordinator._revision_advertised = revision
+    coordinator._revision_read = revision - 1 if due else revision
+    return coordinator
+
+
+async def settle(hass, seconds: float = 0.05) -> None:
     await asyncio.sleep(seconds)
     await hass.async_block_till_done()
+
+
+async def let_the_others_run(times: int = 5) -> None:
+    """Yield until every runnable task has reached its next real wait.
+
+    Not a sleep: a task held at a gate never reaches a timer, so sleeping for
+    it would wait for ever in this harness. Yielding is also the right
+    granularity when what is asserted is that a caller *cannot* proceed.
+    """
+    for _ in range(times):
+        await asyncio.sleep(0)
+
+
+def hold_the_first(
+    gatt: FakeGattClient, *, read: int | None = None, write: bool = False
+) -> tuple[asyncio.Event, asyncio.Event]:
+    """Freeze the first read of one entry, or the first write, mid-connection.
+
+    Returns `(reached, release)`: `reached` is set when the call arrives, and
+    setting `release` lets it finish. Only the first matching call is held, so
+    everything that follows runs normally -- which is what a test asserting an
+    *ordering* needs, and the reason this is not a sleep.
+    """
+    reached, release = asyncio.Event(), asyncio.Event()
+    served_read, served_write = gatt.read_gatt_char, gatt.write_gatt_char
+    target = None if read is None else UUID_TEMPLATE.format(read)
+
+    async def held_read(characteristic):
+        if not release.is_set() and FakeGattClient._uuid(characteristic) == target:
+            reached.set()
+            await release.wait()
+        return await served_read(characteristic)
+
+    async def held_write(characteristic, payload, response=True):
+        if not release.is_set():
+            reached.set()
+            await release.wait()
+        return await served_write(characteristic, payload, response)
+
+    if read is not None:
+        gatt.read_gatt_char = held_read
+    if write:
+        gatt.write_gatt_char = held_write
+    return reached, release

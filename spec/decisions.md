@@ -8849,3 +8849,121 @@ complain about the fake rather than the code.
 `const.py`, `__init__.py` and the five entity platforms. The three
 `_remember_*` callbacks look duplicated and are not worth factoring: the
 sharing costs their per-key comments and one of them needs a transform.
+
+---
+
+## D-137 — What the audit of the tests found  [DECISION]
+
+**2026-10-24, same branch and same morning as D-136.** The second half of the
+commission: 891 lines of tests had been written in three days and nobody had
+read them. The instruction was not "review the tests" but something answerable:
+**for each module, name a change to the production code these tests would fail
+to catch, then make it and report whether the suite stayed green.**
+
+**Fifteen mutations. Nine caught, six not, and five of the six in `slots.py`** --
+the module `test_connection_cap.py` was written for. The suite had seventeen
+tests about a gate and tested it one level too high.
+
+### The six, in the order they matter
+
+1. **`taken()` without its `try/finally`**, so a slot comes back only on a clean
+   exit: **227 green**. Every path that connects leaves through an exception
+   sooner or later, a refused write, a link that went away, a host with no slot,
+   and each one would tighten the host cap by one until nothing can connect at
+   all. Two existing tests pass through that exact path and neither looks at the
+   slot.
+2. **The two locks of D-131 swapped** in `_link()`: **227 green**.
+   `test_one_central.py` proved the device lock exists, which is the half a
+   refactor cannot break; the order is the half it can, since the two context
+   managers look interchangeable.
+3. **The hold-off moved after the queue instead of before it**: **227 green**.
+   The comment in `slots.py` says why it is before -- the point is not to take a
+   slot and sit on it -- and with the mutation a 4 s cooldown fills the cap with
+   sleepers holding slots no connection is using.
+4. **`_admit` without its cancelled-waiter guard**: **227 green**. The covered
+   race was release-then-cancel; the other order, where the cancellation lands
+   first and the dead future is still queued, raised `InvalidStateError` out of
+   an unrelated `release()`.
+5. **The options form's `vol.Range` dropped**: **227 green**. D-132 specifies one
+   to eight and the form test only ever posted 4. A zero would be clamped to one
+   by `register_request`, so the user would get something other than what they
+   typed.
+6. **`_read_due_here` not holding `_reading`**: **227 green**. It bites only when
+   the folded read *fails*: a read loop started mid-fold then finds the revision
+   still owed and connects again the moment the command lets go, which is the
+   connection `READ_RETRY` exists to prevent.
+
+Two further mutations passed and are deliberately left uncovered, which is the
+right answer rather than a gap: `release()`'s floor at zero and `acquire()`'s
+`not self.waiting`, both defensive, the second unreachable while `_admit` closes
+its window on every release and resize.
+
+**Six tests added**, each verified twice: green on the code as it is, and failing
+on the matching mutation and on nothing else. `test_folded_reads.py` came out
+the strongest of the three modules, with four separate mutations each failing
+exactly one of its tests.
+
+### Taken as well
+
+* **One `let_the_others_run`**, in `conftest.py`, where it was written twice with
+  different defaults and once inlined. Measured aside: every one of its call
+  sites passes with a *single* yield, so the 5 and the 10 were slack and not a
+  tuned number. Five kept as margin.
+* **One `hold_the_first(gatt, read=n | write=True)`.** The "freeze one GATT call
+  mid-connection, assert an ordering, release in a `finally`" block appeared five
+  times, each re-deriving the characteristic UUID with its own copy of a helper
+  `conftest.py` already had. It is the one piece of these tests a reader has to
+  decode, and it was the same five times.
+* **One device factory**, `a_lamp_and_a_dimmer`, for a device two modules built
+  two ways under two names and a third built inline.
+* **A duplicated test deleted** from `test_robustness.py`: it was the first half
+  of a `test_connection_cap.py` test that also asserts the limit in force, which
+  is the half that proves D-132. The commit that rewrote it should have deleted
+  it.
+* **One assertion dropped**: `_device.locked() is False` named the lock object,
+  so swapping `asyncio.Lock` for anything else -- which is where D-003's
+  remaining step leads -- would break a passing test for no behavioural reason.
+  The test already proves the behaviour with a second command.
+
+**The autouse fixture is load-bearing, and that was checked rather than
+assumed.** Made non-autouse, exactly one test fails, with a `TimeoutError`,
+because another test three earlier leaves `SLOT_COOLDOWN` of hold-off on the
+module gate. A test could reset it explicitly, but the test that pays is not the
+test that leaks, so it would not. One line inside it was redundant: either the
+reset before the yield or the one after suffices, and the teardown one is kept,
+because it cleans up after whichever test made the mess.
+
+**No flakiness found**, and it was looked for properly: the three modules eight
+times, the whole suite five times, the whole suite in reverse file order, and
+five suites concurrently on the same machine as a clock stress for the two
+real-time assertions. 227 every time, 11.7 s idle against 14.4 to 14.9 s under
+load. Those two assertions hold for a structural reason rather than by luck:
+each sits behind an `asyncio.sleep` that cannot return early, so load only
+widens the margin.
+
+### Counts, which this record supersedes elsewhere
+
+`test_connection_cap.py` 23, `test_folded_reads.py` 10, `test_one_central.py` 4,
+`test_robustness.py` 9, **234 in `ha/`**. The figures in D-130, D-133, D-134 and
+D-135 are what was true the day each was written.
+
+### The owner's
+
+* **`test_connection_cap.py` is three modules in one**, and the audit is right
+  that the seam is wrong: ten tests of `ConnectionSlots` as a data structure with
+  no Home Assistant at all, three of the options flow, and four of the
+  coordinator's use of the gate. The first group is the only HA-independent code
+  in `ha/tests` and the least covered before today; the third belongs beside
+  `test_one_central.py`, which is the same subject from the device's side. Not
+  done, because `decisions.md` cites these modules by name and a rename is a
+  documentation change in four records.
+* **`settle(hass, 0.05)` is a fixed-time wait** that new modules have copied into
+  their teardown without asking what it waits for. Three of the new tests follow
+  it with `await command`, which is the real synchronisation, so the 50 ms buys
+  nothing. Worth one pass replacing it with `hass.async_block_till_done()`
+  wherever a task is awaited straight after.
+* **`verify_cleanup` is overridden suite-wide** to a bare `yield`, for one
+  `BluetoothManager` timer, which also stops it noticing a timer of ours. That
+  now matters: D-135 adds one. Narrowing the waiver to "the only lingering timer
+  is `_async_check_unavailable`" would keep the check for everything this
+  integration schedules.
