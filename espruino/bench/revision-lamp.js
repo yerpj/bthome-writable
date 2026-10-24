@@ -44,7 +44,7 @@ var bw = require("BTHomeWritable");
 /* null advertises in clear. A string of 32 hex characters seals everything and
    offers the counter report; it must be the key the receiver was given, or the
    receiver sees an undecodable BTHome device rather than a plain one. */
-var BINDKEY = null;
+var BINDKEY = "231d39c1d7cc1ab1aee224cd096db932";
 
 var lamp = { on: false, level: 20 };
 var conns = 0;
