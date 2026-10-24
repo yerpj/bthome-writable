@@ -103,6 +103,27 @@ class ConnectionSlots:
         if until > self._held_off_until:
             self._held_off_until = until
             _LOGGER.debug("no connection slot was free; holding off %.1fs", seconds)
+            self._resume_later(seconds)
+
+    def _resume_later(self, seconds: float) -> None:
+        """Drain the queue again once the hold-off has run out.
+
+        A timer is needed because `_admit` is otherwise only reached from
+        `release()`, and the caller that found the host full may be the last one
+        holding a slot: whoever was already queued would then wait for the next
+        arrival rather than for the cooldown.
+        """
+        # No running loop means no awaiting waiter either, so there is nothing
+        # for the timer to resume: a gate held off outside a loop is a gate
+        # nobody is queued on.
+        with contextlib.suppress(RuntimeError):
+            asyncio.get_running_loop().call_later(seconds, self._resume)
+
+    def _resume(self) -> None:
+        if (cooling := self.holding_off) > 0:
+            self._resume_later(cooling)
+            return
+        self._admit()
 
     @property
     def holding_off(self) -> float:
@@ -151,10 +172,15 @@ class ConnectionSlots:
         """Let as many waiters through as the current limit allows.
 
         Commands first, in the order they arrived, then housekeeping in the
-        order it arrived.
+        order it arrived -- and nobody at all while the host is held off: the
+        point of `hold_off` is that this integration stops connecting, and a
+        waiter admitted meanwhile would walk into the same wall and spend
+        `bleak_retry_connector`'s own nine attempts finding it (D-133).
         """
+        if self.holding_off > 0:
+            return
         while self.waiting and self._in_flight < self._limit:
-            queue = self._urgent if self._urgent else self._ordinary
+            queue = self._urgent or self._ordinary
             waiter = queue.popleft()
             # A cancelled waiter is done and wants nothing: skip it, and do not
             # spend the slot on it.

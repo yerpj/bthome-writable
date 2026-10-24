@@ -232,6 +232,49 @@ async def test_a_hold_off_makes_the_next_connection_wait() -> None:
     assert gate.in_flight == 1, "and then took its slot as usual"
 
 
+async def test_a_hold_off_reaches_whoever_is_already_queued() -> None:
+    """D-133's hold-off stops *everyone*, not only the next arrival.
+
+    The waiter that matters is the one already in the queue: a host runs out of
+    slots while this integration's own connections are what filled it, so the
+    device that found out is holding a slot others are queued for. Admitting the
+    next one the moment that slot comes back is how each of them comes to spend
+    its own nine attempts on the same wall, which is the whole thing the
+    hold-off exists to avoid.
+    """
+    gate = ConnectionSlots(1)
+    await gate.acquire()
+    queued = asyncio.create_task(gate.acquire())
+    await let_the_others_run()
+    assert gate.waiting == 1, "somebody is in the queue"
+
+    gate.hold_off(30)
+    gate.release()
+    await let_the_others_run()
+
+    assert gate.holding_off > 1, "the host is still out of slots"
+    assert not queued.done(), "so the queue does not move either"
+    queued.cancel()
+
+
+async def test_a_hold_off_releases_the_queue_when_it_runs_out() -> None:
+    """And nobody is stranded: `release()` is not the only way through.
+
+    The caller that found the host full may be the last one holding a slot, so
+    without a timer of its own the queue would wait for the next arrival rather
+    than for the cooldown.
+    """
+    gate = ConnectionSlots(1)
+    await gate.acquire()
+    queued = asyncio.create_task(gate.acquire())
+    await let_the_others_run()
+
+    gate.hold_off(0.05)
+    gate.release()
+    await asyncio.wait_for(queued, 1)
+    assert gate.in_flight == 1, "it got through once the hold-off ran out"
+
+
 def test_a_shorter_hold_off_does_not_cut_a_longer_one_short() -> None:
     gate = ConnectionSlots(2)
     gate.hold_off(30)

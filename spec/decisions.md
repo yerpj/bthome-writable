@@ -8716,3 +8716,59 @@ from `bluetooth.async_scanner_count`, which changes behaviour for every
 installation and stays the owner's to rule. It is the safer of the two
 directions now: a cap set too high lands on a wait (D-133) rather than on a
 refused write.
+
+---
+
+## D-135 — The hold-off did not reach the queue
+
+**Status:** found and fixed 2026-10-24, by a neutral audit commissioned the
+morning after D-133 shipped. The audit was asked for code quality and
+simplifications; this came out of it instead, which is the argument for
+commissioning them.
+
+**What D-133 says.** *"The gate of D-132 stops admitting anyone for
+`SLOT_COOLDOWN`, so the others wait instead of each spending their own nine
+attempts discovering the same wall."*
+
+**What the code did.** `acquire()` consulted `holding_off` before queueing, and
+`_admit()` -- reached from `release()` and from `resize()` -- did not consult it
+at all. So the hold-off reached exactly the callers who had not arrived yet, and
+every caller already in the queue was admitted the instant a slot came back.
+
+**The failure is the ordinary case, not a corner.** A host runs out of slots
+because something filled it, and on this bench what fills it is this
+integration's own connections. So the device that discovers the exhaustion is
+holding a slot that others are queued for. Cap of 2, four writable devices: A
+and B hold the slots, C and D are queued; A's connect finally raises
+`BleakOutOfConnectionSlotsError` after its nine transient attempts, calls
+`hold_off(4.0)` and releases; C is admitted in the same breath, walks into the
+same exhausted adapter, spends its own nine attempts and about 36 s, refreshes
+the hold-off, releases, and D goes in behind it. The host-wide stand-down, which
+is the whole of D-133's second half, never happened once there was a queue.
+
+**Proven before it was fixed**, at the gate: one holder, one queued waiter,
+`hold_off(30)`, `release()` -- the waiter was admitted after 0.0 s with
+`holding_off` still reporting 30.
+
+**The fix.** `_admit()` returns early while `holding_off > 0`. That alone would
+strand a queue, because `_admit` is otherwise only reached from `release()` and
+the caller that found the host full may be the last slot holder: there would be
+nobody left to release and the queue would wait for the next arrival instead of
+for the cooldown. So `hold_off()` also arms a timer, `_resume`, which re-arms
+itself if the hold-off was extended while it was pending. The `call_later` is
+guarded for the case where there is no running loop, which cannot have a waiter
+either.
+
+**Tests.** Two in `ha/tests/test_connection_cap.py`: a hold-off that reaches
+whoever is already queued, and a hold-off that lets the queue through when it
+runs out. 229 in `ha/`.
+
+**One thing to know before this is proposed upstream.** The timer leaves a
+pending `call_later` of at most `SLOT_COOLDOWN` on the module-global gate. It
+fires a no-op `_admit`, and this suite overrides the fixture that would notice,
+but Home Assistant core's `verify_cleanup` would see a lingering timer.
+
+**Still not provoked on hardware.** Three devices and a three-slot proxy cannot
+fill the host (§20), which is why this was reachable at all: the only thing that
+exercises the hold-off today is the tests, and the tests asserted the mechanism
+one level too late.

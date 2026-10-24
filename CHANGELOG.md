@@ -76,6 +76,12 @@ Everything here is on `main` and in no release yet: the integration's
 
 ### Fixed
 
+- **A host out of connection slots stood down for the next command only.** The
+  hold-off of D-133 reached callers that had not asked yet and not the ones
+  already queued, so on a host this integration had itself filled, the device
+  that discovered the exhaustion released its slot straight into the next
+  waiter, which spent its own nine attempts and about 36 seconds finding the
+  same wall. Nobody is admitted now while the host is held off (D-135).
 - **A command could wait behind this integration's own housekeeping.** Nothing
   told a user's command apart from a background state read, so on a host with
   several devices two reads could hold every connection slot while somebody
