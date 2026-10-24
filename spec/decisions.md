@@ -8757,10 +8757,17 @@ late in a connection pays this**, including D-130's folded read, and of the 1.5 
 the fold appeared to add in the settled case about 750 ms is this rather than the
 fold. Its own cost is the 715 ms exchange.
 
-**The experiment that would settle it** is six ATT operations inside one
-connection, timed, on the lamp and on the Puck: a step at a fixed age is a
-connection-parameter update the peripheral requests after connecting, a step at a
-fixed operation index is something else. Not run tonight.
+**The experiment was run the same night and half answers** (§21). Twelve ATT
+reads in one connection, from this host: the step does not follow the operation
+index, since twelve back-to-back reads stay at 15 ms while the one slow pass was
+slow from its first read and stayed slow for 6 s. A regime a connection is in,
+not a cost that accumulates, which is the shape of connection parameters. But it
+could not be summoned again: a sweep of seven silences from 0 to 2 s found
+nothing slower than 47 ms. This host's adapter keeps a link fast whatever its
+age, and the production figures are the Pi's `hci0`, whose parameters are its
+own. **What is left is one measurement on the Home Assistant side**, the live
+link's connection interval early and late in a connection, which needs a shell on
+HAOS this session does not have.
 
 **The owner's, and it is a real choice:**
 

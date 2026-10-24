@@ -8,9 +8,12 @@ every iteration.
     python -m tools.espruino_upload --port COM15 --eval "bench.loop(10, 3000);"
 
 `--port` is the same conversation over the board's USB console instead of over
-the air, and on this bench it is the only route to the nice!nano: this host
-cannot open a GATT connection to that board at all, though Home Assistant can
-(tools/latency_sweep_ha.py says so where it matters). `--eval` sends one
+the air, and on this bench it is the route to use for the nice!nano on `COM15`:
+this host cannot open a GATT connection to that board, though Home Assistant can
+(tools/latency_sweep_ha.py says so where it matters). The lamp on `COM6` is a
+different story since 2026-10-24: it answers a GATT connection from here, but
+only after an active scan of up to 45 s, because it advertises an unchanging
+sealed payload and Windows coalesces duplicates (D-138). `--eval` sends one
 statement to a board that is already running and prints what it says back,
 which is how a bench sketch is driven without reflashing it.
 

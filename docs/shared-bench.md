@@ -22,6 +22,17 @@ entries are also readable, so it is the only one that advertises a settings
 revision and owes the receiver a read (D-130). Its sketch lives in RAM, so a reset or a power cut leaves it silent
 until it is uploaded again.
 
+**This host can reach the lamp over the air, and that was news on 2026-10-24.**
+Three tools still say a nice!nano cannot be connected to from here, which holds
+for `COM15` and does not for the lamp: it answers a GATT connection from this
+host after an active scan of up to 45 s. The scan is the whole difficulty. A
+sealed board whose readings have not moved advertises the same payload over and
+over and Windows coalesces duplicates, so a passive scan can hear nothing for
+half a minute and then seven packets at once. A measurement that does not need
+Home Assistant in the loop can be made from here, with this host's connection
+parameters rather than the Pi's, which is both the opportunity and the catch
+(D-138 §21).
+
 **The bench runs sealed by default since 2026-10-24** (D-139): encrypted is the
 normal state of a board here and in clear is the exception that needs a reason.
 One key for everything, `231d39c1d7cc1ab1aee224cd096db932`, the public one from

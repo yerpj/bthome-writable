@@ -1500,13 +1500,53 @@ to add in the settled case, about 750 ms is this regime, which a command pays fo
 being late in its own connection rather than for carrying a question. The fold's
 own cost is the counter exchange, 715 ms.
 
-**The one experiment that would settle it**, not run tonight: time six ATT
-operations inside a single connection and find where the step is. At a fixed age,
-it is a connection-parameter update the peripheral asks for shortly after
-connecting, and the remedy is to ask for a different one or to do the work
-sooner. At a fixed operation index, it is something else entirely and this
-paragraph is wrong. Run it against the Puck as well, whose console is on the
-radio and which is in clear, because that separates the device from the link.
+**The experiment, run the same night, and it half answers.** Twelve ATT reads
+inside one connection, from this Windows host rather than through Home Assistant,
+reading GAP Device Name (0x2A00), which the SoftDevice answers without waking
+JavaScript. Two passes per board: reads from the first moment, and reads after
+1.5 s of silence.
+
+| | Reads from the first moment | Reads after 1.5 s of silence |
+|---|---|---|
+| Puck.js, battery, in clear | 15 to 31 ms | 15 to 31 ms |
+| the lamp, first run | 15 to 16 ms | **500, then 390 to 407 ms, all twelve** |
+| the lamp, six runs after | 16 to 63 ms | 15 to 47 ms |
+
+**So the step does not follow the operation index.** Twelve reads back to back
+stay at 15 ms; the slow pass was slow from its *first* read and stayed slow for
+all twelve, 6 s of link. A regime a connection is in, then, not a cost that
+accumulates: a link that comes up fast stays fast, and one that comes up slow
+never recovers. That is the shape of connection parameters, and ~400 ms is two of
+the ~199 ms unit.
+
+**And it is not plain silence either**, which is the honest part of this result.
+A sweep of seven delays from 0 to 2 s on the same board, minutes later, found
+nothing slower than 47 ms, and alternating SoftDevice-served and
+JavaScript-served reads in one connection found nothing slower than 63 ms. The
+slow regime was seen once, whole and unmistakable, and could not be summoned
+again from this host.
+
+**Which points at the central rather than at the device.** This host's adapter
+keeps a link fast whatever the age of the connection; the figures in the tables
+above were produced by Home Assistant on the Pi's `hci0`, whose connection
+parameters are its own and are not reproducible from here. The production data is
+the stronger evidence, because it is near deterministic: 25 of 26 folded writes
+on the grid, 25 of 26 separate writes at 40 to 42 ms, and the separate arm's
+read-back, which lands in between at 55 to 1201 ms, continuous, exactly where a
+transition would put it.
+
+**So the remaining question is one measurement on the Home Assistant side**: the
+live link's connection interval, from `btmon` on the host or from a proxy's log,
+at 40 ms into a connection and again at 1 s. That needs a shell on HAOS, which
+this session does not have.
+
+**One correction this experiment forced**, worth more than it looks: *this host
+can* open a GATT connection to the nice!nano lamp, which `docs/shared-bench.md`
+said it could not. It needs an active scan and up to 45 s of it, because the
+board advertises an unchanging sealed payload and Windows coalesces duplicates.
+Measurements that do not need Home Assistant in the loop can therefore be made
+from here, with this host's connection parameters rather than the Pi's, which is
+both the opportunity and the catch.
 
 Samples in `docs/data/counter-question-folded.json`,
 `counter-question-separate.json` and the same two names with `-n10`.
