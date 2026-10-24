@@ -22,7 +22,13 @@ entries are also readable, so it is the only one that advertises a settings
 revision and owes the receiver a read (D-130). Its sketch lives in RAM, so a reset or a power cut leaves it silent
 until it is uploaded again.
 
-**It is sealed since 2026-10-24, and that matters to anyone else reading it.**
+**The bench runs sealed by default since 2026-10-24** (D-139): encrypted is the
+normal state of a board here and in clear is the exception that needs a reason.
+One key for everything, `231d39c1d7cc1ab1aee224cd096db932`, the public one from
+`test-vectors/test-vectors.json`. The Puck is the standing exception: it runs
+from a coin cell and AES-CCM costs it about 135 uA.
+
+**The lamp is sealed, and that matters to anyone else reading it.**
 It was reflashed with a firmware that has `crypto` (2v29.396, `MODULES` now
 lists it), and `espruino/bench/revision-lamp.js` runs with the bindkey from
 `test-vectors/test-vectors.json`, which is public on purpose. Its Home Assistant

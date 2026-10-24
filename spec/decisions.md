@@ -8765,3 +8765,54 @@ is a change to the shared bench: a receiver without that key sees an undecodable
 BTHome device, not a plain one. `docs/shared-bench.md` says so. The deployed
 `FOLD_THE_COUNTER_QUESTION_INTO_A_WRITE` is back to `True`, the lamp is written
 off, and the lock is released.
+
+---
+
+## D-139 — The bench runs sealed by default
+
+**2026-10-24, the owner, answering the open item at the end of D-138:** keep the
+devices encrypted from now on, as far as the hardware allows. So sealed is the
+default state of this bench and in clear is the exception that needs a reason,
+which is the reverse of how it has run until today.
+
+**Why it is the right default.** Every receiver path that only runs sealed was
+until today exercised by tests and by one Python reference: the counter question
+of §5.6, the replay check on the advertising counter, the bindkey prompt and the
+Reconfigure step, the `counterReport` handshake, and the 8 bytes of every packet
+that encryption spends. A bench in clear cannot fail any of them, so it cannot
+report them either. D-138 is the first measurement this project has of a sealed
+device at all, and it immediately found a write 20 times slower than its
+counterpart in clear.
+
+**What it means board by board**, because "as far as the hardware allows" is not
+the same everywhere:
+
+* **`lamp` (`F5:A8:93:67:CB:25`, COM6)** is sealed and stays sealed. Its entry
+  holds the key.
+* **`lamp2` (COM9) and `lamp3` (COM11)** are sealed when they are first flashed,
+  which has not happened yet: they are deliberately dark until the saturation arm
+  wants them (D-138). Their Home Assistant entries take the key at discovery,
+  through the bindkey prompt the config flow already has, so no entry has to be
+  made and then reconfigured.
+* **`nano` (`CD:F5:77:3A:B2:16`, COM15)** has `crypto` and can be sealed, but it
+  is the board §16 and §20 measured in clear. Sealing it changes what those
+  numbers mean, so it happens at a campaign boundary and is recorded, not
+  quietly between two runs.
+* **`puck` (`C8:80:32:AD:F7:B9`)** is the exception. It runs from a CR2032 since
+  2026-10-09, AES-CCM costs it about 135 µA (@enaon's figure, D-049), and it is
+  power-cycled by hand. It stays in clear unless a measurement needs it sealed,
+  and then it goes back.
+
+**One key for the whole bench**, `231d39c1d7cc1ab1aee224cd096db932`, the one in
+`test-vectors/test-vectors.json`. It is public on purpose: the twenty-two vectors
+stay directly comparable with whatever a board computes, and nothing on this
+bench is a secret worth protecting. A bench key that mattered would also have to
+be kept out of the repository, which would put the one number every tool needs
+somewhere no tool can read.
+
+**The cost to keep in view.** Sealed, a device spends 8 of its service-data bytes
+on the counter and the MIC. The bench lamp fits in 12 of 12 with nothing to
+spare, so any entry added to it from now on throws `capacity_exceeded` at
+`setup()` rather than silently truncating, which is the right failure but still a
+failure. `docs/shared-bench.md` says so where someone adding an entry will read
+it.
