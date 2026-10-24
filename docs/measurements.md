@@ -1460,6 +1460,54 @@ one thing this change could get wrong: the counter has to be drawn after the
 adoption, not before, or the write goes out behind what the device has already
 accepted and is refused in silence (§4.2). It is drawn in the right order.
 
+### Where the 200 ms comes from, and it is not the fold
+
+Looked at per sample rather than per median, the quantisation is not confined to
+the write. **Every phase after the counter exchange is a multiple of about
+199 ms**, and the read-back is the clearest case: `confirm_ms` is 401.8 ms in 18
+of the 26 folded samples and 601.7 ms in 5 more, which is two units and three.
+The write is 2, 4, 5 or 6 of the same unit.
+
+**In the separate arm nothing is quantised at all.** The write is 40 to 42 ms in
+25 of 26 samples, and the read-back after it is spread continuously from 55 ms to
+1201 ms. Same board, same firmware, same deployed code, one constant apart.
+
+What separates the two is not the fold but *when in the connection the write
+happens*. In the separate arm the write is the first ATT operation on the link,
+about 40 ms after it comes up. In the folded arm the counter exchange goes first,
+so the write starts 520 to 1360 ms in. Sorted by `counter_ms`, the one folded
+sample whose exchange was quick (98 ms) is also the only one whose write is not a
+clean multiple: 371.8 ms. Everything above 500 ms is on the grid.
+
+So **a connection changes regime about half a second in**, and whatever runs then
+pays an integer number of 199 ms intervals. That is a connection interval, and it
+is nobody's arithmetic here: the integration has exactly one `asyncio.sleep` and
+it is the slot cooldown; the module's own constants are 100 ms of read slack,
+250 ms of change hold and a 100 ms fast advertising interval; and this sketch
+does not pin the console, so it is not §8's `E.setConsole("USB")` artifact
+either.
+
+**§8 saw this a week ago from the other side.** With the console pinned to USB, a
+hundred writes over the air took 400 ms each instead of 15, and that section
+called it a lead worth following for a receiver that writes several entries in
+one connection. This is that lead arriving in production: it is not about the
+console, and it is not about encryption. **Any second operation late in a
+connection pays it**, which includes D-130's folded read on a device that has
+moved its revision.
+
+**What this costs the fold, properly attributed.** Of the 1.5 s the fold seemed
+to add in the settled case, about 750 ms is this regime, which a command pays for
+being late in its own connection rather than for carrying a question. The fold's
+own cost is the counter exchange, 715 ms.
+
+**The one experiment that would settle it**, not run tonight: time six ATT
+operations inside a single connection and find where the step is. At a fixed age,
+it is a connection-parameter update the peripheral asks for shortly after
+connecting, and the remedy is to ask for a different one or to do the work
+sooner. At a fixed operation index, it is something else entirely and this
+paragraph is wrong. Run it against the Puck as well, whose console is on the
+radio and which is in clear, because that separates the device from the link.
+
 Samples in `docs/data/counter-question-folded.json`,
 `counter-question-separate.json` and the same two names with `-n10`.
 

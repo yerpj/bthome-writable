@@ -8742,13 +8742,25 @@ fold's fault but the comparison's: the separate arm connects for the question
 40 s earlier and leaves the path warm, which an unsealed device never gets
 either.
 
-**One number looks like a defect.** The folded write is quantised at 797, 997
-and 1197 ms, steps of almost exactly 200 ms, where the separate arm's write is
-40 to 42 ms every time. A write is not slower because a read preceded it on the
-same link; something is waiting for a periodic event, and 200 ms is a connection
-interval, not arithmetic. If that wait can be removed, the fold wins in both
-cases and this decision becomes easy. **Not investigated tonight**, and it should
-be the next thing looked at, before any change to the fold's policy.
+**One number looked like a defect in the fold, and it is not the fold's.** The
+folded write is quantised at 797, 997 and 1197 ms where the separate arm's is 40
+to 42 ms, and looked at per sample the quantisation covers every phase after the
+counter exchange: the read-back is 401.8 ms in 18 of 26 samples and 601.7 ms in 5
+more, two units of 199 ms and three. The separate arm has none of it, and the one
+folded sample whose exchange was quick, 98 ms, is also the only write off the
+grid. **A connection changes regime about half a second in**, and anything
+running then pays whole 199 ms intervals. None of our code has such a number: one
+`asyncio.sleep` in the integration, 100 and 250 ms in the module, and no console
+pinned. §8 met the same regime from the other side a week ago, 400 ms per write
+instead of 15, and called it a lead worth following. So **any second operation
+late in a connection pays this**, including D-130's folded read, and of the 1.5 s
+the fold appeared to add in the settled case about 750 ms is this rather than the
+fold. Its own cost is the 715 ms exchange.
+
+**The experiment that would settle it** is six ATT operations inside one
+connection, timed, on the lamp and on the Puck: a step at a fixed age is a
+connection-parameter update the peripheral requests after connecting, a step at a
+fixed operation index is something else. Not run tonight.
 
 **The owner's, and it is a real choice:**
 
