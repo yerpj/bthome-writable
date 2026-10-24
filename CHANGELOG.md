@@ -15,8 +15,16 @@ its first non-draft release. Every entry names the decision behind it:
 
 ## [Unreleased]
 
-Everything here is on `main` and in no release yet: the integration's
-`manifest.json` carries the version a tag will take.
+Nothing yet. The integration's `manifest.json` carries the version a tag will
+take, so it reads 0.2.0 until the next one is cut.
+
+## [0.2.0] - 2026-10-24
+
+Everything the integration learned since the first release, and it is mostly one
+theme: **fewer connections**. A BLE device serves one central at a time and a
+host has a handful of slots, so the work was to stop spending them. The module's
+own changes rode along, since EspruinoDocs serves it by name and it carries no
+version of its own.
 
 ### Added
 
@@ -151,5 +159,6 @@ Everything here is on `main` and in no release yet: the integration's
   numbers, text and buttons from a BTHome device's own declaration, a bindkey
   prompt when the device is encrypted, and nothing to configure by hand.
 
-[Unreleased]: https://github.com/yerpj/bthome-writable/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/yerpj/bthome-writable/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/yerpj/bthome-writable/releases/tag/v0.2.0
 [0.1.0]: https://github.com/yerpj/bthome-writable/releases/tag/v0.1.0
