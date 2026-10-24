@@ -1396,6 +1396,84 @@ the first measurement of it costing anything.
 three-slot proxy cannot fill the host, so D-133's hold-off and its message are
 covered by tests and by reading `bleak_retry_connector`, not by hardware.
 
+## 21. The counter question, measured against a sealed device
+
+**2026-10-24, the nice!nano lamp `F5:A8:93:67:CB:25`, through Home Assistant on
+`hci0` and one proxy.** §17 set out what the fold of D-129 should be worth and
+could not measure it: no board on this bench had a firmware with `crypto`, so no
+device was ever asked for a counter. The board was reflashed today with
+2v29.396, `MODULES` now lists `crypto`, and the seventeen shared CCM vectors run
+on it agree with the contract. `espruino/bench/revision-lamp.js` is sealed with
+the test-vector key, offers the counter report, and fits in 12 of its 12
+available service-data bytes. The Home Assistant entry was given the same key
+through Reconfigure.
+
+**Thirteen samples per case per arm**, three then ten, `--arm folded` and
+`--arm separate` with the deployed `FOLD_THE_COUNTER_QUESTION_INTO_A_WRITE`
+switched between them and a restart and ten minutes of settling in between.
+
+| | Folded | Separate | Folded minus separate |
+|---|---|---|---|
+| *immediate*, median wall | **10.12 s** (8.45 to 18.36) | **13.02 s** (10.58 to 19.56) | **-2.90 s** |
+| *settled*, median wall | **7.64 s** (4.66 to 15.94) | **4.19 s** (3.08 to 7.94) | **+3.45 s** |
+
+**The first row is what the change was for, and it holds.** Broken into phases,
+the fold removes 5.0 s of queueing (median 4254 ms against 9230 ms): the command
+no longer waits behind a connection made for the question. It pays 1.76 s back
+inside its own connection, and keeps the difference.
+
+**The second row was predicted to be equal within the spread, and it is not.**
+§17 expected the fold's `counter_ms` to be tens of milliseconds against a
+connection of seconds. It is 715 ms, and it is not the whole cost:
+
+| Phase, *settled* median | Folded | Separate |
+|---|---|---|
+| queued | 1 ms | 1 ms |
+| connect | 3196 ms | 1287 ms |
+| counter exchange | 715 ms | 0 ms |
+| write | 797 ms | 42 ms |
+| confirm | 402 ms | 671 ms |
+
+**Two things in that table are worth more than the totals.**
+
+*The write costs 42 ms on a link that carries nothing else and about 800 ms when
+it carries the question.* Twenty times, for an exchange that is already counted
+in its own column. The folded values are quantised: 797, 997, 1197, in steps of
+almost exactly 200 ms, where the separate arm's are 40 to 42 ms every time. A
+write does not become slower because a read preceded it on the same link, so
+this is a wait on something periodic, and 200 ms is the shape of a connection
+interval rather than of arithmetic. It is the one number here that looks like a
+defect rather than a cost.
+
+*The separate arm's connect is 1.9 s faster, and that is an artifact of the
+comparison rather than a merit of the arm.* In the separate arm a connection was
+made for the question 40 s earlier, which leaves the path warm: a cached GATT
+table, a known route through the adapter or the proxy. In the folded arm nothing
+has connected since the reload, so the command pays for a cold path. Against an
+unsealed device, where no question is ever asked, the settled command would be
+cold in both arms. So **the fold's own cost in the settled case is the counter
+exchange plus the write inflation, about 1.5 s, not the 3.45 s the wall times
+show.**
+
+**No write was refused in any of the twenty-six folded samples.** That was the
+one thing this change could get wrong: the counter has to be drawn after the
+adoption, not before, or the write goes out behind what the device has already
+accepted and is refused in silence (§4.2). It is drawn in the right order.
+
+Samples in `docs/data/counter-question-folded.json`,
+`counter-question-separate.json` and the same two names with `-n10`.
+
+```
+python -m tools.bench_lock acquire --note "D-129 sealed A/B"
+# set BINDKEY in espruino/bench/revision-lamp.js, then
+python -m tools.build_espruino_bundle
+python -m tools.espruino_upload --port COM6 espruino/dist/revision-lamp-standalone.min.js
+# then Reconfigure the entry with the same key, and
+.venv-ha/Scripts/python.exe -m tools.counter_question_cost --device lamp --arm folded --reps 10
+```
+
+---
+
 ## Reproducing any of this
 
 Most of the tools above take `--address`; `tools.regression` and

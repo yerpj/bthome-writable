@@ -8716,3 +8716,52 @@ from `bluetooth.async_scanner_count`, which changes behaviour for every
 installation and stays the owner's to rule. It is the safer of the two
 directions now: a cap set too high lands on a wait (D-133) rather than on a
 refused write.
+
+---
+
+## D-138 — What the folded counter question is actually worth  [DECISION]
+
+**2026-10-24, measured, not reasoned.** D-129 folded the §5.6 counter question
+into the connection a command already makes. §17 wrote down what that should be
+worth and could not test it: nothing on this bench was sealed, because no board
+had a firmware with `crypto`. A nice!nano was reflashed today, two more arrived,
+and all three agree with the shared CCM vectors, so the question could finally
+be asked of a real device. Thirteen samples per case per arm, in
+`docs/measurements.md` §21.
+
+**The case the change was made for holds.** A command issued half a second after
+a reload is **2.90 s faster folded**, 10.12 s against 13.02 s. The fold removes
+5.0 s of queueing and pays 1.76 s back inside the connection. That is @enaon's
+case, and it is the one a user feels.
+
+**The case it costs was underestimated.** §17 expected the settled case to be
+equal within the spread. It is **3.45 s worse folded**, and about 1.5 s of that
+is the fold's own: 715 ms of counter exchange, and a write that goes from 42 ms
+to about 800 ms when it carries the question. The remaining 1.9 s is not the
+fold's fault but the comparison's: the separate arm connects for the question
+40 s earlier and leaves the path warm, which an unsealed device never gets
+either.
+
+**One number looks like a defect.** The folded write is quantised at 797, 997
+and 1197 ms, steps of almost exactly 200 ms, where the separate arm's write is
+40 to 42 ms every time. A write is not slower because a read preceded it on the
+same link; something is waiting for a periodic event, and 200 ms is a connection
+interval, not arithmetic. If that wait can be removed, the fold wins in both
+cases and this decision becomes easy. **Not investigated tonight**, and it should
+be the next thing looked at, before any change to the fold's policy.
+
+**The owner's, and it is a real choice:**
+
+* **keep the fold unconditionally**, on the ground that the immediate case is the
+  one a user feels and the settled case is housekeeping nobody is waiting for;
+* **or make it conditional** on how long ago the question was armed, which turns
+  one constant into a policy and needs a threshold nobody has measured;
+* **or leave it until the 200 ms wait is understood**, which is the
+  recommendation here: the measurement that would settle the choice is cheap once
+  that number is explained, and a choice made now could be made on an artifact.
+
+**Bench state after this.** The lamp is sealed and its entry holds the key, which
+is a change to the shared bench: a receiver without that key sees an undecodable
+BTHome device, not a plain one. `docs/shared-bench.md` says so. The deployed
+`FOLD_THE_COUNTER_QUESTION_INTO_A_WRITE` is back to `True`, the lamp is written
+off, and the lock is released.

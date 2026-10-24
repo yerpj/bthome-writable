@@ -6,8 +6,9 @@ there is really only one rule, and one list of things that rule does not cover.
 ## The bench
 
 One Home Assistant instance at `http://haosjry.local:8123`, one Bluetooth
-adapter that instance owns, one Puck.js, two nice!nanos and one OOTY debug board
-on `COM8` that switches a 3V3 rail. There is exactly one of each.
+adapter that instance owns, two ESPHome Bluetooth proxies, one Puck.js, four
+nice!nanos and one OOTY debug board on `COM8` that switches a 3V3 rail. There is
+exactly one of each.
 
 **The OLED automation is off since 2026-10-23**, by the owner, who does not
 need it. It wrote the Puck's illuminance to the `COM15` nice!nano every 30 s
@@ -18,11 +19,33 @@ it back.
 **The second nice!nano, on `COM6`, arrived 2026-10-23** and runs
 `espruino/bench/revision-lamp.js`: the bench's only device whose writable
 entries are also readable, so it is the only one that advertises a settings
-revision and owes the receiver a read (D-130). Its firmware has no crypto --
-`MODULES` is `timer,Flash,Storage,heatshrink,neopixel` -- so it cannot run a
-sealed sketch, which is why §5.6's counter report is still unmeasured on
-hardware. Its sketch lives in RAM, so a reset or a power cut leaves it silent
+revision and owes the receiver a read (D-130). Its sketch lives in RAM, so a reset or a power cut leaves it silent
 until it is uploaded again.
+
+**It is sealed since 2026-10-24, and that matters to anyone else reading it.**
+It was reflashed with a firmware that has `crypto` (2v29.396, `MODULES` now
+lists it), and `espruino/bench/revision-lamp.js` runs with the bindkey from
+`test-vectors/test-vectors.json`, which is public on purpose. Its Home Assistant
+entry holds the same key. So a receiver without that key sees an undecodable
+BTHome device rather than a plain one: a silent lamp is a missing key before it
+is a dead board. Putting it back in clear costs a rebuild and an upload (D-138).
+
+**Two more nice!nanos arrived 2026-10-24**, `C2:38:F5:70:B6:BA` on `COM9` and
+`E0:A4:BA:16:54:89` on `COM11`, both with `crypto` and both agreeing with the
+seventeen shared CCM vectors. They are declared in `tools/devices.py` as `lamp2`
+and `lamp3` and they exist for one purpose: to make the host run out of
+connection slots, which three devices never could. **They are deliberately left
+dark** until a run wants them, and their sketches live in RAM, so an unflashed
+board is a silent one. They stay out of the §17 and §21 campaigns, whose figures
+only compare with §16 and §20 on the bench as it was.
+
+**A second proxy was added 2026-10-24**, `esp32-bluetooth-proxy-cff508` at
+`10.191.52.200`, BLE MAC `1C:DB:D4:CF:F5:0A`, an ESP32-C3 with
+`bluetooth_proxy: active: true`, so it offers connection slots and does not
+merely listen. Its API has no password and no encryption, which is why it could
+be added without a human at the keyboard. It is on Wi-Fi with a 29 to 41 ms
+round trip, so anything routed through it pays that. The older proxy's ESPHome
+entry `01M2QKAFXHKY07577VZ1PDZ8F2` stays disabled by campaign convention.
 
 **The Puck.js is no longer on that rail.** Since 2026-10-09 it runs from a
 CR2032 and is power-cycled by hand. `tools.ooty` still switches the rail, and
