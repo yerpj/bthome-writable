@@ -41,4 +41,28 @@ DEVICES: dict[str, dict[str, Any]] = {
         # advertising interval is set without holding its single connection.
         "port": "COM15",
     },
+    # The saturation arm, added 2026-10-24. Three devices and one three-slot
+    # proxy cannot exhaust the host, so D-133's hold-off and D-134's priority
+    # have only ever been shown by tests. These two are clones of `lamp`: two
+    # writable entries that are also readable, so each one owes the receiver a
+    # read and the read path carries three times the work it did.
+    #
+    # **They stay out of the §17 campaign**, whose numbers are only comparable
+    # with §16 and §20 on the bench as it was. Their sketches live in RAM, so
+    # they are silent until uploaded, which is how they are kept out: upload
+    # them after the campaign, not before.
+    "lamp2": {
+        "address": "C2:38:F5:70:B6:BA",
+        "label": "nice!nano lamp B (light + count), saturation arm only",
+        "entity": "switch.espruino_b6ba_light",
+        "kind": "switch",
+        "port": "COM9",
+    },
+    "lamp3": {
+        "address": "E0:A4:BA:16:54:89",
+        "label": "nice!nano lamp C (light + count), saturation arm only",
+        "entity": "switch.espruino_5489_light",
+        "kind": "switch",
+        "port": "COM11",
+    },
 }

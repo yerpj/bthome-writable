@@ -1,0 +1,83 @@
+{
+  "arm": "separate",
+  "samples": [
+    {
+      "address": "F5:A8:93:67:CB:25",
+      "entry": 1,
+      "queued_ms": 14965.1,
+      "connect_ms": 261.5,
+      "counter_ms": 0.0,
+      "write_ms": 41.4,
+      "confirm_ms": 671.6,
+      "total_ms": 15269.9,
+      "case": "immediate",
+      "since_reload_s": 0.89,
+      "wall_s": 17.95
+    },
+    {
+      "address": "F5:A8:93:67:CB:25",
+      "entry": 1,
+      "queued_ms": 11303.0,
+      "connect_ms": 793.6,
+      "counter_ms": 0.0,
+      "write_ms": 41.1,
+      "confirm_ms": 726.7,
+      "total_ms": 12138.8,
+      "case": "immediate",
+      "since_reload_s": 0.78,
+      "wall_s": 15.28
+    },
+    {
+      "address": "F5:A8:93:67:CB:25",
+      "entry": 1,
+      "queued_ms": 15626.8,
+      "connect_ms": 476.1,
+      "counter_ms": 0.0,
+      "write_ms": 41.9,
+      "confirm_ms": 1021.8,
+      "total_ms": 16146.2,
+      "case": "immediate",
+      "since_reload_s": 3.47,
+      "wall_s": 19.56
+    },
+    {
+      "address": "F5:A8:93:67:CB:25",
+      "entry": 1,
+      "queued_ms": 0.8,
+      "connect_ms": 711.0,
+      "counter_ms": 0.0,
+      "write_ms": 42.9,
+      "confirm_ms": 671.0,
+      "total_ms": 756.0,
+      "case": "settled",
+      "since_reload_s": 40.3,
+      "wall_s": 3.62
+    },
+    {
+      "address": "F5:A8:93:67:CB:25",
+      "entry": 1,
+      "queued_ms": 0.7,
+      "connect_ms": 474.6,
+      "counter_ms": 0.0,
+      "write_ms": 39.9,
+      "confirm_ms": 559.4,
+      "total_ms": 516.3,
+      "case": "settled",
+      "since_reload_s": 43.0,
+      "wall_s": 3.08
+    },
+    {
+      "address": "F5:A8:93:67:CB:25",
+      "entry": 1,
+      "queued_ms": 0.7,
+      "connect_ms": 2615.5,
+      "counter_ms": 0.0,
+      "write_ms": 489.4,
+      "confirm_ms": 1201.5,
+      "total_ms": 3106.6,
+      "case": "settled",
+      "since_reload_s": 40.3,
+      "wall_s": 6.7
+    }
+  ]
+}

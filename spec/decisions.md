@@ -8967,3 +8967,122 @@ D-135 are what was true the day each was written.
   now matters: D-135 adds one. Narrowing the waiver to "the only lingering timer
   is `_async_check_unavailable`" would keep the check for everything this
   integration schedules.
+
+---
+
+## D-138 — What the folded counter question is actually worth  [DECISION]
+
+**2026-10-24, measured, not reasoned.** D-129 folded the §5.6 counter question
+into the connection a command already makes. §17 wrote down what that should be
+worth and could not test it: nothing on this bench was sealed, because no board
+had a firmware with `crypto`. A nice!nano was reflashed today, two more arrived,
+and all three agree with the shared CCM vectors, so the question could finally
+be asked of a real device. Thirteen samples per case per arm, in
+`docs/measurements.md` §21.
+
+**The case the change was made for holds.** A command issued half a second after
+a reload is **2.90 s faster folded**, 10.12 s against 13.02 s. The fold removes
+5.0 s of queueing and pays 1.76 s back inside the connection. That is @enaon's
+case, and it is the one a user feels.
+
+**The case it costs was underestimated.** §17 expected the settled case to be
+equal within the spread. It is **3.45 s worse folded**, and about 1.5 s of that
+is the fold's own: 715 ms of counter exchange, and a write that goes from 42 ms
+to about 800 ms when it carries the question. The remaining 1.9 s is not the
+fold's fault but the comparison's: the separate arm connects for the question
+40 s earlier and leaves the path warm, which an unsealed device never gets
+either.
+
+**One number looked like a defect in the fold, and it is not the fold's.** The
+folded write is quantised at 797, 997 and 1197 ms where the separate arm's is 40
+to 42 ms, and looked at per sample the quantisation covers every phase after the
+counter exchange: the read-back is 401.8 ms in 18 of 26 samples and 601.7 ms in 5
+more, two units of 199 ms and three. The separate arm has none of it, and the one
+folded sample whose exchange was quick, 98 ms, is also the only write off the
+grid. **A connection changes regime about half a second in**, and anything
+running then pays whole 199 ms intervals. None of our code has such a number: one
+`asyncio.sleep` in the integration, 100 and 250 ms in the module, and no console
+pinned. §8 met the same regime from the other side a week ago, 400 ms per write
+instead of 15, and called it a lead worth following. So **any second operation
+late in a connection pays this**, including D-130's folded read, and of the 1.5 s
+the fold appeared to add in the settled case about 750 ms is this rather than the
+fold. Its own cost is the 715 ms exchange.
+
+**The experiment was run the same night and half answers** (§21). Twelve ATT
+reads in one connection, from this host: the step does not follow the operation
+index, since twelve back-to-back reads stay at 15 ms while the one slow pass was
+slow from its first read and stayed slow for 6 s. A regime a connection is in,
+not a cost that accumulates, which is the shape of connection parameters. But it
+could not be summoned again: a sweep of seven silences from 0 to 2 s found
+nothing slower than 47 ms. This host's adapter keeps a link fast whatever its
+age, and the production figures are the Pi's `hci0`, whose parameters are its
+own. **What is left is one measurement on the Home Assistant side**, the live
+link's connection interval early and late in a connection, which needs a shell on
+HAOS this session does not have.
+
+**The owner's, and it is a real choice:**
+
+* **keep the fold unconditionally**, on the ground that the immediate case is the
+  one a user feels and the settled case is housekeeping nobody is waiting for;
+* **or make it conditional** on how long ago the question was armed, which turns
+  one constant into a policy and needs a threshold nobody has measured;
+* **or leave it until the 200 ms wait is understood**, which is the
+  recommendation here: the measurement that would settle the choice is cheap once
+  that number is explained, and a choice made now could be made on an artifact.
+
+**Bench state after this.** The lamp is sealed and its entry holds the key, which
+is a change to the shared bench: a receiver without that key sees an undecodable
+BTHome device, not a plain one. `docs/shared-bench.md` says so. The deployed
+`FOLD_THE_COUNTER_QUESTION_INTO_A_WRITE` is back to `True`, the lamp is written
+off, and the lock is released.
+
+---
+
+## D-139 — The bench runs sealed by default
+
+**2026-10-24, the owner, answering the open item at the end of D-138:** keep the
+devices encrypted from now on, as far as the hardware allows. So sealed is the
+default state of this bench and in clear is the exception that needs a reason,
+which is the reverse of how it has run until today.
+
+**Why it is the right default.** Every receiver path that only runs sealed was
+until today exercised by tests and by one Python reference: the counter question
+of §5.6, the replay check on the advertising counter, the bindkey prompt and the
+Reconfigure step, the `counterReport` handshake, and the 8 bytes of every packet
+that encryption spends. A bench in clear cannot fail any of them, so it cannot
+report them either. D-138 is the first measurement this project has of a sealed
+device at all, and it immediately found a write 20 times slower than its
+counterpart in clear.
+
+**What it means board by board**, because "as far as the hardware allows" is not
+the same everywhere:
+
+* **`lamp` (`F5:A8:93:67:CB:25`, COM6)** is sealed and stays sealed. Its entry
+  holds the key.
+* **`lamp2` (COM9) and `lamp3` (COM11)** are sealed when they are first flashed,
+  which has not happened yet: they are deliberately dark until the saturation arm
+  wants them (D-138). Their Home Assistant entries take the key at discovery,
+  through the bindkey prompt the config flow already has, so no entry has to be
+  made and then reconfigured.
+* **`nano` (`CD:F5:77:3A:B2:16`, COM15)** has `crypto` and can be sealed, but it
+  is the board §16 and §20 measured in clear. Sealing it changes what those
+  numbers mean, so it happens at a campaign boundary and is recorded, not
+  quietly between two runs.
+* **`puck` (`C8:80:32:AD:F7:B9`)** is the exception. It runs from a CR2032 since
+  2026-10-09, AES-CCM costs it about 135 µA (@enaon's figure, D-049), and it is
+  power-cycled by hand. It stays in clear unless a measurement needs it sealed,
+  and then it goes back.
+
+**One key for the whole bench**, `231d39c1d7cc1ab1aee224cd096db932`, the one in
+`test-vectors/test-vectors.json`. It is public on purpose: the twenty-two vectors
+stay directly comparable with whatever a board computes, and nothing on this
+bench is a secret worth protecting. A bench key that mattered would also have to
+be kept out of the repository, which would put the one number every tool needs
+somewhere no tool can read.
+
+**The cost to keep in view.** Sealed, a device spends 8 of its service-data bytes
+on the counter and the MIC. The bench lamp fits in 12 of 12 with nothing to
+spare, so any entry added to it from now on throws `capacity_exceeded` at
+`setup()` rather than silently truncating, which is the right failure but still a
+failure. `docs/shared-bench.md` says so where someone adding an entry will read
+it.

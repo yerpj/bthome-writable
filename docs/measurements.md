@@ -1396,6 +1396,172 @@ the first measurement of it costing anything.
 three-slot proxy cannot fill the host, so D-133's hold-off and its message are
 covered by tests and by reading `bleak_retry_connector`, not by hardware.
 
+## 21. The counter question, measured against a sealed device
+
+**2026-10-24, the nice!nano lamp `F5:A8:93:67:CB:25`, through Home Assistant on
+`hci0` and one proxy.** §17 set out what the fold of D-129 should be worth and
+could not measure it: no board on this bench had a firmware with `crypto`, so no
+device was ever asked for a counter. The board was reflashed today with
+2v29.396, `MODULES` now lists `crypto`, and the seventeen shared CCM vectors run
+on it agree with the contract. `espruino/bench/revision-lamp.js` is sealed with
+the test-vector key, offers the counter report, and fits in 12 of its 12
+available service-data bytes. The Home Assistant entry was given the same key
+through Reconfigure.
+
+**Thirteen samples per case per arm**, three then ten, `--arm folded` and
+`--arm separate` with the deployed `FOLD_THE_COUNTER_QUESTION_INTO_A_WRITE`
+switched between them and a restart and ten minutes of settling in between.
+
+| | Folded | Separate | Folded minus separate |
+|---|---|---|---|
+| *immediate*, median wall | **10.12 s** (8.45 to 18.36) | **13.02 s** (10.58 to 19.56) | **-2.90 s** |
+| *settled*, median wall | **7.64 s** (4.66 to 15.94) | **4.19 s** (3.08 to 7.94) | **+3.45 s** |
+
+**The first row is what the change was for, and it holds.** Broken into phases,
+the fold removes 5.0 s of queueing (median 4254 ms against 9230 ms): the command
+no longer waits behind a connection made for the question. It pays 1.76 s back
+inside its own connection, and keeps the difference.
+
+**The second row was predicted to be equal within the spread, and it is not.**
+§17 expected the fold's `counter_ms` to be tens of milliseconds against a
+connection of seconds. It is 715 ms, and it is not the whole cost:
+
+| Phase, *settled* median | Folded | Separate |
+|---|---|---|
+| queued | 1 ms | 1 ms |
+| connect | 3196 ms | 1287 ms |
+| counter exchange | 715 ms | 0 ms |
+| write | 797 ms | 42 ms |
+| confirm | 402 ms | 671 ms |
+
+**Two things in that table are worth more than the totals.**
+
+*The write costs 42 ms on a link that carries nothing else and about 800 ms when
+it carries the question.* Twenty times, for an exchange that is already counted
+in its own column. The folded values are quantised: 797, 997, 1197, in steps of
+almost exactly 200 ms, where the separate arm's are 40 to 42 ms every time. A
+write does not become slower because a read preceded it on the same link, so
+this is a wait on something periodic, and 200 ms is the shape of a connection
+interval rather than of arithmetic. It is the one number here that looks like a
+defect rather than a cost.
+
+*The separate arm's connect is 1.9 s faster, and that is an artifact of the
+comparison rather than a merit of the arm.* In the separate arm a connection was
+made for the question 40 s earlier, which leaves the path warm: a cached GATT
+table, a known route through the adapter or the proxy. In the folded arm nothing
+has connected since the reload, so the command pays for a cold path. Against an
+unsealed device, where no question is ever asked, the settled command would be
+cold in both arms. So **the fold's own cost in the settled case is the counter
+exchange plus the write inflation, about 1.5 s, not the 3.45 s the wall times
+show.**
+
+**No write was refused in any of the twenty-six folded samples.** That was the
+one thing this change could get wrong: the counter has to be drawn after the
+adoption, not before, or the write goes out behind what the device has already
+accepted and is refused in silence (§4.2). It is drawn in the right order.
+
+### Where the 200 ms comes from, and it is not the fold
+
+Looked at per sample rather than per median, the quantisation is not confined to
+the write. **Every phase after the counter exchange is a multiple of about
+199 ms**, and the read-back is the clearest case: `confirm_ms` is 401.8 ms in 18
+of the 26 folded samples and 601.7 ms in 5 more, which is two units and three.
+The write is 2, 4, 5 or 6 of the same unit.
+
+**In the separate arm nothing is quantised at all.** The write is 40 to 42 ms in
+25 of 26 samples, and the read-back after it is spread continuously from 55 ms to
+1201 ms. Same board, same firmware, same deployed code, one constant apart.
+
+What separates the two is not the fold but *when in the connection the write
+happens*. In the separate arm the write is the first ATT operation on the link,
+about 40 ms after it comes up. In the folded arm the counter exchange goes first,
+so the write starts 520 to 1360 ms in. Sorted by `counter_ms`, the one folded
+sample whose exchange was quick (98 ms) is also the only one whose write is not a
+clean multiple: 371.8 ms. Everything above 500 ms is on the grid.
+
+So **a connection changes regime about half a second in**, and whatever runs then
+pays an integer number of 199 ms intervals. That is a connection interval, and it
+is nobody's arithmetic here: the integration has exactly one `asyncio.sleep` and
+it is the slot cooldown; the module's own constants are 100 ms of read slack,
+250 ms of change hold and a 100 ms fast advertising interval; and this sketch
+does not pin the console, so it is not §8's `E.setConsole("USB")` artifact
+either.
+
+**§8 saw this a week ago from the other side.** With the console pinned to USB, a
+hundred writes over the air took 400 ms each instead of 15, and that section
+called it a lead worth following for a receiver that writes several entries in
+one connection. This is that lead arriving in production: it is not about the
+console, and it is not about encryption. **Any second operation late in a
+connection pays it**, which includes D-130's folded read on a device that has
+moved its revision.
+
+**What this costs the fold, properly attributed.** Of the 1.5 s the fold seemed
+to add in the settled case, about 750 ms is this regime, which a command pays for
+being late in its own connection rather than for carrying a question. The fold's
+own cost is the counter exchange, 715 ms.
+
+**The experiment, run the same night, and it half answers.** Twelve ATT reads
+inside one connection, from this Windows host rather than through Home Assistant,
+reading GAP Device Name (0x2A00), which the SoftDevice answers without waking
+JavaScript. Two passes per board: reads from the first moment, and reads after
+1.5 s of silence.
+
+| | Reads from the first moment | Reads after 1.5 s of silence |
+|---|---|---|
+| Puck.js, battery, in clear | 15 to 31 ms | 15 to 31 ms |
+| the lamp, first run | 15 to 16 ms | **500, then 390 to 407 ms, all twelve** |
+| the lamp, six runs after | 16 to 63 ms | 15 to 47 ms |
+
+**So the step does not follow the operation index.** Twelve reads back to back
+stay at 15 ms; the slow pass was slow from its *first* read and stayed slow for
+all twelve, 6 s of link. A regime a connection is in, then, not a cost that
+accumulates: a link that comes up fast stays fast, and one that comes up slow
+never recovers. That is the shape of connection parameters, and ~400 ms is two of
+the ~199 ms unit.
+
+**And it is not plain silence either**, which is the honest part of this result.
+A sweep of seven delays from 0 to 2 s on the same board, minutes later, found
+nothing slower than 47 ms, and alternating SoftDevice-served and
+JavaScript-served reads in one connection found nothing slower than 63 ms. The
+slow regime was seen once, whole and unmistakable, and could not be summoned
+again from this host.
+
+**Which points at the central rather than at the device.** This host's adapter
+keeps a link fast whatever the age of the connection; the figures in the tables
+above were produced by Home Assistant on the Pi's `hci0`, whose connection
+parameters are its own and are not reproducible from here. The production data is
+the stronger evidence, because it is near deterministic: 25 of 26 folded writes
+on the grid, 25 of 26 separate writes at 40 to 42 ms, and the separate arm's
+read-back, which lands in between at 55 to 1201 ms, continuous, exactly where a
+transition would put it.
+
+**So the remaining question is one measurement on the Home Assistant side**: the
+live link's connection interval, from `btmon` on the host or from a proxy's log,
+at 40 ms into a connection and again at 1 s. That needs a shell on HAOS, which
+this session does not have.
+
+**One correction this experiment forced**, worth more than it looks: *this host
+can* open a GATT connection to the nice!nano lamp, which `docs/shared-bench.md`
+said it could not. It needs an active scan and up to 45 s of it, because the
+board advertises an unchanging sealed payload and Windows coalesces duplicates.
+Measurements that do not need Home Assistant in the loop can therefore be made
+from here, with this host's connection parameters rather than the Pi's, which is
+both the opportunity and the catch.
+
+Samples in `docs/data/counter-question-folded.json`,
+`counter-question-separate.json` and the same two names with `-n10`.
+
+```
+python -m tools.bench_lock acquire --note "D-129 sealed A/B"
+# set BINDKEY in espruino/bench/revision-lamp.js, then
+python -m tools.build_espruino_bundle
+python -m tools.espruino_upload --port COM6 espruino/dist/revision-lamp-standalone.min.js
+# then Reconfigure the entry with the same key, and
+.venv-ha/Scripts/python.exe -m tools.counter_question_cost --device lamp --arm folded --reps 10
+```
+
+---
+
 ## Reproducing any of this
 
 Most of the tools above take `--address`; `tools.regression` and
