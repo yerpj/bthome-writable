@@ -8983,6 +8983,25 @@ D-135 are what was true the day each was written.
 
 ## D-138 — What the folded counter question is actually worth  [DECISION]
 
+**Update, 2026-10-25: the 199 ms this decision was waiting on is explained, and
+the recommendation changes.** It is Espruino's own dynamic peripheral connection
+interval: documented in `jswrap_bluetooth.c` as 7.5 ms while active, dropping to
+200 ms when the device has been idle for over a minute, and it is the device's
+setting, not the central's. @enaon reproduced the grid the same day on another
+board through two different radios, and his `hci0` figures match ours to the
+millisecond (§21). So the fold is not what makes a settled command slow: being
+late in a connection to a device nobody has talked to for a minute is, and the
+counter exchange's own 715 ms is about three and a half of the same unit.
+
+**The recommendation is therefore no longer "wait".** Pin the interval on the
+device with `NRF.setConnectionInterval(7.5)`, measure the pair of commands §21
+sets out, and decide the fold against *those* numbers, where the exchange should
+cost the tens of milliseconds §17 predicted. Keep the fold on in the meantime:
+its gain in the case a user actually meets, the first command after a quiet
+period, is measured and large, and that is exactly the case the slow interval
+makes worse for everybody.
+
+
 **2026-10-24, measured, not reasoned.** D-129 folded the §5.6 counter question
 into the connection a command already makes. §17 wrote down what that should be
 worth and could not test it: nothing on this bench was sealed, because no board
