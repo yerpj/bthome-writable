@@ -1190,12 +1190,13 @@ var BTHomeWritable = exports;
  *   over the cable: python -m tools.espruino_upload --port COM6 \
  *                       espruino/dist/power-arms-standalone.min.js
  *
- * **MARK is what makes a trace readable.** Wire the pad named below to one of
- * the PPK2's digital inputs and the trace segments itself: the pin is high for
- * exactly the connection a command runs in, and for exactly the rebuild
- * `bench.rebuild()` asks for. `tools/power_charge.py` integrates those windows
- * out of the CSV. With MARK null the sketch behaves identically and the
- * windows have to be cut by hand or by current threshold.
+ * **MARK is what makes a trace readable.** Wire the pad named below to the
+ * meter's digital input -- GPI1 on an Otii Arc Pro, D0 on a PPK2 -- and the
+ * trace segments itself: the pin is high for exactly the connection a command
+ * runs in, and for exactly the rebuild `bench.rebuild()` asks for.
+ * `tools/power_charge.py` integrates those windows out of the export. With MARK
+ * null the sketch behaves identically and the windows have to be cut by hand or
+ * by current threshold.
  *
  * Then drive it, if the arm needs driving:
  *   bench.knob()      move the dimmer locally and call bw.changed()
@@ -1219,8 +1220,9 @@ var ADV_INTERVAL = 2000;
    has an effect while a central is connected. */
 var CONNECTION_INTERVAL = null;
 
-/* A free pad wired to a PPK2 digital input: D1 on a Puck.js, D1 on a
-   nice!nano. null disables the marker. */
+/* A free pad wired to the meter's digital input: D1 on a Puck.js, D1 on a
+   nice!nano. Tell the meter the board's logic level, or a 3 V marker read
+   against a 5 V threshold never goes high. null disables the marker. */
 var MARK = null;
 
 /* Milliseconds between re-reads of the one advertised sensor, or null for a

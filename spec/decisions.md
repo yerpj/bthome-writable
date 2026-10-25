@@ -9232,6 +9232,12 @@ bench's ordinary tail and not something an interval governs: it is the only
 sample in 200 whose connect exceeded 2 s, and the two arms' connect medians are
 the same.
 
+**The power arm is now the owner's own**, on his Otii Arc Pro rather than on
+@enaon's PPK2, and it is arms F, G and H of §23 under D-142. That also widens
+the question: the figure that settles this one is not a device's idle current but
+the charge of one command, and the comparison that makes it readable is the fast
+window the module already spends after every disconnect.
+
 **Why it is also a question for @gfwilliams.** The firmware comment says activity
 raises the interval back to 7.5 ms after more than one BLE operation. A folded
 command performs four to six and never leaves the grid, so either the raise is a
@@ -9246,6 +9252,16 @@ current on both boards, a Puck.js and a nice!nano, and he wants the result on
 the module's documentation page rather than only in a measurements file:
 *"ça aidera à convaincre les adopteurs"*. That is the decision, and it changes
 what counts as finished here.
+
+**The instrument is his Otii Arc Pro, one board at a time.** A source measure
+unit rather than a shunt: it supplies the board and measures it, nanoamps to
+5 A, current at up to 4 ksps. Two consequences are in §23 rather than here --
+the nice!nano's 3.7 V rail is above the Arc's high-accuracy ceiling on USB power
+and wants its DC adapter, and 250 us a sample means this rig measures charge
+over windows rather than the peak of a single advertising event -- and one is a
+decision: because only one board sits on the meter at a time, the floor arm is
+part of each board's own sitting and no row of the published table compares the
+two boards under one setup.
 
 **What it fixes, and it is a real gap.** This project has quoted current figures
 since §8 and it has never measured one. Every microamp in `docs/measurements.md`

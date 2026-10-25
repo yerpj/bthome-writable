@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from tools.power_charge import Trace, summarise
 
 PERIOD_MS = 1.0
@@ -107,4 +109,74 @@ def test_an_unknown_digital_sample_holds_and_is_counted(tmp_path: Path) -> None:
 def test_a_window_can_be_cut_by_time_instead(tmp_path: Path) -> None:
     path = write(tmp_path / "t.csv", flat_with_burst(), "Timestamp(ms),Current(uA),D0")
     trace = Trace.read(path)
-    assert trace.at_times(100.0, 109.0) == trace.windows("D0")[0]
+    assert trace.at_times(100.0, 110.0) == trace.windows("D0")[0]
+
+
+def test_an_otii_shaped_export_is_read_in_seconds_and_amps(tmp_path: Path) -> None:
+    """Seconds and amperes with the marker on GPI1, which is the shape the
+    measurement of §23 is actually made in."""
+    rows = [(i / 1000.0, 10e-6, 0) for i in range(100)]
+    rows += [((100 + i) / 1000.0, 1010e-6, 1) for i in range(10)]
+    rows += [((110 + i) / 1000.0, 10e-6, 0) for i in range(100)]
+    lines = ["Timestamp(s),Current(A),GPI1"] + [f"{t},{c},{d}" for t, c, d in rows]
+    path = tmp_path / "otii.csv"
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    trace = Trace.read(path)
+    assert sorted(trace.digital) == ["GPI1"]
+    assert trace.period_ms == 1.0
+    report = summarise(trace, trace.windows("GPI1"), None, 220.0)
+    assert report["window_summary"]["median_charge_uc"] == 10.1
+    assert report["mean_ua"] == 57.62
+
+
+def test_a_time_column_without_a_unit_asks_for_one(tmp_path: Path) -> None:
+    path = tmp_path / "bare.csv"
+    path.write_text("Timestamp,Current(A)\n0,1e-5\n0.001,1e-5\n", encoding="utf-8")
+    with pytest.raises(SystemExit, match="--time-unit"):
+        Trace.read(path)
+    assert Trace.read(path, time_unit="s").period_ms == 1.0
+
+
+def test_a_marker_in_its_own_file_is_aligned_by_timestamp(tmp_path: Path) -> None:
+    """A separate marker file, sampled ten times slower than the current, still
+    cuts the window where the marker says and not where its rows fall."""
+    current = ["Timestamp(s),Current(A)"]
+    current += [
+        f"{i / 1000.0},{1010e-6 if 100 <= i < 110 else 10e-6}" for i in range(210)
+    ]
+    (tmp_path / "c.csv").write_text("\n".join(current) + "\n", encoding="utf-8")
+
+    marker = ["Timestamp(s),GPI1"]
+    marker += [f"{i / 100.0},{1 if 10 <= i < 11 else 0}" for i in range(21)]
+    (tmp_path / "m.csv").write_text("\n".join(marker) + "\n", encoding="utf-8")
+
+    trace = Trace.read(tmp_path / "c.csv")
+    side = Trace.read(tmp_path / "m.csv", require_current=False)
+    windows = trace.windows("GPI1", marker=side)
+    assert windows == [(100, 110)]
+    assert (
+        summarise(trace, windows, None, 220.0)["window_summary"]["median_charge_uc"]
+        == 10.1
+    )
+
+
+def test_a_marker_exported_as_a_voltage_is_still_a_marker(tmp_path: Path) -> None:
+    rows = [(float(i), 10.0, 0.02) for i in range(100)]
+    rows += [(float(100 + i), 1010.0, 3.28) for i in range(10)]
+    rows += [(float(110 + i), 10.0, 0.02) for i in range(100)]
+    path = write(tmp_path / "v.csv", rows, "Timestamp(ms),Current(uA),GPI1(V)")
+    trace = Trace.read(path)
+    assert trace.windows("GPI1", threshold=1.5) == [(100, 110)]
+
+
+def test_a_window_of_a_handful_of_samples_is_flagged(tmp_path: Path) -> None:
+    """At an Arc Pro's 250 us a sample, one advertising event is six samples:
+    a charge computed from it is a guess, and the report has to say so."""
+    rows = [(i * 0.25, 10.0, 0) for i in range(100)]
+    rows += [((100 + i) * 0.25, 6000.0, 1) for i in range(6)]
+    rows += [((106 + i) * 0.25, 10.0, 0) for i in range(100)]
+    path = write(tmp_path / "thin.csv", rows, "Timestamp(ms),Current(uA),GPI1")
+    trace = Trace.read(path)
+    report = summarise(trace, trace.windows("GPI1"), None, 220.0)
+    assert report["thin_windows"] == 1
