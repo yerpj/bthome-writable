@@ -1198,9 +1198,17 @@ var BTHomeWritable = exports;
  * null the sketch behaves identically and the windows have to be cut by hand or
  * by current threshold.
  *
+ * **SWEEP is the light measurement.** With a list of advertising intervals in
+ * it the device walks them on its own, SWEEP_MS apart, pulsing the marker for a
+ * second at each step: one recording, no central, no reload, and the steps are
+ * the stretches between pulses. `tools/power_charge.py --gaps` reads exactly
+ * those. That is the whole advertising dimension of the reference table in one
+ * sitting.
+ *
  * Then drive it, if the arm needs driving:
  *   bench.knob()      move the dimmer locally and call bw.changed()
  *   bench.rebuild()   one forced rebuild, inside the marker
+ *   bench.interval(ms)  change the advertising interval by hand
  *   bench.state()     what the entries hold
  */
 
@@ -1224,6 +1232,15 @@ var CONNECTION_INTERVAL = null;
    nice!nano. Tell the meter the board's logic level, or a 3 V marker read
    against a 5 V threshold never goes high. null disables the marker. */
 var MARK = null;
+
+/* Advertising intervals the device steps through on its own, in
+   milliseconds, or null for a single-interval run. SWEEP_MS is how long each
+   step lasts and SWEEP_START_MS how long it waits first -- long enough for the
+   Web IDE to let go and for the 30 s fast window that its disconnect opens to
+   expire, so disconnect as soon as the sketch is loaded. */
+var SWEEP = null;
+var SWEEP_MS = 180000;
+var SWEEP_START_MS = 60000;
 
 /* Milliseconds between re-reads of the one advertised sensor, or null for a
    device that advertises nothing it has to read -- which holds no timer at
@@ -1290,6 +1307,31 @@ bw.setup(options);
 
 if (CONNECTION_INTERVAL !== null) NRF.setConnectionInterval(CONNECTION_INTERVAL);
 
+/* One step: mark it, change the rate, and come back for the next one. The
+   pulse lands inside its own step, so the stretch of trace that belongs to step
+   k is the quiet between pulse k and pulse k+1. */
+function sweepStep(index) {
+  if (index >= SWEEP.length) {
+    console.log("sweep: done");
+    return;
+  }
+  mark(1);
+  setTimeout(function () {
+    mark(0);
+  }, 1000);
+  bw.setAdvertisingInterval(SWEEP[index]);
+  console.log("sweep step", index + 1, "of", SWEEP.length, "at", SWEEP[index], "ms");
+  setTimeout(function () {
+    sweepStep(index + 1);
+  }, SWEEP_MS);
+}
+
+if (SWEEP !== null) {
+  setTimeout(function () {
+    sweepStep(0);
+  }, SWEEP_START_MS);
+}
+
 var bench = {
   knob: function () {
     lamp.level = (lamp.level + 37) & 255;
@@ -1305,6 +1347,9 @@ var bench = {
     mark(0);
     return "one rebuild";
   },
+  interval: function (ms) {
+    return bw.setAdvertisingInterval(ms);
+  },
   state: function () {
     return "on=" + lamp.on + " level=" + lamp.level;
   },
@@ -1317,3 +1362,11 @@ console.log("arm:", ADV_INTERVAL + " ms adv,", BINDKEY ? "sealed," : "in clear,"
 console.log("address:", NRF.getAddress());
 console.log("service data bytes:", bw.plan().serviceDataLength, "of", bw.plan().budget);
 console.log("marker pin:", MARK === null ? "none" : MARK);
+if (SWEEP !== null) {
+  console.log(
+    "sweep:",
+    SWEEP.join(" "),
+    "ms,",
+    SWEEP_MS / 1000 + " s each, starting in " + SWEEP_START_MS / 1000 + " s"
+  );
+}

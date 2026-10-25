@@ -9275,6 +9275,26 @@ did -- *"over 100 uA of idle current for nothing"*, *"an empty wake measured
 under 10 us"*, *"within about 5 uA"*. They are honest about being deltas; they
 are also the only numbers there, so they get read as the device's bill.
 
+**And the shape he wants is a reference table, which is lighter than the
+matrix below.** Sealed throughout, the advertising interval swept from 200 ms to
+10 s, the write rate from 1 to 6 a minute, *"ça donne un tableau de référence
+que quiconque peut utiliser pour estimer son cas d'usage propre"*. It is also
+49 cells, which is not 49 recordings: the terms add up, so three measured
+coefficients give every cell and two recorded cells check them. §23 carries the
+model, and `tools/power_table.py` is the arithmetic with its own tests --
+including the structure it predicts, which is the finding to look for: a command
+opens the fast window for `fastTimeout`, so at **two commands a minute the
+window never closes**, every row collapses onto one number, and the advertising
+interval stops showing in the current at all. If that holds, the advice on the
+module page is that a device commanded often should shorten `fastTimeout` rather
+than lengthen `interval`, which is not advice anyone has given before.
+
+**The nine arms below are what that replaces**, and three of them stay worth
+coming back to for cause: a board with no sketch if the fitted floor looks
+wrong, forced rebuilds if the table is to cover devices advertising a value that
+moves, and a link held open, which is the one case a per-command charge cannot
+represent.
+
 **Nine arms, and the procedure is §23.** The floor with no sketch at all, the
 three advertising intervals, sealed against in clear, the timer's cost, a
 rebuild as charge rather than as milliseconds, a command, a command with the

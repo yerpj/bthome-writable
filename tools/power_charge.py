@@ -239,8 +239,32 @@ class Trace:
             found.append((start, self.times[-1] + self.period_ms))
         return found
 
+    def low_spans_ms(
+        self, channel: str, threshold: float = 0.5
+    ) -> list[tuple[float, float]]:
+        """The quiet between marker pulses, which is where a sweep's steps are.
+
+        A device walking a list of advertising intervals pulses the marker at
+        each step, so the stretch that belongs to a step is the one *between*
+        two pulses rather than under one.
+        """
+        spans: list[tuple[float, float]] = []
+        cursor = self.times[0]
+        for first, end in self.high_spans_ms(channel, threshold):
+            if first > cursor:
+                spans.append((cursor, first))
+            cursor = end
+        last = self.times[-1] + self.period_ms
+        if cursor < last:
+            spans.append((cursor, last))
+        return spans
+
     def windows(
-        self, channel: str, threshold: float = 0.5, marker: Trace | None = None
+        self,
+        channel: str,
+        threshold: float = 0.5,
+        marker: Trace | None = None,
+        gaps: bool = False,
     ) -> list[tuple[int, int]]:
         """Index pairs into this trace for every stretch the marker was high.
 
@@ -248,10 +272,12 @@ class Trace:
         which is how a marker exported to its own file is applied here.
         """
         source = marker or self
-        return [
-            self.at_times(first, last)
-            for first, last in source.high_spans_ms(channel, threshold)
-        ]
+        spans = (
+            source.low_spans_ms(channel, threshold)
+            if gaps
+            else source.high_spans_ms(channel, threshold)
+        )
+        return [self.at_times(first, last) for first, last in spans]
 
     def at_times(self, first_ms: float, end_ms: float) -> tuple[int, int]:
         """Sample indices for a span of time, the end exclusive.
@@ -417,6 +443,17 @@ def main(argv: list[str] | None = None) -> int:
         help="a second export holding the marker channel, aligned by timestamp",
     )
     parser.add_argument(
+        "--gaps",
+        action="store_true",
+        help="measure the stretches *between* marker pulses rather than under"
+        " them, which is how a device-driven sweep marks its steps",
+    )
+    parser.add_argument(
+        "--labels",
+        help="comma-separated names for the windows, in order, e.g. the swept"
+        " advertising intervals",
+    )
+    parser.add_argument(
         "--digital-threshold",
         type=float,
         default=0.5,
@@ -444,7 +481,9 @@ def main(argv: list[str] | None = None) -> int:
 
     windows: list[tuple[int, int]] = []
     if args.digital:
-        windows += trace.windows(args.digital, args.digital_threshold, marker)
+        windows += trace.windows(
+            args.digital, args.digital_threshold, marker, args.gaps
+        )
     for span in args.window:
         try:
             first_ms, last_ms = (float(part) for part in span.split("-", 1))
@@ -452,8 +491,25 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit(f"--window wants FIRST-LAST in ms, not {span!r}") from None
         windows.append(trace.at_times(first_ms, last_ms))
 
-    baseline = None if args.baseline == "auto" else float(args.baseline)
+    # Outside a sweep's steps there is nothing but the marker pulses, so an
+    # inferred floor would be the pulse rather than the device.
+    if args.baseline == "auto" and args.gaps:
+        baseline: float | None = 0.0
+    elif args.baseline == "auto":
+        baseline = None
+    else:
+        baseline = float(args.baseline)
     report = summarise(trace, windows, baseline, args.capacity_mah)
+    labels = [name.strip() for name in args.labels.split(",")] if args.labels else []
+    for index, window in enumerate(report.get("windows", [])):
+        if index < len(labels):
+            window["label"] = labels[index]
+    if labels and len(labels) != len(report.get("windows", [])):
+        print(
+            f"  WARNING: {len(labels)} labels for"
+            f" {len(report.get('windows', []))} windows"
+        )
+
     report["source"] = args.csv.name
     if args.label:
         report["label"] = args.label
