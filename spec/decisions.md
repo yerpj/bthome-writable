@@ -8983,23 +8983,27 @@ D-135 are what was true the day each was written.
 
 ## D-138 — What the folded counter question is actually worth  [DECISION]
 
-**Update, 2026-10-25: the 199 ms this decision was waiting on is explained, and
-the recommendation changes.** It is Espruino's own dynamic peripheral connection
-interval: documented in `jswrap_bluetooth.c` as 7.5 ms while active, dropping to
-200 ms when the device has been idle for over a minute, and it is the device's
-setting, not the central's. @enaon reproduced the grid the same day on another
-board through two different radios, and his `hci0` figures match ours to the
-millisecond (§21). So the fold is not what makes a settled command slow: being
-late in a connection to a device nobody has talked to for a minute is, and the
-counter exchange's own 715 ms is about three and a half of the same unit.
+**Update, 2026-10-25: the 199 ms this decision was waiting on is measured, and
+the recommendation changes.** It is the peripheral's connection interval, which
+Espruino sets itself: `jswrap_bluetooth.c` documents 7.5 ms while active and
+200 ms once the device has been idle for over a minute. Pinning it with
+`NRF.setConnectionInterval(7.5)` and changing nothing else takes the same command
+from a median of 5.2 s to 3.0 s and the counter exchange from 952 ms to 116 ms,
+twelve samples per arm (§22). @enaon reproduced the grid the same day on another
+board through two radios, with figures matching ours to the millisecond, so no
+central is the cause.
 
-**The recommendation is therefore no longer "wait".** Pin the interval on the
-device with `NRF.setConnectionInterval(7.5)`, measure the pair of commands §21
-sets out, and decide the fold against *those* numbers, where the exchange should
-cost the tens of milliseconds §17 predicted. Keep the fold on in the meantime:
-its gain in the case a user actually meets, the first command after a quiet
-period, is measured and large, and that is exactly the case the slow interval
-makes worse for everybody.
+**One half of the explanation did not survive its own test.** The idle minute the
+firmware comment describes decides nothing here: a command after 130 s of quiet
+and one issued seconds after the previous connection pay exactly the same grid.
+The device is slow whenever its own adjustment is in charge.
+
+**So the fold is not what makes a settled command slow**, and its own cost is the
+counter exchange, which is 116 ms on a device whose interval is pinned, the order
+§17 predicted. **Keep the fold on**: its gain in the case a user meets, the first
+command after a quiet period, is measured and large, and the case against it was
+mostly a cost every late operation pays. The fold stops being a trade at all if
+D-141 is taken.
 
 
 **2026-10-24, measured, not reasoned.** D-129 folded the §5.6 counter question
@@ -9169,3 +9173,53 @@ counter, which is the chain D-129 and D-130 shortened. One question of theirs is
 arguably still open: whether the slow first command after a few minutes of
 inactivity reproduces on this bench. §21 now answers it, and the answer is the
 owner's to post.
+
+## D-141 — Pin the peripheral's connection interval  [DECISION] [HW]
+
+**2026-10-25, branch `bench/pin-the-connection-interval`, measured in §22.** One
+line on the device, `NRF.setConnectionInterval(7.5)`, takes 2.2 s off a command
+median of 5.2 s. It is larger than every change in 0.2.0 put together, it is on
+the Espruino side rather than in Home Assistant, and it is the owner's call
+because it changes a default in a module other people's devices run and it trades
+power for latency.
+
+**What the measurement says.** Twelve samples per arm on the sealed lamp, same
+code, same radio, one variable: the counter exchange goes from 952.6 ms to
+115.7 ms, the write from 797.5 to 87.8, the read back from 401.6 to 26.2, the
+command from 5.2 s to 3.0 s, and the time to establish the link does not move at
+all. In the default arm the write is a whole number of 199 ms intervals in 12
+samples of 12; pinned, nothing is a multiple of anything.
+
+**Three ways to take it**, and they are not equivalent:
+
+1. **In the module's `setup()`**, unconditionally. Zero-config, which is this
+   project's rule, and it also pins the interval for every other central that
+   connects, a Web IDE session included. Simplest, and the bluntest.
+2. **Only while a central is connected**, with `NRF.on('connect')` and
+   `NRF.on('disconnect')` putting it back to `"auto"`. The cost is then bounded
+   to the seconds a command takes, which is where the benefit is. Costs bytes
+   from the module's budget, which has 256 free of 25 000.
+3. **Documented and left to the user**, which is what the module page can do
+   today and what nobody will read.
+
+**The recommendation is 2**, with 1 as the fallback if the handlers cost more
+than the budget allows, and **not before the power question is answered**: at
+7.5 ms the radio wakes 27 times more often than at 200 ms while connected. For
+this project's devices a connection is a second or two per command, so the energy
+is small, but a device somebody keeps a link open to is a different case and no
+number here measures it. @enaon's PPK2 is the instrument for this, and he is
+already in the thread.
+
+**And one thing to settle first:** one command in 11 failed, pinned, with
+*"[org.bluez.Error.Failed] Not connected"*, against none in 12 on the default.
+Eleven samples cannot tell 9% from bad luck, but a 7.5 ms interval does leave
+fewer intervals inside the same supervision timeout for a retransmission. A
+longer run decides it, and it decides whether the fast interval belongs in a
+module other people ship rather than only on a bench.
+
+**Why it is also a question for @gfwilliams.** The firmware comment says activity
+raises the interval back to 7.5 ms after more than one BLE operation. A folded
+command performs four to six and never leaves the grid, so either the raise is a
+parameter update the central grants over more intervals than these connections
+live, or ATT traffic is not what counts as activity. If the raise can be made to
+work, no module needs to pin anything.
