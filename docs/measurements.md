@@ -1743,8 +1743,9 @@ established link, the default arm's connect median is the same 330 ms, and
 `bleak_retry_connector` is the thing that spends twenty seconds. It is the
 ordinary tail this bench has always had.
 
-**So the only open question left in D-141 is power**, which needs a PPK2 and
-@enaon's bench.
+**So the only open question left in D-141 is power**, and the owner is
+measuring it himself on an Otii Arc Pro: §23 is the procedure, D-142 is why it
+also goes on the module page.
 
 Samples in `docs/data/connection-interval-auto.json`,
 `connection-interval-pinned.json` and the hundred-sample pair,
@@ -1780,12 +1781,29 @@ is wrong shows up as wrong rather than as a surprising result.
 
 | | |
 |---|---|
-| **Instrument** | a Nordic PPK2 in source-meter mode, 100 ksps, one digital input on the marker pin. A Joulescope or an Otii Arc measures the same thing; the CSV reader below takes any of them |
-| **Puck.js** `C8:80:32:AD:F7:B9` | cell **out of the holder**, the meter feeding 3.0 V into the 3V and GND pads. A coin cell cannot be measured in series without becoming the thing measured |
-| **nice!nano** `E0:A4:BA:16:54:89` (lamp3) | USB **unplugged**, the meter feeding 3.7 V into the battery pads, so the figure includes the board's charger and regulator -- which is what a real device pays. Not lamp `F5:A8:93:67:CB:25`: that one is in the §17 and §21 campaigns and should stay on its cable |
+| **Instrument** | an **Otii Arc Pro** (Qoitech), the owner's: a source measure unit that supplies the board and measures what it draws, nanoamps to 5 A at 5 nA resolution, **current at up to 4 ksps** and one of its two digital inputs on the marker pin |
+| **Puck.js** `C8:80:32:AD:F7:B9` | cell **out of the holder**, the Arc feeding 3.0 V into the 3V and GND pads. A coin cell cannot be measured in series without becoming the thing measured, and 3.0 V is inside the Arc's high-accuracy range on USB power alone |
+| **nice!nano** `E0:A4:BA:16:54:89` (lamp3) | USB **unplugged**, the Arc feeding 3.7 V into the battery pads, so the figure includes the board's charger and regulator -- which is what a real device pays. 3.7 V is above the 3.75 V ceiling of the Arc's high-accuracy range on USB power, so this arm wants the **7-9 V DC adapter**. Not lamp `F5:A8:93:67:CB:25`: that one is in the §17 and §21 campaigns and should stay on its cable |
 | **Sketch** | `espruino/bench/power-arms.js`, four constants selecting the arm, loaded **over the radio** from the Web IDE so that nothing is on the cable and nothing is written to flash |
-| **Marker** | D1 on either board to a PPK2 digital input. The sketch holds it high for exactly the connection a command runs in, and for exactly the rebuild `bench.rebuild()` forces |
-| **Analysis** | `python -m tools.power_charge trace.csv --digital D0 --baseline auto`, which integrates each marked window into microcoulombs above the advertising floor |
+| **Marker** | D1 on either board to **GPI1** on the Arc's expansion port. GPI1 is enabled in the project's Voltage tab and its logic threshold is set in the Supply tab, so tell it 3.0 V or 3.3 V to match the board. The sketch holds the pin high for exactly the connection a command runs in, and for exactly the rebuild `bench.rebuild()` forces |
+| **Analysis** | `python -m tools.power_charge trace.csv --digital GPI1 --baseline auto`, which integrates each marked window into microcoulombs above the advertising floor. The Arc's own app computes a mean and a charge over a selection; the tool is for the figure arriving the same way twice and as JSON next to the others, not because the app cannot |
+
+**One board at a time**, which the owner's rig imposes and which costs two
+things worth planning around. Arm A, the floor, has to be measured in the same
+sitting as the arms it is the floor for: a board swapped onto the meter is a new
+rig, and a floor from last week is not a floor. And the two boards are two
+sittings, so nothing in the table below is a Puck-against-nano comparison made
+under one setup.
+
+**The export format is not pinned here.** Qoitech's manual pages for the CSV
+export are not reachable from this bench, so `tools/power_charge.py` sniffs
+instead of assuming: it reads each column's unit from the column's own header
+(seconds or milliseconds, amperes or microamps), takes the marker channel from a
+second file when the app exports one file per channel (`--digital-csv`, aligned
+by timestamp rather than by row), and treats a channel exported as a voltage as
+high above a threshold. One ten-second export with GPI1 enabled pins the shape
+for good; if its time column does not name its unit the tool says so and
+`--time-unit s` settles it.
 
 **Take the lock and put the boards back.** A connection is a write
 (`docs/shared-bench.md`), the arms below connect, and the lamp entity is left
@@ -1813,7 +1831,12 @@ same traces already contain.
 ### What to expect, so that a broken rig looks broken
 
 Order of magnitude, from the radio's own datasheet figures rather than from
-anything measured here: an advertising event on three channels is roughly 1.5 ms
+anything measured here, and **the sample rate decides which of these the rig can
+actually see**: at 4 ksps a sample is 250 us, so a connection is twelve thousand
+samples and a rebuild of 26-38 ms is a hundred, both of which integrate
+honestly, while one advertising event is six samples and its *peak* is not a
+figure this rig produces. That costs nothing, because what a battery cares about
+is the mean over minutes, which is arm B. an advertising event on three channels is roughly 1.5 ms
 of radio at about 6 mA, so **9 uC per event** -- 9 uA at a 1 s interval, 4.5 at
 2 s, 2.8 at 3.2 s. An empty connection event is shorter, call it 4 uC, so **20
 uA at a 200 ms interval and about 530 uA at 7.5 ms**, which is where the 27x of
@@ -1844,8 +1867,8 @@ of them changes a decision if it is wrong:
 
 Each arm produces one CSV and one JSON next to it:
 `docs/data/power-<board>-<arm>.json`, written by `tools.power_charge --out`. The
-CSV traces themselves stay out of the repository: a 100 ksps trace is tens of
-megabytes, and the JSON holds every figure anything quotes.
+CSV traces themselves stay out of the repository: twenty minutes at 4 ksps is
+nearly five million samples, and the JSON holds every figure anything quotes.
 
 **And then the module page gets a section of its own**, which is the point of
 the exercise: an adopter deciding whether to put this on a coin cell should not
