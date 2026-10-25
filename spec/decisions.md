@@ -9190,7 +9190,15 @@ command from 5.2 s to 3.0 s, and the time to establish the link does not move at
 all. In the default arm the write is a whole number of 199 ms intervals in 12
 samples of 12; pinned, nothing is a multiple of anything.
 
-**Three ways to take it**, and they are not equivalent:
+**The finding is @enaon's.** He set `NRF.setConnectionInterval(7.5)` on his own
+board in espruino#8024 hours before this run, measured both arms and posted them
+(§22): his pinned counter exchange is 106.2 ms against our 115.7 and his read
+back 17.2 against our 26.2. What this decision adds is a second board, the
+control that connecting itself is unaffected, the refutation of the idle minute,
+and the reliability datum below. He has asked @gfwilliams the firmware question
+himself.
+
+**Three ways to take it**, and only two of them differ:
 
 1. **In the module's `setup()`**, unconditionally. Zero-config, which is this
    project's rule, and it also pins the interval for every other central that
@@ -9202,13 +9210,17 @@ samples of 12; pinned, nothing is a multiple of anything.
 3. **Documented and left to the user**, which is what the module page can do
    today and what nobody will read.
 
-**The recommendation is 2**, with 1 as the fallback if the handlers cost more
-than the budget allows, and **not before the power question is answered**: at
-7.5 ms the radio wakes 27 times more often than at 200 ms while connected. For
-this project's devices a connection is a second or two per command, so the energy
-is small, but a device somebody keeps a link open to is a different case and no
-number here measures it. @enaon's PPK2 is the instrument for this, and he is
-already in the thread.
+**The recommendation is 1, and @enaon is why.** He pointed out that setting it
+once is enough, and he is right for the reason that decides this: a connection
+interval only exists while a central is connected, so a pinned value costs
+nothing at all between connections. 2 therefore buys nothing for a device that is
+connected to only while a command is in flight, which is every device this
+protocol is for, and it costs bytes from a budget with 256 free. 2 is worth
+having only where something holds a link open, a Web IDE session or an Espruino
+Hub, and that is also the only case where the power question has teeth: at 7.5 ms
+the radio wakes 27 times more often than at 200 ms while connected. @enaon's PPK2
+is the instrument, and the measurement to ask for is a command's connection, not
+an idle device.
 
 **And one thing to settle first:** one command in 11 failed, pinned, with
 *"[org.bluez.Error.Failed] Not connected"*, against none in 12 on the default.
