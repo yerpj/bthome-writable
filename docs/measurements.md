@@ -1758,3 +1758,116 @@ python interval_knob.py --reps 2 --quiet 130              # auto
 python interval_knob.py --reps 2 --quiet 130 --pin 7.5    # pinned
 python interval_knob.py --reps 1 --quiet 10  --pin auto   # and put it back
 ```
+
+## 23. What the module costs in current, and the procedure to measure it  [HW]
+
+**Nothing in this file is a current measurement of this module on this bench.**
+Every microamp quoted above is @enaon's PPK2 on his own nice!nano, at a 1 s
+advertising interval, measuring a *difference*: ~235 uA before the rebuild fix
+and ~50 uA after, against ~45 uA with the module not loaded at all (§8); and the
+bound that everything P1 could recover is inside 5 uA (§9). Those are the right
+numbers for the questions they were asked, and they are the wrong numbers for
+the question an adopter asks, which is *what will this do to my battery*. That
+question wants absolutes, on both boards, at the interval the module actually
+ships with.
+
+**So current becomes a characterised quantity, and it goes on the module page**
+(D-142). The owner has the instrument and the two boards; this section is the
+procedure, the arms, and what each arm should come out at, so that a rig which
+is wrong shows up as wrong rather than as a surprising result.
+
+### The rig
+
+| | |
+|---|---|
+| **Instrument** | a Nordic PPK2 in source-meter mode, 100 ksps, one digital input on the marker pin. A Joulescope or an Otii Arc measures the same thing; the CSV reader below takes any of them |
+| **Puck.js** `C8:80:32:AD:F7:B9` | cell **out of the holder**, the meter feeding 3.0 V into the 3V and GND pads. A coin cell cannot be measured in series without becoming the thing measured |
+| **nice!nano** `E0:A4:BA:16:54:89` (lamp3) | USB **unplugged**, the meter feeding 3.7 V into the battery pads, so the figure includes the board's charger and regulator -- which is what a real device pays. Not lamp `F5:A8:93:67:CB:25`: that one is in the §17 and §21 campaigns and should stay on its cable |
+| **Sketch** | `espruino/bench/power-arms.js`, four constants selecting the arm, loaded **over the radio** from the Web IDE so that nothing is on the cable and nothing is written to flash |
+| **Marker** | D1 on either board to a PPK2 digital input. The sketch holds it high for exactly the connection a command runs in, and for exactly the rebuild `bench.rebuild()` forces |
+| **Analysis** | `python -m tools.power_charge trace.csv --digital D0 --baseline auto`, which integrates each marked window into microcoulombs above the advertising floor |
+
+**Take the lock and put the boards back.** A connection is a write
+(`docs/shared-bench.md`), the arms below connect, and the lamp entity is left
+off at the end like every other run.
+
+### The arms, and what each is for
+
+| | arm | what it answers |
+|---|---|---|
+| **A** | the board with no sketch at all, 10 min | the floor. Without it, none of the rest is attributable to this module |
+| **B** | advertising at 1000 / 2000 / 3200 ms, in clear, no sensor entry, 10 min each | the term that decides a coin cell's life, and the price of §16's responsiveness lever |
+| **C** | the same at 2000 ms, sealed with the counter report | what sealing costs when the packet is left alone -- which should be nothing, since sealing happens per rebuild |
+| **D** | sealed at 2000 ms with one sensor entry at 300 000 ms, 20 min | the timer's own cost, the claim §9 could only bound from above |
+| **E** | 20 forced rebuilds, `bench.rebuild()`, sealed and in clear | one rebuild as charge rather than as milliseconds of thread, which is what makes §4's 26-38 ms comparable with a battery |
+| **F** | 20 commands from Home Assistant, marker high over each connection, `bench.knob()` first so the counter question is owed | what one command costs, which is the number a user multiplies by their habits |
+| **G** | arm F with `CONNECTION_INTERVAL = 7.5` | D-141's open question, and the only argument left against pinning |
+| **H** | a link held open and idle for 120 s, auto and pinned | the Web IDE and Espruino Hub case, where a pinned interval is paid for continuously rather than per command |
+| **I** | 30 s after a disconnect, the fast window at 100 ms, 10 repeats | `fastTimeout`'s own bill, which no decision has ever priced |
+
+Arms A to E need no host; F and G are the §22 run with the meter attached, so
+`interval_knob.py` drives them unchanged; H is one connection from the Web IDE
+or `tools/hold_link.py`; I is the 30 s after each of F's commands, which the
+same traces already contain.
+
+### What to expect, so that a broken rig looks broken
+
+Order of magnitude, from the radio's own datasheet figures rather than from
+anything measured here: an advertising event on three channels is roughly 1.5 ms
+of radio at about 6 mA, so **9 uC per event** -- 9 uA at a 1 s interval, 4.5 at
+2 s, 2.8 at 3.2 s. An empty connection event is shorter, call it 4 uC, so **20
+uA at a 200 ms interval and about 530 uA at 7.5 ms**, which is where the 27x of
+D-141 comes from.
+
+That gives three predictions worth stating before the measurement, because each
+of them changes a decision if it is wrong:
+
+1. **The firmware's floor dominates.** @enaon's board idles at ~45 uA with the
+   module not loaded, ten times what advertising at 2 s should cost. If that
+   holds on both boards, then the honest sentence for the module page is that
+   this module is not what empties the battery, and the advertising interval is
+   the only lever in it that matters.
+2. **A command is cheap and pinning is affordable.** 5 s of connection at 20 uA
+   is ~100 uC; 3 s at 530 uA is ~1.6 mC. So pinning costs about **1.5 mC per
+   command**, which at 20 commands a day is 8 uAh against the ~110 uAh a day
+   that advertising at 2 s already spends. Two orders of magnitude apart, and
+   the comparison that settles it is arm I: the fast window after one disconnect
+   is 30 s at ~90 uA, **2.6 mC**, already larger than the pinned command. A
+   module that spends that without anyone objecting cannot object to this.
+3. **A held-open link is the exception, and it is a big one.** At 530 uA a
+   220 mAh cell is gone in about 17 days of being connected, against years at
+   200 ms. If a device somebody leaves connected to Espruino Hub is a case this
+   module supports, option 1 of D-141 -- pin it once in `setup()` -- needs a
+   guard after all, and arm H is the measurement that decides it.
+
+### What lands where
+
+Each arm produces one CSV and one JSON next to it:
+`docs/data/power-<board>-<arm>.json`, written by `tools.power_charge --out`. The
+CSV traces themselves stay out of the repository: a 100 ksps trace is tens of
+megabytes, and the JSON holds every figure anything quotes.
+
+**And then the module page gets a section of its own**, which is the point of
+the exercise: an adopter deciding whether to put this on a coin cell should not
+have to read a measurements file. The shape, to be filled in with real figures
+and not before:
+
+```
+What it costs on a meter
+------------------------
+
+|                                              | Puck.js, CR2032 | nice!nano |
+|----------------------------------------------|-----------------|-----------|
+| the board, module not loaded                 |                 |           |
+| advertising at 2 s, nothing to re-read       |                 |           |
+| the same, sealed with a bindkey              |                 |           |
+| advertising at 1 s / 3.2 s                   |                 |           |
+| the fast window, per disconnect              |                 |           |
+| one rebuild, in clear / sealed               |                 |           |
+| one command, the device as shipped           |                 |           |
+| one command, connection interval pinned      |                 |           |
+| a link held open and idle, auto / pinned     |                 |           |
+```
+
+The first row is what makes the others honest, and the last two are what D-141
+turns on.
