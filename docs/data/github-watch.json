@@ -34,18 +34,18 @@
   "ci": {
     "comments": 0,
     "state": "success",
-    "title": "45d1c83 main",
-    "updated": "2026-10-21T12:54:32Z",
-    "url": "https://github.com/yerpj/bthome-writable/actions/runs/39603408638",
+    "title": "0a8effb main",
+    "updated": "2026-10-24T21:01:02Z",
+    "url": "https://github.com/yerpj/bthome-writable/actions/runs/40132348366",
     "why": "our own CI, last run"
   },
   "espruino#8024": {
-    "comments": 71,
+    "comments": 80,
     "state": "open",
     "title": "bthome-writable, the design thread",
     "updated": "",
     "url": "https://github.com/orgs/espruino/discussions/8024",
-    "why": "the design discussion (41 replies collapsed on the page)"
+    "why": "the design discussion (45 replies collapsed on the page)"
   },
   "espruino/EspruinoDocs#761": {
     "comments": 3,
@@ -86,6 +86,22 @@
     "updated": "2026-10-20T08:02:02Z",
     "url": "https://github.com/espruino/EspruinoDocs/pull/765",
     "why": "the rebuild-on-change fix (D-106)"
+  },
+  "espruino/EspruinoDocs#766": {
+    "comments": 1,
+    "state": "merged",
+    "title": "BTHomeWritable: wake when something is due, repeat rather than rebuild",
+    "updated": "2026-10-21T07:35:03Z",
+    "url": "https://github.com/espruino/EspruinoDocs/pull/766",
+    "why": "the schedule and six fixes (D-114)"
+  },
+  "espruino/EspruinoDocs#767": {
+    "comments": 0,
+    "state": "open",
+    "title": "BTHomeWritable: fold a burst of changed() calls, and three fixes",
+    "updated": "2026-10-25T11:45:04Z",
+    "url": "https://github.com/espruino/EspruinoDocs/pull/767",
+    "why": "the changed() fold (D-123, D-124)"
   },
   "home-assistant/bthome.io#82": {
     "comments": 2,
