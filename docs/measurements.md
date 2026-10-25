@@ -1772,10 +1772,13 @@ the question an adopter asks, which is *what will this do to my battery*. That
 question wants absolutes, on both boards, at the interval the module actually
 ships with.
 
-**So current becomes a characterised quantity, and it goes on the module page**
-(D-142). The owner has the instrument and the two boards; this section is the
-procedure, the arms, and what each arm should come out at, so that a rig which
-is wrong shows up as wrong rather than as a surprising result.
+**So current becomes a characterised quantity, and it goes on the module page
+as a reference table** (D-142): sealed, the advertising interval against the
+write rate, so that an adopter reads their own case out of it rather than ours.
+The owner has the instrument and the two boards; this section is the procedure,
+the arithmetic that turns three measured coefficients into the whole table, and
+what each number should come out at, so that a rig which is wrong shows up as
+wrong rather than as a surprising result.
 
 ### The rig
 
@@ -1809,80 +1812,123 @@ for good; if its time column does not name its unit the tool says so and
 (`docs/shared-bench.md`), the arms below connect, and the lamp entity is left
 off at the end like every other run.
 
-### The arms, and what each is for
+### The measurement, and it is lighter than it looks
 
-| | arm | what it answers |
+**The owner's shape, 2026-10-25: sealed throughout, the advertising interval
+swept from 200 ms to 10 s, the write rate swept from 1 to 6 a minute, and the
+result a reference table anybody can read their own case out of.** That is the
+right deliverable, and it does not want 49 recordings, because the terms add up:
+
+```
+I(T, n) = floor + (1 - f) * Qadv / T + f * Qadv / Tfast + n * Qcmd / 60
+f = min(1, n * fastTimeout / 60)
+```
+
+`T` is the idle advertising interval in seconds, `n` the commands a minute,
+`Qadv` the charge of one advertising event, `Qcmd` the charge of one command's
+connection above the floor, and `f` the share of the minute spent in the fast
+window, which each command opens for `fastTimeout` seconds at `fastInterval`. A
+device that also advertises a value that moves adds `r * Qrebuild / 60`, which
+is the only term the protocol itself does not set.
+
+So **three coefficients, measured once, give every cell**, and the sweep gives
+two of them at a stroke: plot the mean current of each step against 1/T and the
+floor is the intercept, one advertising event the slope.
+
+| recording | what it is | how long |
 |---|---|---|
-| **A** | the board with no sketch at all, 10 min | the floor. Without it, none of the rest is attributable to this module |
-| **B** | advertising at 1000 / 2000 / 3200 ms, in clear, no sensor entry, 10 min each | the term that decides a coin cell's life, and the price of §16's responsiveness lever |
-| **C** | the same at 2000 ms, sealed with the counter report | what sealing costs when the packet is left alone -- which should be nothing, since sealing happens per rebuild |
-| **D** | sealed at 2000 ms with one sensor entry at 300 000 ms, 20 min | the timer's own cost, the claim §9 could only bound from above |
-| **E** | 20 forced rebuilds, `bench.rebuild()`, sealed and in clear | one rebuild as charge rather than as milliseconds of thread, which is what makes §4's 26-38 ms comparable with a battery |
-| **F** | 20 commands from Home Assistant, marker high over each connection, `bench.knob()` first so the counter question is owed | what one command costs, which is the number a user multiplies by their habits |
-| **G** | arm F with `CONNECTION_INTERVAL = 7.5` | D-141's open question, and the only argument left against pinning |
-| **H** | a link held open and idle for 120 s, auto and pinned | the Web IDE and Espruino Hub case, where a pinned interval is paid for continuously rather than per command |
-| **I** | 30 s after a disconnect, the fast window at 100 ms, 10 repeats | `fastTimeout`'s own bill, which no decision has ever priced |
+| **1. the sweep** | `SWEEP = [100, 200, 500, 1000, 2000, 3200, 5000, 10000]` in `power-arms.js`, `SWEEP_MS = 120000`: the device walks the intervals on its own, pulsing the marker a second at each step. No central, no reload, one recording. 100 ms is in it because that is `fastInterval`, so the fast term is measured rather than extrapolated | **16 min** |
+| **2. the commands** | 10 commands from Home Assistant, **45 s apart** because `fastTimeout` is 30 s and a command sent sooner is measured inside the fast window rather than from idle. The marker is high over each connection, and the median excess above the floor is `Qcmd` | **8 min** |
+| **3. the same, pinned** | recording 2 with `CONNECTION_INTERVAL = 7.5`, which is what puts D-141's cost in the same table as everything else | **8 min** |
+| **4. two checks** | 10 min at 2000 ms with 1 command a minute, then 5 min at 2000 ms with 4 a minute. Compare the whole recording's mean against what the table says it should be | **15 min** |
 
-Arms A to E need no host; F and G are the §22 run with the meter attached, so
-`interval_knob.py` drives them unchanged; H is one connection from the Web IDE
-or `tools/hold_link.py`; I is the 30 s after each of F's commands, which the
-same traces already contain.
+**Call it 45 minutes a board**, and the second board is the same 45 minutes. The
+checks are not optional: a table computed from three coefficients and verified
+nowhere is a table that should not go on anybody's documentation page. Two cells
+are enough, one each side of the saturation below.
 
-### The order, and how long each arm needs
+**Why 120 s a step is enough**, when §23 used to ask for a hundred advertising
+events: the short intervals get them anyway, 1200 at 100 ms, and at the long end
+the advertising term is a microamp or two of which the event count is a few per
+cent, while the thing that step is really measuring is the intercept -- the
+floor, which is a DC level and needs no events at all.
 
-**The Puck first, then the nice!nano.** Three reasons, and they are all about
-getting the method right on the easier board: 3.0 V is inside the Arc's
+**The analysis is two commands.** The sweep's steps are the stretches *between*
+marker pulses, which is what `--gaps` reads:
+
+```
+python -m tools.power_charge sweep.csv --digital GPI1 --gaps \
+    --labels "100,200,500,1000,2000,3200,5000,10000" --out power-puck-sweep.json
+python -m tools.power_charge commands.csv --digital GPI1 --baseline auto
+python -m tools.power_table --fit power-puck-sweep.json --command-charge <Qcmd> \
+    --life --capacity-mah 220
+```
+
+The fit prints its own worst residual, which is the first thing to look at: a
+model that does not fit the sweep it came from has no business predicting a
+cell that was never recorded.
+
+### The order, and the three things that spoil a trace
+
+**The Puck first, then the nice!nano.** 3.0 V is inside the Arc's
 high-accuracy range on USB power alone, so the first sitting needs no DC
-adapter; a CR2032 is the battery the question is actually about, a nice!nano
-usually having a lithium cell many times its size; and the Puck is the board
-whose figures go first on the module page, so it is the one worth measuring
-while the rig is new and every doubt is still being checked.
+adapter; a CR2032 is the battery the question is actually about; and the Puck's
+column goes first on the module page, so it is the one worth measuring while the
+rig is new and every doubt is still being checked.
 
 **Step 0, before any current: ask each board what it is.** `process.env.VERSION`
-and `process.env.MODULES` over the console. The sealed arms need `crypto` in
-that list -- the nice!nano `CD:F5:77:3A:B2:16` has `AES` but not `AES_CCM`
-(§8), lamp `F5:A8:93:67:CB:25` was reflashed with `crypto` on 2026-10-24, and
-lamp3's firmware has never been looked at. A board without it runs the plaintext
-arms only, which is an asymmetry to write down rather than to work around.
+and `process.env.MODULES` over the console. Everything here is sealed, so
+`crypto` has to be in that list -- the nice!nano `CD:F5:77:3A:B2:16` has `AES`
+but not `AES_CCM` (§8), lamp `F5:A8:93:67:CB:25` was reflashed with `crypto` on
+2026-10-24, and lamp3's firmware has never been looked at. A board without it
+cannot produce a single row of this table.
 
-**Durations are set by how many periodic events a run has to contain, not by
-noise.** At 4 ksps a minute is 240 000 samples, so a few microamps are resolved
-in seconds; what takes time is averaging over enough advertising events to make
-the mean mean something. A hundred of whatever dominates is plenty:
+Then the three things that quietly ruin a recording:
 
-| arm | recording | why that long |
-|---|---|---|
-| **A** floor, no sketch | **5 min** | nothing periodic to average; the length is only to catch slow housekeeping |
-| **B** advertising 1000 / 2000 / 3200 ms | **3 / 5 / 6 min** | 100 or more advertising events in each: 100 s, 200 s, 320 s |
-| **C** sealed at 2000 ms | **5 min** | the same 100 events, against B's middle row |
-| **D** the timer's cost | **5 min with the sensor at 10 000 ms** | 30 wakes, which prices a wake. The 300 000 ms version of the same arm needs 20 min for three of them, and is only worth it if the 10 s figure surprises |
-| **E** forced rebuilds | **2 x 1 min** | 20 rebuilds at 3 s apart, sealed and in clear. One rebuild is 26-38 ms, which is 100 to 150 samples: enough |
-| **F** commands, as shipped | **10 min** | 12 commands at **45 s apart**, which is the point: `fastTimeout` is 30 s, so a command sent sooner than that is measured in the fast window rather than from idle |
-| **G** commands, interval pinned | **10 min** | the same 12 |
-| **H** a link held open and idle | **2 x 2 min** | `tools/hold_link.py --seconds 120`, auto then pinned |
-| **I** the fast window | **6 min** | 5 commands at 60 s apart, so that each 30 s window expires inside the trace. F's own trace cannot show this: its commands are too close together for the window to ever end |
+1. **Discard the first minute.** Loading the sketch is a connection, its
+   disconnect opens a 30 s fast window, and `setup()` builds a packet. That is
+   why `SWEEP_START_MS` is 60 s: disconnect the Web IDE as soon as the sketch is
+   in, and the sweep starts clean.
+2. **Leave the device alone during the sweep.** Home Assistant connects when the
+   settings revision moves, so no `bench.knob()` and no entity touched: a
+   connection in the middle of a step puts a command's charge into an
+   advertising figure.
+3. **Take the lock.** `python -m tools.bench_lock acquire --note "D-142: current"`,
+   because the command recordings drive Home Assistant and another agent's run
+   would land inside a trace.
 
-That is about **70 minutes of recording per board**, call it two hours with the
-handling, so the two boards are a morning and an afternoon rather than one
-sitting. **If time runs short, A, B at 2000 ms, C, F, G and I** fill every row
-of the page's table and answer D-141, in about 45 minutes.
+### What the model already says, before anything is measured
 
-**Discard the first minute of every recording.** Loading the sketch is a
-connection, a disconnect starts a 30 s fast window, and `setup()` itself builds
-a packet. A minute of quiet after the Web IDE lets go, cut from the trace or
-simply not selected, removes all three. The durations above are what is left
-after that cut.
+**The write rate stops mattering almost immediately, and the advertising
+interval stops mattering with it.** A command opens the fast window for 30 s, so
+**two commands a minute hold it open permanently**: above that, every row of the
+table collapses onto the same number, the idle interval cannot be read in the
+current at all, and `fastTimeout` is the only lever left. With the order of
+magnitude below -- 9 uC an event, so 90 uA at the 100 ms fast interval -- that
+collapse is to something like four times what advertising at 2 s costs when
+nobody writes.
 
-**One recording per arm, named for the arm**, because each arm means reloading
-the sketch with different constants and a reload is a connection. Leave the
-device alone during A to E: Home Assistant connects when the settings revision
-moves, which is why arm E uses `bench.rebuild()` and not `bench.knob()` -- a
-forced rebuild moves the packet id, which no receiver acts on, while the knob
-moves the revision and brings a central in.
+That is worth stating before the measurement because it decides what the table
+is *for*: not "how much does a write cost" (a few microamps, at any plausible
+rate) but "how much does the responsiveness after a write cost", which is a
+different knob on a different line of `setup()`. If the measurement confirms it,
+the module page's own advice changes: a device commanded more than twice a
+minute should be shortening `fastTimeout`, not lengthening `interval`.
 
-**And take the lock**, `python -m tools.bench_lock acquire --note "D-142: current"`,
-because a command arm drives Home Assistant and another agent's run would land
-in the middle of a trace.
+### The arms this replaces, and when to go back to them
+
+The nine-arm version of this section is in the history of this file and the
+pieces still exist in `power-arms.js`. Three of them are worth coming back to,
+and only for cause:
+
+* **a board with no sketch at all**, if the fitted floor looks wrong: it is the
+  one figure the sweep infers rather than measures;
+* **forced rebuilds**, `bench.rebuild()` sealed and in clear, if the table is to
+  cover devices that advertise a sensor whose value moves -- that is `Qrebuild`,
+  and `power_table --rebuild-charge` takes it;
+* **a link held open**, `tools/hold_link.py`, auto against pinned, which is the
+  one case a per-command charge cannot represent and the one that could still
+  put a guard into D-141.
 
 ### What to expect, so that a broken rig looks broken
 
@@ -1917,36 +1963,48 @@ of them changes a decision if it is wrong:
    220 mAh cell is gone in about 17 days of being connected, against years at
    200 ms. If a device somebody leaves connected to Espruino Hub is a case this
    module supports, option 1 of D-141 -- pin it once in `setup()` -- needs a
-   guard after all, and arm H is the measurement that decides it.
+   guard after all, and the held-open recording is what decides it.
+4. **The table is flat above two commands a minute**, for the reason in the
+   model above. If it is not flat, either `fastTimeout` is not doing what the
+   module says it does or the fast window is not running at `fastInterval`, and
+   both are bugs rather than surprises.
 
 ### What lands where
 
-Each arm produces one CSV and one JSON next to it:
-`docs/data/power-<board>-<arm>.json`, written by `tools.power_charge --out`. The
-CSV traces themselves stay out of the repository: twenty minutes at 4 ksps is
-nearly five million samples, and the JSON holds every figure anything quotes.
+Each recording produces one CSV and one JSON next to it:
+`docs/data/power-<board>-sweep.json`, `-commands.json`, `-commands-pinned.json`
+and `-checks.json`, written by `tools.power_charge --out`, plus the table itself
+as `power-<board>-table.json` from `tools.power_table --out`. The CSV traces stay
+out of the repository: sixteen minutes at 4 ksps is nearly four million samples,
+and the JSON holds every figure anything quotes.
 
-**And then the module page gets a section of its own**, which is the point of
-the exercise: an adopter deciding whether to put this on a coin cell should not
-have to read a measurements file. The shape, to be filled in with real figures
-and not before:
+**And then the module page gets the table**, which is the point of the
+exercise: an adopter deciding whether to put this on a coin cell should not have
+to read a measurements file, and a reference table lets them read their own case
+rather than ours. The shape, to be filled with real figures and not before:
 
 ```
-What it costs on a meter
-------------------------
+What it costs on a battery
+--------------------------
 
-|                                              | Puck.js, CR2032 | nice!nano |
-|----------------------------------------------|-----------------|-----------|
-| the board, module not loaded                 |                 |           |
-| advertising at 2 s, nothing to re-read       |                 |           |
-| the same, sealed with a bindkey              |                 |           |
-| advertising at 1 s / 3.2 s                   |                 |           |
-| the fast window, per disconnect              |                 |           |
-| one rebuild, in clear / sealed               |                 |           |
-| one command, the device as shipped           |                 |           |
-| one command, connection interval pinned      |                 |           |
-| a link held open and idle, auto / pinned     |                 |           |
+Sealed, nothing advertised that has to be re-read, <board> at <voltage>.
+
+| advertising interval | 0/min | 1/min | 2/min | 3/min | 4/min | 6/min |
+|----------------------|-------|-------|-------|-------|-------|-------|
+| 200 ms               |       |       |       |       |       |       |
+| 1 s                  |       |       |       |       |       |       |
+| 2 s                  |       |       |       |       |       |       |
+| 10 s                 |       |       |       |       |       |       |
+
+Microamps, and the same table again in days on a CR2032.
+
+Measured: the floor and one advertising event from a swept recording, one
+command's charge from ten commands, two cells checked against the rest.
+Everything else is those three numbers added up, and the arithmetic is
+`tools/power_table.py` in the project repository.
 ```
 
-The first row is what makes the others honest, and the last two are what D-141
-turns on.
+Two sentences have to go with it, because they are what an adopter actually
+decides on: that a write costs a microamp or two at any plausible rate, and that
+what costs is the fast window the write opens -- so the lever for a device that
+is commanded often is `fastTimeout`, not `interval`.

@@ -180,3 +180,20 @@ def test_a_window_of_a_handful_of_samples_is_flagged(tmp_path: Path) -> None:
     trace = Trace.read(path)
     report = summarise(trace, trace.windows("GPI1"), None, 220.0)
     assert report["thin_windows"] == 1
+
+
+def test_the_steps_of_a_sweep_are_the_quiet_between_its_pulses(tmp_path: Path) -> None:
+    """A device walking advertising intervals pulses the marker at each step, so
+    what belongs to a step is the stretch between two pulses."""
+    rows: list[tuple[float, float, int]] = []
+    for step, current in enumerate((90.0, 50.0, 20.0)):
+        start = step * 100
+        rows += [(float(start + i), 1000.0, 1) for i in range(10)]
+        rows += [(float(start + 10 + i), current, 0) for i in range(90)]
+    path = write(tmp_path / "sweep.csv", rows, "Timestamp(ms),Current(uA),GPI1")
+    trace = Trace.read(path)
+
+    steps = trace.windows("GPI1", gaps=True)
+    assert steps == [(10, 100), (110, 200), (210, 300)]
+    report = summarise(trace, steps, 0.0, 220.0)
+    assert [round(w["mean_ua"]) for w in report["windows"]] == [90, 50, 20]
