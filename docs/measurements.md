@@ -1690,6 +1690,28 @@ line on the device rather than anything in Home Assistant. D-141 is the decision
 it asks for, including the power question, which is the only argument against it
 and is not answerable here.
 
+**@enaon got there first, and his figures are the independent half of this.**
+In espruino#8024 on the same day, before this run, he set
+`NRF.setConnectionInterval(7.5)` on his own board, first in a connect handler and
+then noting that once is enough, and posted both arms (`counter_ms` /
+`write_ms` / `confirm_ms`):
+
+| @enaon, `eT-Black-4` | default | pinned at 7.5 ms |
+|---|---|---|
+| a write with no prior `changed()` | 0 / 610.5 / 1202 | 0 / **53.6** / **47.3** |
+| a write after a button press | 1314.1 / 405.3 / 614.3 | **106.2** / **50.2** / **17.2** |
+
+His counter exchange pinned is 106.2 ms against our 115.7, his read back 17.2
+against our 26.2. Two boards, two benches, two radios, the same result, and the
+finding is his.
+
+**He is also right that setting it once is enough**, which simplifies D-141: the
+interval only exists while a central is connected, so a pinned value costs
+nothing between connections and the connect and disconnect handlers buy nothing
+for a device that is only connected to while a command is in flight. They are
+worth having only where something keeps a link open, a Web IDE session or an
+Espruino Hub, which is also the only case where the power question has teeth.
+
 Samples in `docs/data/connection-interval-auto.json` and
 `connection-interval-pinned.json`; the script is `interval_knob.py` in the
 session scratchpad, a measurement technique rather than something to ship, like
