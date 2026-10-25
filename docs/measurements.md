@@ -1712,8 +1712,43 @@ for a device that is only connected to while a command is in flight. They are
 worth having only where something keeps a link open, a Web IDE session or an
 Espruino Hub, which is also the only case where the power question has teeth.
 
-Samples in `docs/data/connection-interval-auto.json` and
-`connection-interval-pinned.json`; the script is `interval_knob.py` in the
+### A hundred commands per arm
+
+**The same evening, 100 samples per arm rather than 12**, because a failure in
+eleven commands decides nothing and it was the one thing standing between this
+and a module default. Same shape, same board, `bench.knob()` before every
+command, the arms separated by one console statement.
+
+| 100 commands each | auto | pinned at 7.5 ms |
+|---|---|---|
+| delivered | **100 of 100** | **100 of 100** |
+| command, median | 4.95 s | **2.98 s** |
+| command, 90th centile | 5.31 s | **3.00 s** |
+| over 4 s | 99 of 100 | **3 of 100** |
+| counter exchange, median | 885.9 ms | **115.2 ms** |
+| write, median | 797.4 ms | **94.1 ms** |
+| read back, median | 401.7 ms | **27.4 ms** |
+| write a whole number of 199.4 ms | 97 of 100 | **0 of 100** |
+
+**Nothing failed in either arm.** The one failure of the twelve-sample run was
+bad luck, and 200 commands say the fast interval is not less reliable on this
+bench. The pinned arm is also far tighter: its median and its 90th centile are
+30 ms apart, against 360 ms in the default arm, which is what removing a
+quantised wait from four phases of the same command does.
+
+**One sample in the pinned arm took 23 s**, of which 20.5 s was spent opening
+the link, and it is the only sample in either arm whose connect exceeded 2 s.
+That is not the interval's doing: a connection interval governs operations on an
+established link, the default arm's connect median is the same 330 ms, and
+`bleak_retry_connector` is the thing that spends twenty seconds. It is the
+ordinary tail this bench has always had.
+
+**So the only open question left in D-141 is power**, which needs a PPK2 and
+@enaon's bench.
+
+Samples in `docs/data/connection-interval-auto.json`,
+`connection-interval-pinned.json` and the hundred-sample pair,
+`connection-interval-100-auto.json` and `connection-interval-100-pinned.json`; the script is `interval_knob.py` in the
 session scratchpad, a measurement technique rather than something to ship, like
 the three of §8.
 
