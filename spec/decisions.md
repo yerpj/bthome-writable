@@ -9238,3 +9238,55 @@ command performs four to six and never leaves the grid, so either the raise is a
 parameter update the central grants over more intervals than these connections
 live, or ATT traffic is not what counts as activity. If the raise can be made to
 work, no module needs to pin anything.
+
+## D-142 — Current is a characterised quantity, and it belongs on the module page  [HW]
+
+**2026-10-25, the owner, in espruino#8024.** He has committed to measuring
+current on both boards, a Puck.js and a nice!nano, and he wants the result on
+the module's documentation page rather than only in a measurements file:
+*"ça aidera à convaincre les adopteurs"*. That is the decision, and it changes
+what counts as finished here.
+
+**What it fixes, and it is a real gap.** This project has quoted current figures
+since §8 and it has never measured one. Every microamp in `docs/measurements.md`
+is @enaon's PPK2 on his own board, at a 1 s advertising interval, as a difference
+between two versions of the module: ~235 uA before the rebuild fix, ~50 uA after,
+~45 uA with the module not loaded (§8), and P1's whole recoverable cost inside
+5 uA (§9). Those answered whether a change was worth making. None of them
+answers what a device running this module costs, which is the only power question
+an adopter has, and three sentences on the module page currently read as if they
+did -- *"over 100 uA of idle current for nothing"*, *"an empty wake measured
+under 10 us"*, *"within about 5 uA"*. They are honest about being deltas; they
+are also the only numbers there, so they get read as the device's bill.
+
+**Nine arms, and the procedure is §23.** The floor with no sketch at all, the
+three advertising intervals, sealed against in clear, the timer's cost, a
+rebuild as charge rather than as milliseconds, a command, a command with the
+interval pinned, a link held open, and the fast window after a disconnect.
+Prepared this session and ready to run: `espruino/bench/power-arms.js` selects an
+arm with four constants and raises a marker pin for exactly the connection or
+rebuild being measured; `tools/power_charge.py` integrates the marked windows out
+of an exported trace into microcoulombs above the advertising floor, with tests;
+`tools/hold_link.py` is the quiet central the held-open arm needs. The sketch
+loads over the radio rather than the cable, because the board under the meter is
+powered by the meter and a USB console would be both a supply and a connection.
+
+**Three of the arms decide something, and the rest are context.** Arm I, the
+fast window, prices `fastTimeout` for the first time: 30 s at ~90 uA after every
+disconnect is ~2.6 mC, and if that is right it is more than a pinned command
+costs, which settles D-141's power objection by showing the module already spends
+more than that without anyone minding. Arms F and G are D-141 itself, a command
+each way. Arm H is the exception that could still change it: at a 7.5 ms interval
+a connected device draws something like 530 uA, so a link somebody leaves open
+flattens a coin cell in weeks, and if that is a case this module supports then
+pinning once in `setup()` needs a guard after all.
+
+**The page section is the deliverable, not the data.** §23 holds the shape of it:
+a table whose first row is the board with the module not loaded, because that is
+what makes every other row attributable, and whose last two rows are the two
+D-141 arms. It goes on the page with real figures in it and not before, which
+means one more EspruinoDocs pull request after #767, not an edit to it.
+
+**What stays the owner's.** The measurement itself, and @enaon's PPK2 figures
+remain his: the page credits both. Nothing here is published before the numbers
+exist.
