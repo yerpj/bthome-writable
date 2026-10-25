@@ -1548,90 +1548,53 @@ Measurements that do not need Home Assistant in the loop can therefore be made
 from here, with this host's connection parameters rather than the Pi's, which is
 both the opportunity and the catch.
 
-### The 200 ms is the device's own connection interval, and it is documented
+### The 199 ms unit is the connection interval, and the device sets it
 
-**2026-10-25, from the Espruino source rather than from the bench.**
-`jswrap_ble_setConnectionInterval` in `libs/bluetooth/jswrap_bluetooth.c` says
-what the grid is, in its own documentation comment:
+**2026-10-25, from the Espruino source and then from the bench.**
+`jswrap_ble_setConnectionInterval` in `libs/bluetooth/jswrap_bluetooth.c` names
+the number in its own documentation comment:
 
 > By default, when connected as a peripheral Espruino automatically adjusts the
 > connection interval. When connected it's as fast as possible (7.5ms) but when
 > idle for over a minute it drops to 200ms. On continued activity (>1 BLE
 > operation) the interval is raised to 7.5ms again.
 
-**200 ms is the unit we measured at 199.** It is the peripheral's, not the
-central's, which is the attribution this section had backwards: *"which points at
-the central rather than at the device"* above is wrong, and it was wrong for a
-reasonable reason, that this host could not reproduce the slow regime on demand.
-The interval lives on the device and survives disconnection, so what decides a
-connection's regime is **how long the device has been left alone**, not which
-radio connects to it and not how old the connection is.
+**200 ms is the unit measured here at 199.4, and §22 proves it by removing it**:
+with `NRF.setConnectionInterval(7.5)` on the device and nothing else changed,
+every phase of the same command falls off the grid and the command itself takes
+2.2 s less. So the attribution two paragraphs above, *"which points at the
+central rather than at the device"*, is **wrong**: the interval belongs to the
+peripheral, and this host's inability to summon the slow regime was never
+evidence about where it came from.
 
-Everything in the two tables follows from that, including what looked like
-noise:
+**What does not hold is the idle part of the sentence.** The obvious reading,
+that a device left alone for over a minute is found slow and a device just
+connected to is found fast, predicts that two commands differing only in that
+would differ. They do not: §22 ran both, 130 s of quiet against seconds after the
+previous connection, and the grid is identical in each. What decides is *where in
+the connection the operation falls*, exactly as this section measured before
+knowing why: the first ATT operation is served at 37 to 42 ms, and everything
+from about half a second in pays whole intervals. A plain command with no counter
+exchange still writes in 38 ms today, on a lamp nobody had touched for a day.
 
-* *the separate arm's write is 42 ms.* A connection for the counter question was
-  made 40 s earlier, inside the one-minute idle window, so the device is still at
-  7.5 ms when the command arrives. That is also the real reason its connect is
-  1.9 s faster, which this section attributed to a warm path through the proxy;
-* *the folded arm is on the grid.* Nothing had connected since the reload, which
-  is minutes, so the device is at 200 ms and every operation of that connection
-  is an integer number of them;
-* *the one slow pass of the ATT experiment, and the six fast runs after.* The
-  first pass followed a long quiet period; the runs after it followed each other
-  by seconds. The 1.5 s of silence in that experiment was never the variable:
-  the minute before it was;
-* *the Puck at 15 to 31 ms at any age.* It was being talked to throughout, so it
-  never left the fast regime. Consistent, not proof: left alone for two minutes
-  it should land on the same grid.
+So the link comes up at the interval the central asked for, @enaon's `hci0` log
+showing 6 units of 1.25 ms, and the peripheral's own 200 ms arrives a few
+hundred milliseconds later, after which nothing in these short connections
+raises it again. Why activity does not is the open question, and it is a firmware
+question for @gfwilliams rather than a bench one.
 
-**@enaon reproduced it independently the same day**, which is what makes this
-more than a reading of the source. His board `eT-Black-4`
-(`E6:2F:28:C4:37:82`), a nice!nano on 2v29, sealed, counter report offered,
-through two radios used one at a time:
+**§8 saw this a week ago from the other side.** With the console pinned to USB, a
+hundred writes over the air took 400 ms each instead of 15, and that section
+called it a lead worth following for a receiver that writes several entries in
+one connection. This is that lead, arriving in production and now explained: it
+is not about the console, and it is not about encryption. Any operation late in a
+connection pays it, D-130's folded read included.
 
-| @enaon, median | counter | write | confirm |
-|---|---|---|---|
-| ESP32 proxy `pr-4`, no prior `changed()` | 0 | 610.5 ms | 1202 ms |
-| ESP32 proxy `pr-4`, after a button press | 1314.1 ms | 405.3 ms | 614.3 ms |
-| the Pi's `hci0`, after a button press | 1027.6 ms | **796.4 ms** | **402.8 ms** |
-
-His `hci0` row and ours are the same numbers to the millisecond: 796.4 against
-797, 402.8 against 402. **Three things his data adds.** The grid appears through
-the ESP32 proxy and through `hci0` alike, so no central is the cause. The write
-is 2 units through the proxy and 4 through `hci0`, so the central decides how
-many intervals an operation waits, not how long one is. And **his board never
-shows the 42 ms case at all**, write-alone rows included: his writes follow a
-press of the lamp's own button and the minutes of quiet before it, so his device
-is always in the slow regime. A board that is used the way a lamp is used is
-idle by definition.
-
-**What is left unexplained** is the sentence's last clause. Activity is supposed
-to raise the interval back to 7.5 ms after more than one BLE operation, and a
-folded command performs four to six without ever leaving the grid. Either the
-raise is a connection parameter update the central grants over several intervals,
-which is longer than these connections live, or ATT traffic is not what the
-firmware counts as activity. That is a firmware question for @gfwilliams, not a
-bench one.
-
-**The remedy is one line on the device**, `NRF.setConnectionInterval(7.5)`, which
-disables the dynamic adjustment and pins the fast interval. It costs power only
-while a central is connected, which for a BTHome device is a second or two per
-command, against the 200 ms grid costing roughly a second of every command. If it
-holds, it is worth more than every change in 0.2.0 put together, and it changes
-what D-138 is deciding: the fold's own 715 ms counter exchange is itself about
-three and a half grid units, so at 7.5 ms it should fall to the tens of
-milliseconds §17 predicted, and the settled case's penalty should disappear
-rather than be traded away.
-
-**[HW] What would confirm it**, in order, on the lamp:
-
-1. two commands a few seconds apart after two minutes of quiet: the first should
-   be on the grid and the second at 42 ms, with no code change at all;
-2. the same pair with `NRF.setConnectionInterval(7.5)` in the sketch: both
-   should be fast, and `counter_ms` should collapse;
-3. the power cost of the pinned interval, measured while a command is in flight,
-   which is the only argument against making it the module's default.
+**What this costs the fold, properly attributed.** Of the 1.5 s the fold seemed
+to add in the settled case, about 750 ms is this regime, which a command pays for
+being late in its own connection rather than for carrying a question. The fold's
+own cost is the counter exchange, and §22 measures that at 116 ms once the
+interval is pinned, which is the order §17 predicted.
 
 Samples in `docs/data/counter-question-folded.json`,
 `counter-question-separate.json` and the same two names with `-n10`.
@@ -1666,3 +1629,75 @@ The sweep leaves the interval wherever it stopped. Put it back with
 `python -m tools.set_adv_interval --address <mac> --ms 1000` — and note that at
 10 s that can take several attempts from a host whose adapter scans badly, which
 is the same effect §1 measures.
+
+## 22. Pinning the connection interval, and what that is worth
+
+**2026-10-25, the sealed lamp `F5:A8:93:67:CB:25` through Home Assistant**, the
+same board, bindkey, deployed integration and radio as §21, with the fold on.
+Each sample moves the device's own dimmer with `bench.knob()` over the USB
+console, waits 4 s for the moved settings revision to reach Home Assistant in an
+advertisement, then commands the switch: that is the shape of @enaon's report, a
+local change followed by a command, and it is the only shape that owes the
+counter question of §5.6. Two arms, one variable:
+
+* **auto** -- the device exactly as deployed, Espruino adjusting the interval
+  itself;
+* **pinned** -- `NRF.setConnectionInterval(7.5)` sent once over the console
+  before the run. No code change, no reflash, no change to the integration.
+
+Twelve samples per arm, alternating *cold*, after 130 s of quiet, and *warm*,
+seconds after the previous command's connection.
+
+| Median of 12 | auto | pinned at 7.5 ms | ratio |
+|---|---|---|---|
+| wall | **5.2 s** (4.6 to 7.0) | **3.0 s** (2.9 to 5.8) | **-2.2 s** |
+| counter exchange | 952.6 ms (681 to 1151) | **115.7 ms** (100 to 130) | 8x |
+| write | 797.5 ms (797 to 997) | **87.8 ms** (73 to 121) | 9x |
+| read back | 401.6 ms (391 to 402) | **26.2 ms** (17 to 106) | 15x |
+| connect | 324.5 ms (197 to 986) | 332.3 ms (183 to 919) | unchanged |
+
+**The grid is gone, not reduced.** In the auto arm the write is 4.00 to 5.01
+units of 199 ms in 12 samples of 12, and the read back is 2.02 units in 11 of
+12. In the pinned arm nothing is a multiple of anything: 73.3, 75.8, 84.3, 87.7,
+87.8, 98.2, 98.7, 99.4, 119.3, 120.9. That the connect time is the same in both
+arms is the control: pinning the interval does not make the link easier to
+establish, it makes operations on an established link cheap.
+
+**Cold and warm are the same, which refutes half of the hypothesis.** The
+firmware comment says the drop to 200 ms follows a minute of idle, so a command
+after 130 s of quiet and one issued seconds after the previous connection should
+differ. They do not, in either arm:
+
+| auto, write | cold | warm |
+|---|---|---|
+| the four pairs | 797.6, 797.3, 796.8, 797.2 | 797.2, 994.0, 807.5, 796.9 |
+
+So the device is in the slow regime whenever its own adjustment is in charge,
+whatever happened a minute earlier, and the thing to fix is not when it goes
+slow but that it does.
+
+**One failure in 11 delivered commands, pinned**, *"Light could not be reached:
+the command was not delivered. [org.bluez.Error.Failed] Not connected"*, against
+none in 12 on auto. Eleven samples cannot tell a 9% failure rate from bad luck,
+and a 7.5 ms interval does leave less room for a retransmission inside the same
+supervision timeout, so this is the one thing a longer run has to settle before
+the interval is pinned anywhere but on a bench.
+
+**What it would be worth to a user.** Every command this project makes pays the
+grid: 2.2 s of the 5.2 s measured here, on a device whose radio is otherwise
+idle. That is larger than everything 0.2.0 changed put together, and it is one
+line on the device rather than anything in Home Assistant. D-141 is the decision
+it asks for, including the power question, which is the only argument against it
+and is not answerable here.
+
+Samples in `docs/data/connection-interval-auto.json` and
+`connection-interval-pinned.json`; the script is `interval_knob.py` in the
+session scratchpad, a measurement technique rather than something to ship, like
+the three of §8.
+
+```
+python -m tools.bench_lock acquire --note "D-141: pin the connection interval"
+python interval_knob.py --reps 2 --quiet 130              # auto
+python interval_knob.py --reps 2 --quiet 130 --pin 7.5    # pinned
+python interval_knob.py --reps 1 --quiet 10  --pin auto   # and put it back
+```

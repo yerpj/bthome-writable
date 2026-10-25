@@ -27,9 +27,9 @@ DEVICES: dict[str, dict[str, Any]] = {
         # The third board, added 2026-10-23 for D-130: two writable entries
         # that are also readable, so it advertises a settings revision and
         # `bench.knob()` moves it on demand (espruino/bench/revision-lamp.js).
-        # Its firmware has no crypto -- MODULES is
-        # timer,Flash,Storage,heatshrink,neopixel -- so it cannot run a sealed
-        # sketch at all, which is why §5.6's counter report is still unmeasured.
+        # Reflashed 2026-10-24 with crypto (D-139); MODULES is
+        # timer,Flash,Storage,heatshrink,crypto,neopixel, so it runs the sealed
+        # bench sketch and §5.6's counter report is measured (§21, §22).
         "port": "COM6",
     },
     "nano": {
