@@ -6961,6 +6961,17 @@ from nothing), what it must carry about the proposal's status without becoming
 a page about the proposal, and whether it is one page or two — the switch, and
 then everything else.
 
+**One piece of its content is settled in advance.** *2026-10-25.* The
+advertising interval is the largest effect on responsiveness a user can reach:
+§16 measured a command landing in 0.7 to 3.4 s at 1000 ms and in 4.5 to 6.7 s at
+3200 ms, which is a factor nothing in the integration can match. It was proposed
+for the reference page, since that is the page a user of the module reads, and
+the owner's call is that it belongs in the tutorial instead: *"On le
+mentionnera dans le tutoriel."* So the reference page stays silent on it and the
+tutorial owes it a paragraph, alongside the content questions above. It is said
+in the open in espruino#8024 as of 2026-10-25, which is where a user looking for
+it will find it until the page exists.
+
 Nothing else changes: P1, P2, the budget and the chain test are unaffected.
 
 ---
