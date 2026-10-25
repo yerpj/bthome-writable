@@ -1828,6 +1828,62 @@ Arms A to E need no host; F and G are the §22 run with the meter attached, so
 or `tools/hold_link.py`; I is the 30 s after each of F's commands, which the
 same traces already contain.
 
+### The order, and how long each arm needs
+
+**The Puck first, then the nice!nano.** Three reasons, and they are all about
+getting the method right on the easier board: 3.0 V is inside the Arc's
+high-accuracy range on USB power alone, so the first sitting needs no DC
+adapter; a CR2032 is the battery the question is actually about, a nice!nano
+usually having a lithium cell many times its size; and the Puck is the board
+whose figures go first on the module page, so it is the one worth measuring
+while the rig is new and every doubt is still being checked.
+
+**Step 0, before any current: ask each board what it is.** `process.env.VERSION`
+and `process.env.MODULES` over the console. The sealed arms need `crypto` in
+that list -- the nice!nano `CD:F5:77:3A:B2:16` has `AES` but not `AES_CCM`
+(§8), lamp `F5:A8:93:67:CB:25` was reflashed with `crypto` on 2026-10-24, and
+lamp3's firmware has never been looked at. A board without it runs the plaintext
+arms only, which is an asymmetry to write down rather than to work around.
+
+**Durations are set by how many periodic events a run has to contain, not by
+noise.** At 4 ksps a minute is 240 000 samples, so a few microamps are resolved
+in seconds; what takes time is averaging over enough advertising events to make
+the mean mean something. A hundred of whatever dominates is plenty:
+
+| arm | recording | why that long |
+|---|---|---|
+| **A** floor, no sketch | **5 min** | nothing periodic to average; the length is only to catch slow housekeeping |
+| **B** advertising 1000 / 2000 / 3200 ms | **3 / 5 / 6 min** | 100 or more advertising events in each: 100 s, 200 s, 320 s |
+| **C** sealed at 2000 ms | **5 min** | the same 100 events, against B's middle row |
+| **D** the timer's cost | **5 min with the sensor at 10 000 ms** | 30 wakes, which prices a wake. The 300 000 ms version of the same arm needs 20 min for three of them, and is only worth it if the 10 s figure surprises |
+| **E** forced rebuilds | **2 x 1 min** | 20 rebuilds at 3 s apart, sealed and in clear. One rebuild is 26-38 ms, which is 100 to 150 samples: enough |
+| **F** commands, as shipped | **10 min** | 12 commands at **45 s apart**, which is the point: `fastTimeout` is 30 s, so a command sent sooner than that is measured in the fast window rather than from idle |
+| **G** commands, interval pinned | **10 min** | the same 12 |
+| **H** a link held open and idle | **2 x 2 min** | `tools/hold_link.py --seconds 120`, auto then pinned |
+| **I** the fast window | **6 min** | 5 commands at 60 s apart, so that each 30 s window expires inside the trace. F's own trace cannot show this: its commands are too close together for the window to ever end |
+
+That is about **70 minutes of recording per board**, call it two hours with the
+handling, so the two boards are a morning and an afternoon rather than one
+sitting. **If time runs short, A, B at 2000 ms, C, F, G and I** fill every row
+of the page's table and answer D-141, in about 45 minutes.
+
+**Discard the first minute of every recording.** Loading the sketch is a
+connection, a disconnect starts a 30 s fast window, and `setup()` itself builds
+a packet. A minute of quiet after the Web IDE lets go, cut from the trace or
+simply not selected, removes all three. The durations above are what is left
+after that cut.
+
+**One recording per arm, named for the arm**, because each arm means reloading
+the sketch with different constants and a reload is a connection. Leave the
+device alone during A to E: Home Assistant connects when the settings revision
+moves, which is why arm E uses `bench.rebuild()` and not `bench.knob()` -- a
+forced rebuild moves the packet id, which no receiver acts on, while the knob
+moves the revision and brings a central in.
+
+**And take the lock**, `python -m tools.bench_lock acquire --note "D-142: current"`,
+because a command arm drives Home Assistant and another agent's run would land
+in the middle of a trace.
+
 ### What to expect, so that a broken rig looks broken
 
 Order of magnitude, from the radio's own datasheet figures rather than from
