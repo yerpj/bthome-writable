@@ -9222,12 +9222,15 @@ the radio wakes 27 times more often than at 200 ms while connected. @enaon's PPK
 is the instrument, and the measurement to ask for is a command's connection, not
 an idle device.
 
-**And one thing to settle first:** one command in 11 failed, pinned, with
-*"[org.bluez.Error.Failed] Not connected"*, against none in 12 on the default.
-Eleven samples cannot tell 9% from bad luck, but a 7.5 ms interval does leave
-fewer intervals inside the same supervision timeout for a retransmission. A
-longer run decides it, and it decides whether the fast interval belongs in a
-module other people ship rather than only on a bench.
+**The reliability objection is settled, and it was bad luck.** One command in 11
+had failed pinned with *"[org.bluez.Error.Failed] Not connected"*, so the same
+run was repeated at a hundred commands per arm: **100 of 100 delivered in both
+arms**, median 4.95 s against 2.98 s, 99 of 100 commands over 4 s against 3 of
+100, and the pinned arm's median and 90th centile 30 ms apart against 360 ms
+(§22). One pinned sample took 23 s, 20.5 s of it opening the link, which is this
+bench's ordinary tail and not something an interval governs: it is the only
+sample in 200 whose connect exceeded 2 s, and the two arms' connect medians are
+the same.
 
 **Why it is also a question for @gfwilliams.** The firmware comment says activity
 raises the interval back to 7.5 ms after more than one BLE operation. A folded
