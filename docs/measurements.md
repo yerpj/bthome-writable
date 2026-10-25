@@ -1548,6 +1548,91 @@ Measurements that do not need Home Assistant in the loop can therefore be made
 from here, with this host's connection parameters rather than the Pi's, which is
 both the opportunity and the catch.
 
+### The 200 ms is the device's own connection interval, and it is documented
+
+**2026-10-25, from the Espruino source rather than from the bench.**
+`jswrap_ble_setConnectionInterval` in `libs/bluetooth/jswrap_bluetooth.c` says
+what the grid is, in its own documentation comment:
+
+> By default, when connected as a peripheral Espruino automatically adjusts the
+> connection interval. When connected it's as fast as possible (7.5ms) but when
+> idle for over a minute it drops to 200ms. On continued activity (>1 BLE
+> operation) the interval is raised to 7.5ms again.
+
+**200 ms is the unit we measured at 199.** It is the peripheral's, not the
+central's, which is the attribution this section had backwards: *"which points at
+the central rather than at the device"* above is wrong, and it was wrong for a
+reasonable reason, that this host could not reproduce the slow regime on demand.
+The interval lives on the device and survives disconnection, so what decides a
+connection's regime is **how long the device has been left alone**, not which
+radio connects to it and not how old the connection is.
+
+Everything in the two tables follows from that, including what looked like
+noise:
+
+* *the separate arm's write is 42 ms.* A connection for the counter question was
+  made 40 s earlier, inside the one-minute idle window, so the device is still at
+  7.5 ms when the command arrives. That is also the real reason its connect is
+  1.9 s faster, which this section attributed to a warm path through the proxy;
+* *the folded arm is on the grid.* Nothing had connected since the reload, which
+  is minutes, so the device is at 200 ms and every operation of that connection
+  is an integer number of them;
+* *the one slow pass of the ATT experiment, and the six fast runs after.* The
+  first pass followed a long quiet period; the runs after it followed each other
+  by seconds. The 1.5 s of silence in that experiment was never the variable:
+  the minute before it was;
+* *the Puck at 15 to 31 ms at any age.* It was being talked to throughout, so it
+  never left the fast regime. Consistent, not proof: left alone for two minutes
+  it should land on the same grid.
+
+**@enaon reproduced it independently the same day**, which is what makes this
+more than a reading of the source. His board `eT-Black-4`
+(`E6:2F:28:C4:37:82`), a nice!nano on 2v29, sealed, counter report offered,
+through two radios used one at a time:
+
+| @enaon, median | counter | write | confirm |
+|---|---|---|---|
+| ESP32 proxy `pr-4`, no prior `changed()` | 0 | 610.5 ms | 1202 ms |
+| ESP32 proxy `pr-4`, after a button press | 1314.1 ms | 405.3 ms | 614.3 ms |
+| the Pi's `hci0`, after a button press | 1027.6 ms | **796.4 ms** | **402.8 ms** |
+
+His `hci0` row and ours are the same numbers to the millisecond: 796.4 against
+797, 402.8 against 402. **Three things his data adds.** The grid appears through
+the ESP32 proxy and through `hci0` alike, so no central is the cause. The write
+is 2 units through the proxy and 4 through `hci0`, so the central decides how
+many intervals an operation waits, not how long one is. And **his board never
+shows the 42 ms case at all**, write-alone rows included: his writes follow a
+press of the lamp's own button and the minutes of quiet before it, so his device
+is always in the slow regime. A board that is used the way a lamp is used is
+idle by definition.
+
+**What is left unexplained** is the sentence's last clause. Activity is supposed
+to raise the interval back to 7.5 ms after more than one BLE operation, and a
+folded command performs four to six without ever leaving the grid. Either the
+raise is a connection parameter update the central grants over several intervals,
+which is longer than these connections live, or ATT traffic is not what the
+firmware counts as activity. That is a firmware question for @gfwilliams, not a
+bench one.
+
+**The remedy is one line on the device**, `NRF.setConnectionInterval(7.5)`, which
+disables the dynamic adjustment and pins the fast interval. It costs power only
+while a central is connected, which for a BTHome device is a second or two per
+command, against the 200 ms grid costing roughly a second of every command. If it
+holds, it is worth more than every change in 0.2.0 put together, and it changes
+what D-138 is deciding: the fold's own 715 ms counter exchange is itself about
+three and a half grid units, so at 7.5 ms it should fall to the tens of
+milliseconds §17 predicted, and the settled case's penalty should disappear
+rather than be traded away.
+
+**[HW] What would confirm it**, in order, on the lamp:
+
+1. two commands a few seconds apart after two minutes of quiet: the first should
+   be on the grid and the second at 42 ms, with no code change at all;
+2. the same pair with `NRF.setConnectionInterval(7.5)` in the sketch: both
+   should be fast, and `counter_ms` should collapse;
+3. the power cost of the pinned interval, measured while a command is in flight,
+   which is the only argument against making it the module's default.
+
 Samples in `docs/data/counter-question-folded.json`,
 `counter-question-separate.json` and the same two names with `-n10`.
 
