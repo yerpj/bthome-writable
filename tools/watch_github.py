@@ -12,12 +12,16 @@ State lives in `docs/data/github-watch.json` and is **committed on purpose**:
 submission was received, which is worth more than the file.
 
 Authentication reuses the git credential helper, so there is nothing to set up
-and no token in the environment. Read-only: this never writes to GitHub.
+and no token in the environment. Everything on the watchlist is public, so a
+host with no credential to offer is asked for none: the run goes out
+unauthenticated instead, which GitHub serves at 60 requests an hour and this
+needs a dozen. Read-only either way: this never writes to GitHub.
 """
 
 from __future__ import annotations
 
 import argparse
+import functools
 import html
 import json
 from pathlib import Path
@@ -41,6 +45,8 @@ WATCHLIST: tuple[tuple[str, str, int, str], ...] = (
     ("espruino/EspruinoDocs", "pulls", 763, "the page corrections (merged)"),
     ("espruino/EspruinoDocs", "pulls", 764, "the rejected-write fix (D-102)"),
     ("espruino/EspruinoDocs", "pulls", 765, "the rebuild-on-change fix (D-106)"),
+    ("espruino/EspruinoDocs", "pulls", 766, "the schedule and six fixes (D-114)"),
+    ("espruino/EspruinoDocs", "pulls", 767, "the changed() fold (D-123, D-124)"),
     ("yerpj/bthome-writable", "issues", 1, "@enaon, AES-CCM on a board without AES"),
     ("yerpj/bthome-writable", "issues", 2, "@enaon, ON-OFF-ON"),
 )
@@ -88,29 +94,49 @@ def discussion_items() -> tuple[int | None, int]:
     return int(match.group(1)) + int(match.group(2)), hidden
 
 
-def token() -> str:
-    out = subprocess.run(
-        ["git", "credential-manager", "get"],
-        input="protocol=https\nhost=github.com\n\n",
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout
+ANONYMOUS = False
+"""Set by `--anonymous`: do not ask the credential helper anything."""
+
+
+@functools.lru_cache(maxsize=1)
+def token() -> str | None:
+    """The credential helper's token, or `None` when there is none to have.
+
+    A helper that is not installed, one that declines, a host where nobody has
+    logged in and `--anonymous` all mean the same thing here: go out anonymous.
+    Only the rate limit differs.
+    """
+    if ANONYMOUS:
+        return None
+    try:
+        out = subprocess.run(
+            ["git", "credential-manager", "get"],
+            input="protocol=https\nhost=github.com\n\n",
+            capture_output=True,
+            text=True,
+            check=False,
+        ).stdout
+    except OSError:
+        return None
     for line in out.splitlines():
         if line.startswith("password="):
             return line[len("password=") :]
-    raise SystemExit("no GitHub credential; log in with git once")
+    return None
 
 
 def api(path: str) -> dict | list:
     request = urllib.request.Request("https://api.github.com" + path)
-    request.add_header("Authorization", "Bearer " + token())
+    bearer = token()
+    if bearer:
+        request.add_header("Authorization", "Bearer " + bearer)
     request.add_header("Accept", "application/vnd.github+json")
     try:
         with urllib.request.urlopen(request) as response:
             return json.loads(response.read())
     except urllib.error.HTTPError as error:
         detail = error.read().decode()[:200]
+        if error.code in (403, 429) and not bearer:
+            detail += "  (anonymous, and the hourly limit is 60 requests)"
         raise SystemExit(f"{error.code} on {path}: {detail}") from error
 
 
@@ -183,7 +209,16 @@ def main() -> int:
     parser.add_argument(
         "--save", action="store_true", help="record this reading as the baseline"
     )
+    parser.add_argument(
+        "--anonymous",
+        action="store_true",
+        help="do not ask the credential helper; 60 requests an hour is enough",
+    )
     args = parser.parse_args()
+
+    global ANONYMOUS
+    ANONYMOUS = args.anonymous
+    token.cache_clear()
 
     before = json.loads(STATE.read_text(encoding="utf-8")) if STATE.exists() else {}
     after = look()

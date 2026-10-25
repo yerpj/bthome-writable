@@ -9086,3 +9086,56 @@ spare, so any entry added to it from now on throws `capacity_exceeded` at
 `setup()` rather than silently truncating, which is the right failure but still a
 failure. `docs/shared-bench.md` says so where someone adding an entry will read
 it.
+
+## D-140 — 0.2.0 is out, #767 is open, and both were verified from outside
+
+**2026-10-25, branch `chore/watch-the-upstream-pr`.** Two things left this
+repository yesterday and the owner finished both by hand, since this host has no
+GitHub token: the release object a HACS install needs, and the pull request.
+Checked from the public pages and the public API rather than taken on trust,
+because a tag that is pushed and a release that exists are different objects and
+only the second one HACS can see.
+
+**`v0.2.0`.** Tag `v0.2.0` at `89cf6fcb` on `origin`, release *"v0.2.0 - fewer
+connections"* published 2026-10-25 by @yerpj, marked latest, not a pre-release,
+two assets, which are the source archives GitHub attaches on its own. That is
+what a HACS install resolves. Our own CI is green on `0a8effb`, the commit the
+tag names.
+
+**[EspruinoDocs#767](https://github.com/espruino/EspruinoDocs/pull/767)** --
+*BTHomeWritable: fold a burst of changed() calls, and three fixes* -- opened
+2026-10-25 from `yerpj:bthomewritable-fold-changed-bursts` onto
+`espruino:master`, one commit `c2c8fd4`, two files: `modules/BTHomeWritable.js`
++68/-56 and `modules/BTHomeWritable.md` +25/-5, which is the diff this repository
+generated and nothing else. It carries D-124's fold, D-123's three fixes and the
+six exports D-123 removed. `modules/AESCCM.md` is **deliberately not in it**: the
+18 lines it is owed are a different subject and belong in their own pull request.
+No review and no maintainer comment yet.
+
+**#766 merged on 2026-10-21**, which nothing here had recorded: D-119 still says
+it is open on Gordon's side, and that sentence was true the day it was written.
+It is left as it stands, the way every record in this file is, and the current
+state is where the current state belongs, which is the watchlist.
+
+### The watcher was not watching the two that matter most
+
+`tools/watch_github.py` tracked #761 to #765 and stopped, so the two pull
+requests still in play were the two nobody could ask after by running the tool.
+Both are on the watchlist now, and the reading it just saved is the first that
+includes them.
+
+It also could not run on a host whose credential helper has nothing to offer: it
+asked, and raised `no GitHub credential; log in with git once`. Every item on
+the watchlist is public, so there is no reason to require one. A run with no
+credential, or with the new `--anonymous`, goes out unauthenticated, which
+GitHub serves at 60 requests an hour against the dozen this makes, and a 403
+without a token now says which limit was hit.
+
+**What the saved reading moved**, beyond the two new rows: espruino#8024 has
+gone from 71 comments to 80. @enaon reports D-124's fold as *"a lot faster, very
+usable"* and *"maybe the most important improvement usability wise"*, and says
+they had not realised that a `changed()` call made the next command ask for the
+counter, which is the chain D-129 and D-130 shortened. One question of theirs is
+arguably still open: whether the slow first command after a few minutes of
+inactivity reproduces on this bench. §21 now answers it, and the answer is the
+owner's to post.
