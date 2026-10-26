@@ -67,7 +67,15 @@ it leaves 274 JsVars free with the flag and runs out without it. The Web IDE
 can tokenise at upload time instead, and setting it here costs nothing and
 survives an upload that forgot to."""
 
-SWEEP = "[100, 200, 500, 1000, 2000, 3200, 5000, 10000]"
+SWEEP = "[200, 500, 1000, 2000, 3200, 5000, 10000, 100]"
+"""Ascending, and 100 ms last rather than first.
+
+100 ms is the interval the fast window uses, so it is the one step that can
+touch a code path the other seven do not, and on 2026-10-26 it did: the whole
+sweep stayed at 100 ms. The bug is fixed and tested, and the step stays in
+because it is a real point with the most leverage in the fit. It goes last so
+that the next time something is peculiar about it, the other seven steps are
+already in the trace."""
 
 VARIANTS: dict[str, dict[str, str]] = {
     "power-sweep": {

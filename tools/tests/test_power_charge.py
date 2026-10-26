@@ -298,3 +298,16 @@ def test_a_run_of_two_events_is_not_a_run(tmp_path) -> None:
     folder = _otii_folder(tmp_path, _events([(2000.0, 6.0, 5), (45.0, 1.5, 2)]))
     runs = Trace.read(folder / "Main current - Arc.csv").phases()
     assert [round(run["gap_ms"] / 5) * 5 for run in runs] == [2000]
+
+
+def test_a_power_up_spike_does_not_raise_the_burst_threshold(tmp_path) -> None:
+    """The real trace of 2026-10-26 opens with 138 mA of boot. A threshold
+    taken as a fraction of the peak landed at 6.9 mA and found none of the
+    eighteen minutes of advertising events behind it."""
+    samples = _events([(2000.0, 6.0, 6)])
+    samples[0] = (samples[0][0], 0.138)  # 138 mA, one sample, at power-up
+    folder = _otii_folder(tmp_path, samples)
+    trace = Trace.read(folder / "Main current - Arc.csv")
+    assert max(trace.currents) == 138000.0
+    assert trace.burst_threshold() < 300.0
+    assert len(trace.bursts(trace.burst_threshold())) >= 6

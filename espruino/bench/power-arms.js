@@ -66,7 +66,7 @@ var MARK = D1;
    step lasts and SWEEP_START_MS how long it waits first -- long enough for the
    Web IDE to let go and for the 30 s fast window that its disconnect opens to
    expire, so disconnect as soon as the sketch is loaded. */
-var SWEEP = [100, 200, 500, 1000, 2000, 3200, 5000, 10000];
+var SWEEP = [200, 500, 1000, 2000, 3200, 5000, 10000, 100];
 var SWEEP_MS = 120000;
 var SWEEP_START_MS = 120000;
 

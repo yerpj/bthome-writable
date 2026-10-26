@@ -70,6 +70,15 @@ CURRENT_NAMES = ("current", "amps")
 UNITS = {"ua": 1.0, "µa": 1.0, "ma": 1000.0, "a": 1e6, "na": 0.001}
 TIME_UNITS = {"s": 1000.0, "sec": 1000.0, "ms": 1.0, "us": 0.001, "µs": 0.001}
 DIGITAL = re.compile(r"^\s*(?:gpi\s*|d|logic\s*)(\d)\s*(?:[(\[].*)?$", re.IGNORECASE)
+BURST_MARGIN_UA = 200.0
+"""How far above the floor a sample has to be to count as a radio event.
+
+A fraction of the peak was the first idea and it is wrong. The trace of
+2026-10-26 opens with 138 mA of power-up, which put a five-per-cent threshold
+at 6.9 mA and found no advertising events in eighteen minutes of them. An
+nRF52's radio event is milliamps and its floor is microamps, so a fixed margin
+above the median separates the two with three orders of magnitude to spare and
+nothing in the trace can move it."""
 THIN_WINDOW = 10
 """Fewer samples than this in a window and the charge is a guess, not a
 measurement: at an Arc Pro's 250 us a sample that is 2.5 ms."""
@@ -191,6 +200,7 @@ class Trace:
         self.currents = currents
         self.digital = digital
         self.unknown = 0
+        self.burst_margin_ua = BURST_MARGIN_UA
 
     @classmethod
     def read(
@@ -390,10 +400,8 @@ class Trace:
         return runs
 
     def burst_threshold(self) -> float:
-        """Above the floor, below the peak, and nowhere near either."""
-        floor = st.median(self.currents)
-        peak = max(self.currents)
-        return floor + max(50.0, 0.05 * (peak - floor))
+        """The floor, plus a margin nothing in the trace can inflate."""
+        return st.median(self.currents) + self.burst_margin_ua
 
     def segments(
         self,
@@ -640,6 +648,13 @@ def main(argv: list[str] | None = None) -> int:
         help="a second export holding the marker channel, aligned by timestamp",
     )
     parser.add_argument(
+        "--burst-margin",
+        type=float,
+        default=BURST_MARGIN_UA,
+        help=f"microamps above the floor that count as a radio event"
+        f" (default {BURST_MARGIN_UA:g})",
+    )
+    parser.add_argument(
         "--phases",
         action="store_true",
         help="read the runs of radio events at one rate out of the current,"
@@ -707,6 +722,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     if marker and not args.digital:
         raise SystemExit("--digital-csv needs --digital to say which channel")
+
+    trace.burst_margin_ua = args.burst_margin
 
     windows: list[tuple[int, int]] = []
     found: list[dict] = []

@@ -15,8 +15,22 @@ its first non-draft release. Every entry names the decision behind it:
 
 ## [Unreleased]
 
-Nothing yet. The integration's `manifest.json` carries the version a tag will
-take, so it reads 0.2.0 until the next one is cut.
+The integration's `manifest.json` carries the version a tag will take, so it
+reads 0.2.0 until the next one is cut.
+
+### Fixed
+
+- **A device whose advertising interval was set to 100 ms could never change
+  rate again.** `setAdvertisingInterval()` republished only when the rate the
+  radio was running differed from the *fast* interval, rather than from the
+  interval being asked for. 100 ms is the fast interval's own default and a
+  perfectly legal idle interval, so once the two were equal the test was false
+  for good: every later call updated the module's idea of the interval and
+  handed nothing to the radio. Found on the bench on 2026-10-26 by a swept
+  power measurement that began at 100 ms and then advertised at 100 ms for
+  seventeen minutes while walking through eight intervals, which the current
+  trace showed step by step. The guard now compares against the interval being
+  set, which is what it was for.
 
 ## [0.2.0] - 2026-10-24
 

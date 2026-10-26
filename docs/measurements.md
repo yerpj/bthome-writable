@@ -1837,7 +1837,7 @@ floor is the intercept, one advertising event the slope.
 
 | recording | what it is | how long |
 |---|---|---|
-| **1. the sweep** | `SWEEP = [100, 200, 500, 1000, 2000, 3200, 5000, 10000]` in `power-arms.js`, `SWEEP_MS = 120000`: the device walks the intervals on its own, pulsing the marker a second at each step. No central, no reload, one recording. 100 ms is in it because that is `fastInterval`, so the fast term is measured rather than extrapolated | **16 min** |
+| **1. the sweep** | `SWEEP = [200, 500, 1000, 2000, 3200, 5000, 10000, 100]` in `power-arms.js`, `SWEEP_MS = 120000`: the device walks the intervals on its own. No central, no reload, one recording, and no marker channel either -- the steps are read out of the advertising rate in the current itself (`power_charge --segment`), which also checks each step against the interval that was programmed. 100 ms is in it because that is `fastInterval`, so the fast term is measured rather than extrapolated, and it is **last** because it is the one step that touches a code path the others do not | **17 min** |
 | **2. the commands** | 10 commands from Home Assistant, **45 s apart** because `fastTimeout` is 30 s and a command sent sooner is measured inside the fast window rather than from idle. The marker is high over each connection, and the median excess above the floor is `Qcmd` | **8 min** |
 | **3. the same, pinned** | recording 2 with `CONNECTION_INTERVAL = 7.5`, which is what puts D-141's cost in the same table as everything else | **8 min** |
 | **4. two checks** | 10 min at 2000 ms with 1 command a minute, then 5 min at 2000 ms with 4 a minute. Compare the whole recording's mean against what the table says it should be | **15 min** |
@@ -1903,6 +1903,43 @@ Then the three things that quietly ruin a recording:
 3. **Take the lock.** `python -m tools.bench_lock acquire --note "D-142: current"`,
    because the command recordings drive Home Assistant and another agent's run
    would land inside a trace.
+
+### What the first run gave, including the two things it was not looking for
+
+**2026-10-26, Puck.js f7b9 at 3.0 V on the Arc, sealed, boot from `.bootcde`,
+18 minutes at 4 ksps.** The sweep itself failed: the device advertised at
+104.5 ms for 1020 seconds while believing it had changed rate eight times,
+because the first step set 100 ms, which is the module's own fast interval, and
+`setAdvertisingInterval` guarded its republish on the rate differing from the
+*fast* interval rather than from the one being asked for. Once the two were
+equal the test was false for good. That is a module bug, it is fixed and has a
+regression test, and 100 ms now goes **last** in the sweep so that the next
+peculiarity at that step costs seven steps less.
+
+What the trace gives anyway, read out of the idle minute and the long stretch:
+
+| | measured |
+|---|---|
+| floor between everything | **4.34 uA** (median of 4.3 million samples) |
+| one sealed advertising event, 9 bytes of service data | 5.5 to 6.75 ms, peak 4.5 to 5.6 mA, **14.6 to 21.1 uC** |
+| the two-interval solve, 2003 ms against 104.5 ms | **Qadv 14.8 uC, floor 7.0 uA** |
+| the device at its 2 s default | **14.4 uA**, which is 637 days of a 220 mAh cell |
+| power-up | 1.41 s and **8.6 mC**, peaking at 138 mA |
+
+**And a 7.2 uC event every 8.000 seconds that is not the radio.** Seventeen
+milliseconds long, peaking at 780 uA where an advertising event peaks at 5 mA:
+too slow and too weak to be a transmission, and exactly periodic. That is the
+SoftDevice recalibrating the low-frequency RC oscillator, which a Puck.js needs
+because it has no 32 kHz crystal. It costs **0.90 uA continuously**, which is a
+fifth of the floor and a seventh of what the device spends advertising at 2 s,
+and no datasheet figure or model in this file predicted it. It is also why the
+fitted floor comes out at 7.0 uA against a 4.34 uA median: the floor is the
+median plus the calibration plus the part of every event that falls under the
+detection margin.
+
+The power-up figure is worth keeping for a different question: a device that
+sleeps and reboots rather than advertising slowly pays 8.6 mC a cycle, which is
+the advertising of nine minutes at 2 s.
 
 ### What the model already says, before anything is measured
 

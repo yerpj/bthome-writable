@@ -1118,7 +1118,15 @@ function setAdvertisingInterval(ms) {
   // Re-armed, not just re-installed: this is also the interval an entry
   // inherits and the one an `interval: 0` entry is read at.
   schedule();
-  if (st.fastTimer === undefined && st.advInterval !== st.fastInterval) {
+  // Against st.interval, which was just assigned above, and not against
+  // st.fastInterval: the test is whether the radio is already at the rate
+  // being asked for. Comparing with the fast interval instead meant that a
+  // device whose idle interval was set to 100 ms -- the fast interval's own
+  // default -- stopped republishing for good, so every later change updated
+  // st.interval and was never handed to the radio. Found on the bench
+  // 2026-10-26: a swept measurement starting at 100 ms advertised at 100 ms
+  // for seventeen minutes while believing it had changed rate eight times.
+  if (st.fastTimer === undefined && st.advInterval !== st.interval) {
     st.advInterval = st.interval;
     republishRate();
   }
@@ -1238,7 +1246,7 @@ var MARK = D1;
    step lasts and SWEEP_START_MS how long it waits first -- long enough for the
    Web IDE to let go and for the 30 s fast window that its disconnect opens to
    expire, so disconnect as soon as the sketch is loaded. */
-var SWEEP = [100, 200, 500, 1000, 2000, 3200, 5000, 10000];
+var SWEEP = [200, 500, 1000, 2000, 3200, 5000, 10000, 100];
 var SWEEP_MS = 120000;
 var SWEEP_START_MS = 120000;
 
