@@ -1,18 +1,111 @@
 {
-  "samples": 4332224,
+  "samples": 4531636,
   "period_ms": 0.25,
-  "span_s": 1083.056,
-  "mean_ua": 148.55,
-  "median_ua": 4.34,
-  "max_ua": 138361.0,
-  "charge_uc": 160892.8,
+  "span_s": 1132.909,
+  "mean_ua": 56.94,
+  "median_ua": 4.27,
+  "max_ua": 41575.0,
+  "charge_uc": 64508.5,
   "life_at_this_mean": {
-    "hours": 1480.9,
-    "days": 61.7,
-    "years": 0.17
+    "hours": 3863.7,
+    "days": 161.0,
+    "years": 0.44
   },
   "thin_windows": 0,
   "capacity_mah": 220.0,
   "unknown_digital_samples": 0,
-  "source": "Enregistrement_1"
+  "outside_windows_median_ua": 4.1,
+  "windows": [
+    {
+      "start_ms": 13528.25,
+      "duration_ms": 57998.5,
+      "mean_ua": 14.47,
+      "max_ua": 5593.5,
+      "charge_uc": 838.97,
+      "excess_uc": 838.97,
+      "label": "2000"
+    },
+    {
+      "start_ms": 71546.0,
+      "duration_ms": 119962.75,
+      "mean_ua": 79.42,
+      "max_ua": 5619.1,
+      "charge_uc": 9527.11,
+      "excess_uc": 9527.11,
+      "label": "200"
+    },
+    {
+      "start_ms": 191562.75,
+      "duration_ms": 119647.75,
+      "mean_ua": 36.25,
+      "max_ua": 5600.8,
+      "charge_uc": 4337.37,
+      "excess_uc": 4337.37,
+      "label": "500"
+    },
+    {
+      "start_ms": 312557.0,
+      "duration_ms": 118549.5,
+      "mean_ua": 21.88,
+      "max_ua": 5601.0,
+      "charge_uc": 2593.38,
+      "excess_uc": 2593.38,
+      "label": "1000"
+    },
+    {
+      "start_ms": 433594.0,
+      "duration_ms": 116296.0,
+      "mean_ua": 14.35,
+      "max_ua": 5607.9,
+      "charge_uc": 1669.32,
+      "excess_uc": 1669.32,
+      "label": "2000"
+    },
+    {
+      "start_ms": 554810.0,
+      "duration_ms": 115375.0,
+      "mean_ua": 11.46,
+      "max_ua": 5606.8,
+      "charge_uc": 1322.47,
+      "excess_uc": 1322.47,
+      "label": "3200"
+    },
+    {
+      "start_ms": 676625.5,
+      "duration_ms": 114989.75,
+      "mean_ua": 9.86,
+      "max_ua": 5490.7,
+      "charge_uc": 1133.68,
+      "excess_uc": 1133.68,
+      "label": "5000"
+    },
+    {
+      "start_ms": 792617.5,
+      "duration_ms": 119011.25,
+      "mean_ua": 8.2,
+      "max_ua": 5577.9,
+      "charge_uc": 975.94,
+      "excess_uc": 975.94,
+      "label": "10000"
+    },
+    {
+      "start_ms": 911651.0,
+      "duration_ms": 221159.25,
+      "mean_ua": 148.63,
+      "max_ua": 5639.5,
+      "charge_uc": 32870.56,
+      "excess_uc": 32870.56,
+      "label": "100"
+    }
+  ],
+  "window_summary": {
+    "n": 9,
+    "baseline_ua": 0.0,
+    "median_duration_ms": 118549.5,
+    "median_mean_ua": 14.47,
+    "median_charge_uc": 1669.32,
+    "median_excess_uc": 1669.32,
+    "total_excess_uc": 55268.8
+  },
+  "source": "Enregistrement_1_2"
 }

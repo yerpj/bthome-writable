@@ -1941,6 +1941,73 @@ The power-up figure is worth keeping for a different question: a device that
 sleeps and reboots rather than advertising slowly pays 8.6 mC a cycle, which is
 the advertising of nine minutes at 2 s.
 
+### The sweep, measured
+
+**2026-10-26, Puck.js f7b9 at 3.0 V, sealed, booting from `.bootcde`, no
+central, 18.9 minutes at 4 ksps, the steps read out of the advertising rate
+itself.** Every detected interval came back as the one that was programmed,
+which is the check a marker channel would have given and better, because it is
+a reading rather than a label.
+
+| interval | duration | mean | peak |
+|---|---|---|---|
+| 100 ms | 221.2 s | **148.63 uA** | 5.6 mA |
+| 200 ms | 120.0 s | **79.42 uA** | 5.6 mA |
+| 500 ms | 119.6 s | **36.25 uA** | 5.6 mA |
+| 1 s | 118.5 s | **21.88 uA** | 5.6 mA |
+| 2 s | 116.3 s | **14.35 uA** | 5.6 mA |
+| 2 s, again, before the sweep began | 58.0 s | **14.47 uA** | 5.6 mA |
+| 3.2 s | 115.4 s | **11.46 uA** | 5.6 mA |
+| 5 s | 115.0 s | **9.86 uA** | 5.5 mA |
+| 10 s | 119.0 s | **8.20 uA** | 5.6 mA |
+
+The two 2 s figures are 0.8% apart, measured nine minutes and six intervals
+from each other, which is the repeatability of the whole rig in one line.
+
+**The fit, on all nine points: a floor of 7.35 uA and 14.19 uC an advertising
+event, worst residual 1.1 uA.** Over an eighteenfold range of interval and a
+range of current from 8 to 149 uA, a two-term model is never more than a
+microamp out, so the additive model of this section is not an approximation
+worth worrying about. The residuals lean one way, positive at the short
+intervals and negative at the long ones, by about half a microamp: there is a
+little convexity the model does not carry, and it is smaller than the thing it
+would explain.
+
+**And the fast window is now measured rather than modelled.** The model says a
+device in its fast window draws `floor + Qadv/fastInterval` = 7.35 + 141.9 =
+**149.3 uA**; the 100 ms step measures **148.63 uA**. The term the whole
+saturation claim rests on is confirmed to half a per cent by a step that was in
+the sweep for exactly that reason.
+
+### The reference table, with two of three coefficients measured
+
+Only the per-command charge is missing, and it is the small one: a connection is
+tens of microcoulombs, which is a microamp or two at a command a minute. The
+table below has it at zero, so every cell is a lower bound that the command
+recordings will raise by about that much.
+
+| advertising interval | 0/min | 1/min | 2/min | 3/min | 4/min | 6/min |
+|---|---|---|---|---|---|---|
+| 200 ms | 78.3 | 113.8 | 149.3 | 149.3 | 149.3 | 149.3 |
+| 500 ms | 35.7 | 92.5 | 149.3 | 149.3 | 149.3 | 149.3 |
+| 1 s | 21.5 | 85.4 | 149.3 | 149.3 | 149.3 | 149.3 |
+| 2 s | 14.4 | 81.9 | 149.3 | 149.3 | 149.3 | 149.3 |
+| 3.2 s | 11.8 | 80.5 | 149.3 | 149.3 | 149.3 | 149.3 |
+| 5 s | 10.2 | 79.7 | 149.3 | 149.3 | 149.3 | 149.3 |
+| 10 s | 8.8 | 79.0 | 149.3 | 149.3 | 149.3 | 149.3 |
+
+In days of a 220 mAh CR2032: **634 days at the module's 2 s default with nobody
+writing, 1045 at 10 s, 117 at 200 ms, and 61 days flat from two commands a
+minute upward** whatever the interval is set to.
+
+**So the prediction holds, with numbers.** Above two commands a minute the
+advertising interval cannot be read in the current at all: the fast window never
+closes and every row collapses onto 149.3 uA. A device commanded that often
+lasts **61 days instead of 634**, a factor of ten, and the lever that recovers
+it is `fastTimeout`, not `interval`. That is the sentence the module page owes
+an adopter, and it is now measured on one board rather than argued from a
+datasheet.
+
 ### What the model already says, before anything is measured
 
 **The write rate stops mattering almost immediately, and the advertising

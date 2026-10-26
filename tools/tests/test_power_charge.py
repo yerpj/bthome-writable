@@ -309,5 +309,29 @@ def test_a_power_up_spike_does_not_raise_the_burst_threshold(tmp_path) -> None:
     folder = _otii_folder(tmp_path, samples)
     trace = Trace.read(folder / "Main current - Arc.csv")
     assert max(trace.currents) == 138000.0
-    assert trace.burst_threshold() < 300.0
+    assert trace.burst_threshold() < 1500.0
     assert len(trace.bursts(trace.burst_threshold())) >= 6
+
+
+def test_the_oscillator_calibration_is_not_a_radio_event(tmp_path) -> None:
+    """A Puck.js recalibrates its RC oscillator every 8.000 s, 17 ms at 780 uA
+    of peak. Counted as a radio event it splits an advertising run in two every
+    eight seconds, which turned one clean sweep into 81 fragments."""
+    rows = _events([(2000.0, 6.0, 20)])
+    # Drop a calibration into the quiet between events, 780 uA for 17 ms.
+    for index, (when, _value) in enumerate(rows):
+        if 7.9 < when < 7.917 or 15.9 < when < 15.917:
+            rows[index] = (when, 780e-6)
+    folder = _otii_folder(tmp_path, rows)
+    trace = Trace.read(folder / "Main current - Arc.csv")
+    steps = trace.segments((2000,))
+    assert len(steps) == 1, "one step, not three"
+    assert steps[0]["label"] == 2000
+
+
+def test_two_runs_at_one_interval_are_one_step(tmp_path) -> None:
+    """A dropped event cuts a run; the step is still one step."""
+    rows = _events([(100.0, 6.0, 12), (240.0, 6.0, 1), (100.0, 6.0, 12)])
+    folder = _otii_folder(tmp_path, rows)
+    steps = Trace.read(folder / "Main current - Arc.csv").segments((100, 200))
+    assert [step["label"] for step in steps] == [100]

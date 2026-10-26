@@ -70,15 +70,25 @@ CURRENT_NAMES = ("current", "amps")
 UNITS = {"ua": 1.0, "µa": 1.0, "ma": 1000.0, "a": 1e6, "na": 0.001}
 TIME_UNITS = {"s": 1000.0, "sec": 1000.0, "ms": 1.0, "us": 0.001, "µs": 0.001}
 DIGITAL = re.compile(r"^\s*(?:gpi\s*|d|logic\s*)(\d)\s*(?:[(\[].*)?$", re.IGNORECASE)
-BURST_MARGIN_UA = 200.0
+BURST_MARGIN_UA = 1000.0
 """How far above the floor a sample has to be to count as a radio event.
 
-A fraction of the peak was the first idea and it is wrong. The trace of
-2026-10-26 opens with 138 mA of power-up, which put a five-per-cent threshold
-at 6.9 mA and found no advertising events in eighteen minutes of them. An
-nRF52's radio event is milliamps and its floor is microamps, so a fixed margin
-above the median separates the two with three orders of magnitude to spare and
-nothing in the trace can move it."""
+Twice found the hard way on 2026-10-26, and both times for the same reason:
+a threshold has to come from what the hardware does, not from the trace.
+
+A fraction of the peak was the first idea. The trace opens with tens of
+milliamps of power-up inrush, which put a five-per-cent threshold at 6.9 mA and
+found none of the eighteen minutes of advertising events behind it.
+
+200 uA was the second, and it is above the floor but **below the SoftDevice's
+calibration of the low-frequency RC oscillator**, which a Puck.js runs every
+8.000 s for want of a 32 kHz crystal: 17 ms at 780 uA of peak. Counted as a
+radio event it splits an advertising run in two every eight seconds, which is
+how a clean sweep came back as 81 fragments instead of 9 steps.
+
+So: a milliamp. An advertising event on a Puck.js peaks at 4.5 to 5.6 mA and
+the calibration at 780 uA, so a milliamp sits in the gap with a factor of
+four each way, and `--burst-margin` moves it for a board that differs."""
 THIN_WINDOW = 10
 """Fewer samples than this in a window and the charge is a guess, not a
 measurement: at an Arc Pro's 250 us a sample that is 2.5 ms."""
@@ -447,15 +457,24 @@ class Trace:
             events = index - run_from + 1
             if label is not None and events >= least:
                 first, last = starts[run_from], starts[index]
-                out.append(
-                    {
-                        "label": label,
-                        "events": events,
-                        "window": (first, last),
-                        "from_ms": round(self.times[first], 1),
-                        "to_ms": round(self.times[last], 1),
-                    }
-                )
+                # One step, even when an anomaly cut it: a run that carries the
+                # same interval as the one before it is the same step with a
+                # dropped event in the middle, and two short windows at one
+                # interval are a worse measurement than one long one.
+                if out and out[-1]["label"] == label:
+                    out[-1]["events"] += events - 1
+                    out[-1]["window"] = (out[-1]["window"][0], last)
+                    out[-1]["to_ms"] = round(self.times[last], 1)
+                else:
+                    out.append(
+                        {
+                            "label": label,
+                            "events": events,
+                            "window": (first, last),
+                            "from_ms": round(self.times[first], 1),
+                            "to_ms": round(self.times[last], 1),
+                        }
+                    )
             run_from = index
         return out
 
