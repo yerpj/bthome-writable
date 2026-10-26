@@ -61,6 +61,9 @@ def fit(report: dict) -> dict:
     one event's charge divided by the interval, so against 1/T it is an
     intercept and a slope. The residual is reported with them, because a model
     that does not fit its own measurement is the first thing to notice.
+
+    Windows whose label is not a number are skipped, which is how `-` drops the
+    stretch of trace before the sweep's first marker pulse.
     """
     xs: list[float] = []
     ys: list[float] = []
@@ -68,7 +71,14 @@ def fit(report: dict) -> dict:
         label = window.get("label")
         if label is None:
             continue
-        interval_s = float(label) / 1000.0
+        try:
+            interval_s = float(label) / 1000.0
+        except ValueError:
+            # A window the run sheet labelled "-", which is how a sweep drops
+            # the stretch before its first marker pulse: that one holds the
+            # sketch load, the console's disconnect and the fast window the
+            # disconnect opened, so it is not an advertising interval at all.
+            continue
         xs.append(1.0 / interval_s)
         ys.append(float(window["mean_ua"]))
     if len(xs) < 2:

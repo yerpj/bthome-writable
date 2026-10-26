@@ -107,3 +107,20 @@ def test_a_sensor_that_moves_adds_its_rebuilds() -> None:
     assert with_sensor.current_ua(2000, 0) - MODEL.current_ua(2000, 0) == 20.0
     assert with_sensor.terms(2000, 0)["rebuilds_ua"] == 20.0
     assert MODEL.terms(2000, 0)["rebuilds_ua"] == 0.0
+
+
+def test_the_stretch_before_the_sweep_starts_is_dropped() -> None:
+    """A device-driven sweep leaves one gap more than it has steps: the minute
+    before its first marker pulse, which holds the sketch load and the fast
+    window the console's disconnect opened. The run sheet labels it `-`."""
+    report = {
+        "windows": [{"label": "-", "mean_ua": 310.0}]
+        + [
+            {"label": label, "mean_ua": 45.0 + 9.0 / (label / 1000.0)}
+            for label in (200, 1000, 3200, 10000)
+        ]
+    }
+    fitted = fit(report)
+    assert fitted["points"] == 4
+    assert fitted["floor_ua"] == 45.0
+    assert fitted["worst_residual_ua"] == 0.0

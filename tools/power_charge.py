@@ -451,7 +451,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--labels",
         help="comma-separated names for the windows, in order, e.g. the swept"
-        " advertising intervals",
+        " advertising intervals. With --gaps there is one window more than there"
+        " are steps, because the stretch before the first marker pulse is a gap"
+        " too: label it - and the fit will skip it",
     )
     parser.add_argument(
         "--digital-threshold",

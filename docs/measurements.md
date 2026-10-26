@@ -1858,11 +1858,18 @@ marker pulses, which is what `--gaps` reads:
 
 ```
 python -m tools.power_charge sweep.csv --digital GPI1 --gaps \
-    --labels "100,200,500,1000,2000,3200,5000,10000" --out power-puck-sweep.json
+    --labels "-,100,200,500,1000,2000,3200,5000,10000" \
+    --out power-puck-sweep.json
 python -m tools.power_charge commands.csv --digital GPI1 --baseline auto
 python -m tools.power_table --fit power-puck-sweep.json --command-charge <Qcmd> \
     --life --capacity-mah 220
 ```
+
+**Nine labels for eight steps**, because the quiet before the first marker
+pulse is a gap like any other: it is the minute the sketch spends at
+`ADV_INTERVAL` while the console lets go and the fast window its disconnect
+opened expires. `-` is the label that drops it, and a mismatch between labels
+and windows is reported rather than silently shifting every step by one.
 
 The fit prints its own worst residual, which is the first thing to look at: a
 model that does not fit the sweep it came from has no business predicting a
