@@ -543,6 +543,7 @@
     {
       "at_s": 0.0,
       "boot": true,
+      "connection_ms": 12077.25,
       "solid_ms": 0,
       "solid_ua": 0.0,
       "solid_uc": 0,
@@ -559,6 +560,7 @@
     {
       "at_s": 66.14,
       "boot": false,
+      "connection_ms": 2921.25,
       "solid_ms": 292.5,
       "solid_ua": 3893.3,
       "solid_uc": 1138.8,
@@ -575,6 +577,7 @@
     {
       "at_s": 109.09,
       "boot": false,
+      "connection_ms": 2973.25,
       "solid_ms": 190.25,
       "solid_ua": 3876.0,
       "solid_uc": 737.4,
@@ -591,6 +594,7 @@
     {
       "at_s": 164.12,
       "boot": false,
+      "connection_ms": 2934.25,
       "solid_ms": 190.0,
       "solid_ua": 3840.8,
       "solid_uc": 729.7,
@@ -607,6 +611,7 @@
     {
       "at_s": 201.07,
       "boot": false,
+      "connection_ms": 1982.75,
       "solid_ms": 190.0,
       "solid_ua": 3851.5,
       "solid_uc": 731.8,
@@ -623,6 +628,7 @@
     {
       "at_s": 245.09,
       "boot": false,
+      "connection_ms": 1952.5,
       "solid_ms": 190.0,
       "solid_ua": 3827.3,
       "solid_uc": 727.2,
@@ -639,6 +645,7 @@
     {
       "at_s": 299.11,
       "boot": false,
+      "connection_ms": 1938.0,
       "solid_ms": 197.75,
       "solid_ua": 3839.2,
       "solid_uc": 759.2,
@@ -655,6 +662,7 @@
     {
       "at_s": 335.07,
       "boot": false,
+      "connection_ms": 1971.0,
       "solid_ms": 188.75,
       "solid_ua": 3893.0,
       "solid_uc": 734.8,
@@ -671,6 +679,7 @@
     {
       "at_s": 381.1,
       "boot": false,
+      "connection_ms": 1944.25,
       "solid_ms": 186.25,
       "solid_ua": 3923.8,
       "solid_uc": 730.8,
@@ -687,6 +696,7 @@
     {
       "at_s": 457.16,
       "boot": false,
+      "connection_ms": 1085.5,
       "solid_ms": 189.5,
       "solid_ua": 3896.0,
       "solid_uc": 738.3,
@@ -706,6 +716,7 @@
     "n_full_window": 9,
     "floor_ua": 14.41,
     "boot_connection_uc": 8554.0,
+    "median_connection_ms": 1971.0,
     "median_solid_ms": 190.0,
     "median_solid_uc": 734.8,
     "median_link_ms": 1716.5,

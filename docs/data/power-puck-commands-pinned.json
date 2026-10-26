@@ -579,6 +579,7 @@
     {
       "at_s": 0.0,
       "boot": true,
+      "connection_ms": 17744.5,
       "solid_ms": 0,
       "solid_ua": 0.0,
       "solid_uc": 0,
@@ -595,6 +596,7 @@
     {
       "at_s": 99.89,
       "boot": false,
+      "connection_ms": 2863.75,
       "solid_ms": 183.75,
       "solid_ua": 3675.0,
       "solid_uc": 673.1,
@@ -611,6 +613,7 @@
     {
       "at_s": 146.8,
       "boot": false,
+      "connection_ms": 1941.0,
       "solid_ms": 85.0,
       "solid_ua": 3390.2,
       "solid_uc": 288.2,
@@ -627,6 +630,7 @@
     {
       "at_s": 192.78,
       "boot": false,
+      "connection_ms": 1957.25,
       "solid_ms": 83.75,
       "solid_ua": 3478.3,
       "solid_uc": 291.3,
@@ -643,6 +647,7 @@
     {
       "at_s": 234.78,
       "boot": false,
+      "connection_ms": 1950.25,
       "solid_ms": 74.0,
       "solid_ua": 3753.5,
       "solid_uc": 277.8,
@@ -659,6 +664,7 @@
     {
       "at_s": 296.84,
       "boot": false,
+      "connection_ms": 2888.0,
       "solid_ms": 74.0,
       "solid_ua": 3959.8,
       "solid_uc": 293.0,
@@ -675,6 +681,7 @@
     {
       "at_s": 325.36,
       "boot": false,
+      "connection_ms": 2359.25,
       "solid_ms": 76.5,
       "solid_ua": 3669.4,
       "solid_uc": 280.7,
@@ -691,6 +698,7 @@
     {
       "at_s": 371.76,
       "boot": false,
+      "connection_ms": 1972.0,
       "solid_ms": 77.5,
       "solid_ua": 3680.0,
       "solid_uc": 285.2,
@@ -707,6 +715,7 @@
     {
       "at_s": 415.77,
       "boot": false,
+      "connection_ms": 1954.5,
       "solid_ms": 81.25,
       "solid_ua": 3559.5,
       "solid_uc": 289.2,
@@ -723,6 +732,7 @@
     {
       "at_s": 479.79,
       "boot": false,
+      "connection_ms": 1930.0,
       "solid_ms": 77.5,
       "solid_ua": 3611.9,
       "solid_uc": 279.9,
@@ -739,6 +749,7 @@
     {
       "at_s": 502.53,
       "boot": false,
+      "connection_ms": 2198.0,
       "solid_ms": 81.5,
       "solid_ua": 3518.6,
       "solid_uc": 286.8,
@@ -758,6 +769,7 @@
     "n_full_window": 8,
     "floor_ua": 14.87,
     "boot_connection_uc": 9872.0,
+    "median_connection_ms": 1964.62,
     "median_solid_ms": 79.38,
     "median_solid_uc": 287.5,
     "median_link_ms": 1823.38,

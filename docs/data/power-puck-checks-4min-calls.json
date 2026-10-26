@@ -1,0 +1,168 @@
+{
+  "entity": "switch.bureau_mobilesensf7b9_light",
+  "service": "switch.alternate",
+  "count": 20,
+  "every_s": 15.0,
+  "calls": [
+    {
+      "n": 1,
+      "service": "turn_on",
+      "at_s": 120.0,
+      "wall": 1793017354.2108355,
+      "returned_in_s": 12.188,
+      "error": null
+    },
+    {
+      "n": 2,
+      "service": "turn_off",
+      "at_s": 135.0,
+      "wall": 1793017369.2152302,
+      "returned_in_s": 0.61,
+      "error": null
+    },
+    {
+      "n": 3,
+      "service": "turn_on",
+      "at_s": 150.0,
+      "wall": 1793017384.2104454,
+      "returned_in_s": 0.813,
+      "error": null
+    },
+    {
+      "n": 4,
+      "service": "turn_off",
+      "at_s": 165.0,
+      "wall": 1793017399.2081592,
+      "returned_in_s": 0.782,
+      "error": null
+    },
+    {
+      "n": 5,
+      "service": "turn_on",
+      "at_s": 180.016,
+      "wall": 1793017414.2196126,
+      "returned_in_s": 1.078,
+      "error": null
+    },
+    {
+      "n": 6,
+      "service": "turn_off",
+      "at_s": 195.0,
+      "wall": 1793017429.2078364,
+      "returned_in_s": 0.563,
+      "error": null
+    },
+    {
+      "n": 7,
+      "service": "turn_on",
+      "at_s": 210.0,
+      "wall": 1793017444.2083545,
+      "returned_in_s": 0.985,
+      "error": null
+    },
+    {
+      "n": 8,
+      "service": "turn_off",
+      "at_s": 225.0,
+      "wall": 1793017459.2127163,
+      "returned_in_s": 0.938,
+      "error": null
+    },
+    {
+      "n": 9,
+      "service": "turn_on",
+      "at_s": 240.0,
+      "wall": 1793017474.2096696,
+      "returned_in_s": 0.625,
+      "error": null
+    },
+    {
+      "n": 10,
+      "service": "turn_off",
+      "at_s": 255.0,
+      "wall": 1793017489.2171757,
+      "returned_in_s": 1.047,
+      "error": null
+    },
+    {
+      "n": 11,
+      "service": "turn_on",
+      "at_s": 270.0,
+      "wall": 1793017504.2170284,
+      "returned_in_s": 0.625,
+      "error": null
+    },
+    {
+      "n": 12,
+      "service": "turn_off",
+      "at_s": 285.0,
+      "wall": 1793017519.2149258,
+      "returned_in_s": 0.844,
+      "error": null
+    },
+    {
+      "n": 13,
+      "service": "turn_on",
+      "at_s": 300.0,
+      "wall": 1793017534.214102,
+      "returned_in_s": 0.813,
+      "error": null
+    },
+    {
+      "n": 14,
+      "service": "turn_off",
+      "at_s": 315.0,
+      "wall": 1793017549.214483,
+      "returned_in_s": 0.735,
+      "error": null
+    },
+    {
+      "n": 15,
+      "service": "turn_on",
+      "at_s": 330.0,
+      "wall": 1793017564.210484,
+      "returned_in_s": 0.657,
+      "error": null
+    },
+    {
+      "n": 16,
+      "service": "turn_off",
+      "at_s": 345.0,
+      "wall": 1793017579.2041316,
+      "returned_in_s": 0.813,
+      "error": null
+    },
+    {
+      "n": 17,
+      "service": "turn_on",
+      "at_s": 360.0,
+      "wall": 1793017594.2132053,
+      "returned_in_s": 0.594,
+      "error": null
+    },
+    {
+      "n": 18,
+      "service": "turn_off",
+      "at_s": 375.016,
+      "wall": 1793017609.2233298,
+      "returned_in_s": 0.672,
+      "error": null
+    },
+    {
+      "n": 19,
+      "service": "turn_on",
+      "at_s": 390.0,
+      "wall": 1793017624.214431,
+      "returned_in_s": 1.125,
+      "error": null
+    },
+    {
+      "n": 20,
+      "service": "turn_off",
+      "at_s": 405.0,
+      "wall": 1793017639.211283,
+      "returned_in_s": 0.641,
+      "error": null
+    }
+  ]
+}

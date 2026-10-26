@@ -9238,30 +9238,39 @@ the question: the figure that settles this one is not a device's idle current bu
 the charge of one command, and the comparison that makes it readable is the fast
 window the module already spends after every disconnect.
 
-**2026-10-26: the power arm is measured, and pinning is cheaper rather than
-dearer** (§23). Two recordings an hour apart on the Puck.js under the Otii Arc
-Pro, same board, same sketch, one statement different, ten commands driven from
-Home Assistant through the ESPHome proxy. **A command's connection costs
-1422 uC pinned against 1810 uC automatic**, a 21% saving, and the whole of it is
-in the stretch of unbroken radio a connection opens with: 79 ms pinned against
-190 ms. The link that follows and the 30 s fast window after it are unchanged,
-and the rig's own drift between the two sittings was 3%.
+**2026-10-26: the power arm is measured, and pinning is not expensive**
+(§23). Three recordings on the Puck.js under the Otii Arc Pro, 49 commands
+driven from Home Assistant through the ESPHome proxy: two on the automatic
+interval and one pinned. **A command's connection costs 1422 uC pinned
+against a pooled 1810 uC automatic**, and the mechanism is the one §22
+measured as latency: the link is held open 1.96 s instead of 2.34. The fast
+window and the advertising are untouched.
 
-**That removes the only argument against option 1 on this path, and it does not
-remove the guard question.** The worry was the 27x below: at 7.5 ms the radio
-wakes 27 times more often than at 200 ms *while connected*. It does not
-materialise here because the central already chose 7.5 ms with nothing asking
-it to, so there was never a slower interval to lose. For a central that would
-negotiate something slow and then hold the link, the arithmetic of the 27x
-stands untouched, and this bench cannot produce that central: `hold_link.py`
-auto against pinned is still the recording that would settle it.
+**The 27x does not appear, and that is the answer the decision needed.** At
+7.5 ms the radio wakes 27 times more often than at 200 ms *while connected*,
+and it never cost anything here because the central had already chosen 7.5
+ms with nothing asking it to: there was no slower interval to lose. For a
+central that would negotiate something slow and then hold the link, the
+arithmetic stands untouched, and this bench cannot produce that central.
+`hold_link.py` auto against pinned is still the recording that would settle
+it.
 
-**So: option 1, unconditionally, is now supported by latency and by charge.** It
-is 2.2 s faster and 388 uC cheaper a command, which at one command a minute is
-82 days of a 220 mAh cell against 87. What is still owed is the held-open case,
-and the recommendation is to take option 1 and document the held-open link as
-the one case that wants `"auto"` back, rather than to hold the decision for a
-recording nobody is waiting on.
+**The saving is real in direction and weak in size, and an earlier reading
+of it was wrong.** Against the first automatic recording alone the whole 388
+uC appeared to sit in the burst of unbroken radio a connection opens with,
+190 ms automatic against 79 pinned, which pointed straight at the connection
+parameter update procedure. The second automatic recording came back at 80
+ms, so that burst is the same in both arms and 190 ms was the first
+recording's own: there was an unlabelled second variable on the Home
+Assistant side. The arms are also separated by less than the automatic arm's
+own spread, 1330 to 2725 uC against 1390 to 2277. So what the power arm
+establishes is that **option 1 costs nothing**; §22's 100 commands an arm is
+what establishes that it gains 2.2 s.
+
+**The recommendation is unchanged and now cheaper to defend: option 1,
+unconditionally**, with the held-open link documented as the one case that
+wants `"auto"` back. Holding the decision for a recording nobody is waiting
+on buys less than taking it and writing down the exception.
 
 **Why it is also a question for @gfwilliams.** The firmware comment says activity
 raises the interval back to 7.5 ms after more than one BLE operation. A folded
@@ -9287,6 +9296,23 @@ over windows rather than the peak of a single advertising event -- and one is a
 decision: because only one board sits on the meter at a time, the floor arm is
 part of each board's own sitting and no row of the published table compares the
 two boards under one setup.
+
+**2026-10-26, the campaign ran and the two checks earned their place.** Four
+recordings on the Puck.js, 49 commands, and the whole table is measured
+(§23). The one thing worth promoting out of the measurements file into this
+log is what the checks did: the 7-by-7 table was **14% wrong in the cell
+that carries its headline claim**, and nothing but a recorded cell could
+have found it. The model billed the seconds a command spends connected to
+the fast window as well as to the command, which is invisible at one command
+a minute and is the whole error at four. `power_table` now carries a fourth
+coefficient for it.
+
+So the sentence in this decision that the checks are not optional was right,
+and it is worth keeping for the second board: **a cell computed from
+coefficients is not a measurement, and the cells to record are the ones
+whose value an argument rests on.** The saturation moved from 2.00 to 1.855
+commands a minute with the fix, which leaves the published advice intact and
+with less margin than it looked to have.
 
 **What it fixes, and it is a real gap.** This project has quoted current figures
 since §8 and it has never measured one. Every microamp in `docs/measurements.md`

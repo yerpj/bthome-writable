@@ -662,6 +662,7 @@ def commands(windows: list[dict], floor_ua: float | None = None) -> list[dict]:
                 if before
                 else round(window["start_ms"] / 1000.0, 2),
                 "boot": first == 0,
+                "connection_ms": round(sum(w["duration_ms"] for w in before), 2),
                 "solid_ms": round(sum(w["duration_ms"] for w in solid), 2),
                 "solid_ua": round(st.mean([w["mean_ua"] for w in solid]), 1)
                 if solid
@@ -705,6 +706,7 @@ def command_summary(found: list[dict], floor_ua: float) -> dict:
         ),
     }
     for field in (
+        "connection_ms",
         "solid_ms",
         "solid_uc",
         "link_ms",
