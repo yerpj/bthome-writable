@@ -9,11 +9,13 @@ the way `espruino/bench/power-arms.js` marks a connection.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
+import statistics as st
 
 import pytest
 
-from tools.power_charge import Trace, summarise
+from tools.power_charge import Trace, main, summarise
 
 PERIOD_MS = 1.0
 
@@ -197,3 +199,46 @@ def test_the_steps_of_a_sweep_are_the_quiet_between_its_pulses(tmp_path: Path) -
     assert steps == [(10, 100), (110, 200), (210, 300)]
     report = summarise(trace, steps, 0.0, 220.0)
     assert [round(w["mean_ua"]) for w in report["windows"]] == [90, 50, 20]
+
+
+def _otii_folder(tmp_path, samples: list[tuple[float, float]], marker=None):
+    """An Arc export as the instrument really writes it, pinned 2026-10-26.
+
+    One folder a recording, one file a channel, `"Timestamp","Value"` in both,
+    the timestamp in seconds and the value in the quantity's SI unit. The
+    channel is named by the file and nowhere else.
+    """
+    folder = tmp_path / "recording"
+    folder.mkdir()
+    current = folder / "Main current - Arc.csv"
+    current.write_text(
+        '"Timestamp","Value"\n' + "".join(f"{t:.6f},{a:.8e}\n" for t, a in samples),
+        encoding="utf-8",
+    )
+    if marker is not None:
+        (folder / "GPI1 - Arc.csv").write_text(
+            '"Timestamp","Value"\n' + "".join(f"{t:.6f},{v:g}\n" for t, v in marker),
+            encoding="utf-8",
+        )
+    return folder
+
+
+def test_an_arc_export_folder_reads_with_no_flags(tmp_path) -> None:
+    """The headers say neither the quantity nor the unit, so the file name has
+    to: amperes under `Main current`, seconds under a bare `Timestamp`."""
+    folder = _otii_folder(tmp_path, [(i * 0.00025, 4.0e-06) for i in range(400)])
+    assert main([str(folder)]) == 0
+    trace = Trace.read(folder / "Main current - Arc.csv")
+    assert trace.period_ms == 0.25
+    assert round(st.median(trace.currents), 2) == 4.0  # microamps, from amperes
+
+
+def test_the_marker_file_is_found_in_the_folder(tmp_path) -> None:
+    samples = [(i * 0.00025, 4.0e-06 if i < 200 else 6.0e-03) for i in range(400)]
+    marker = [(i * 0.001, 0.0 if i < 50 else 3.0) for i in range(100)]
+    folder = _otii_folder(tmp_path, samples, marker)
+    report = tmp_path / "report.json"
+    assert main([str(folder), "--out", str(report)]) == 0
+    payload = json.loads(report.read_text(encoding="utf-8"))
+    assert len(payload["windows"]) == 1
+    assert round(payload["windows"][0]["mean_ua"]) == 6000

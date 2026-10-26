@@ -68,7 +68,7 @@ var MARK = D1;
    expire, so disconnect as soon as the sketch is loaded. */
 var SWEEP = [100, 200, 500, 1000, 2000, 3200, 5000, 10000];
 var SWEEP_MS = 120000;
-var SWEEP_START_MS = 60000;
+var SWEEP_START_MS = 120000;
 
 /* Milliseconds between re-reads of the one advertised sensor, or null for a
    device that advertises nothing it has to read -- which holds no timer at

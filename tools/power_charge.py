@@ -93,6 +93,49 @@ def _channel_name(header: str) -> str:
     return squashed
 
 
+def _otii_headers(path: Path, headers: list[str]) -> list[str]:
+    """An Otii export names its channel in the file name, not in the header.
+
+    One recording comes out as a folder of one-channel files, each of them
+    `"Timestamp","Value"` with the timestamp in seconds and the value in the
+    quantity's SI unit: `Main current - Arc.csv` is amperes, `GPI1 - Arc.csv`
+    is the marker. Rewrite the two headers into the named, unit-carrying ones
+    the rest of the reader already understands, so that an Arc export needs no
+    flags at all.
+    """
+    if [header.strip().lower() for header in headers] != ["timestamp", "value"]:
+        return headers
+    channel = path.stem.split(" - ")[0].strip()
+    if DIGITAL.match(channel):
+        return ["Timestamp(s)", channel]
+    if "current" in channel.lower():
+        return ["Timestamp(s)", "Current(A)"]
+    # Voltage, power and energy are exported the same way and are not current:
+    # named rather than renamed, they fall through to `require_current=False`.
+    return ["Timestamp(s)", channel]
+
+
+def _otii_export(directory: Path) -> tuple[Path, Path | None, str | None]:
+    """The current file and the marker file out of an Arc export folder."""
+    files = sorted(directory.glob("*.csv"))
+    current = [path for path in files if "current" in path.stem.lower()]
+    markers = [path for path in files if DIGITAL.match(path.stem.split(" - ")[0])]
+    if not current:
+        raise SystemExit(
+            f"{directory}: no current channel among"
+            f" {[path.name for path in files] or 'nothing'}"
+        )
+    if len(markers) > 1:
+        raise SystemExit(
+            f"{directory}: more than one marker channel"
+            f" ({', '.join(path.stem for path in markers)}): name one with"
+            " --digital-csv"
+        )
+    marker = markers[0] if markers else None
+    channel = _channel_name(marker.stem.split(" - ")[0]) if marker else None
+    return current[0], marker, channel
+
+
 def _unit_scale(header: str) -> float:
     """How many microamps one unit of this column is, from its own header."""
     return UNITS.get(_header_unit(header) or "", 1.0)
@@ -152,6 +195,7 @@ class Trace:
             headers = next(rows, None)
             if headers is None:
                 raise SystemExit(f"{path}: empty")
+            headers = _otii_headers(path, headers)
             time_at = _column(headers, TIME_NAMES)
             time_scale = _time_scale(headers[time_at], time_unit)
             current_at = _column(
@@ -414,7 +458,12 @@ def _print(report: dict) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("csv", type=Path, help="an exported current trace")
+    parser.add_argument(
+        "csv",
+        type=Path,
+        help="an exported current trace, or an Otii export folder holding one"
+        " file per channel",
+    )
     parser.add_argument(
         "--digital", help="a digital channel whose high stretches are the windows"
     )
@@ -472,7 +521,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--label", help="what this trace is, carried into the JSON")
     args = parser.parse_args(argv)
 
-    trace = Trace.read(args.csv, args.unit, args.time_unit)
+    # An Arc recording is a folder, not a file: find the two channels in it
+    # rather than making the run sheet spell out four paths under pressure.
+    source, found_marker, found_channel = args.csv, None, None
+    if args.csv.is_dir():
+        source, found_marker, found_channel = _otii_export(args.csv)
+        print(f"Otii export: {source.name}", end="")
+        print(f" + {found_marker.name}" if found_marker else " (no marker channel)")
+        if args.digital_csv is None:
+            args.digital_csv = found_marker
+        if args.digital is None:
+            args.digital = found_channel
+
+    trace = Trace.read(source, args.unit, args.time_unit)
     marker = (
         Trace.read(args.digital_csv, args.unit, args.time_unit, require_current=False)
         if args.digital_csv
