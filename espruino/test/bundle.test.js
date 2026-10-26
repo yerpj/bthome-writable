@@ -463,6 +463,23 @@ test("advertising continues while a receiver is connected", () => {
   assert.equal(result.options[0].whenConnected, true);
 });
 
+test("every advertising option is stated, scannable included", () => {
+  /* They are not arguments to a call. Espruino holds them in the stack's own
+   * advertising state, so an option nobody passes keeps whatever the last
+   * caller left there -- and connectable advertising with scannable off is a
+   * directed type, whose peer address the firmware always leaves NULL. A
+   * SoftDevice 6 board refuses the packet for it, which is what the
+   * `ERR 0x10 (INVALID ADDR)` reported from a Jolt.js looks like
+   * (espruino#8024, D-143). */
+  const result = run(load("light-loop-standalone.js"));
+  const opts = result.options[0];
+  assert.equal(opts.scannable, true, "or a coded-phy device never advertises again");
+  assert.equal(opts.connectable, true);
+  assert.equal(opts.discoverable, true);
+  assert.equal(typeof opts.interval, "number");
+  assert.equal(typeof opts.showName, "boolean");
+});
+
 test("a connection switches to the fast advertising interval", () => {
   /* A central can only begin a connection when it catches a connectable
    * advertising event, so the idle interval taxes every write. Real use comes
@@ -1224,6 +1241,23 @@ test("the fallback packet is sealed when the device has a key", () => {
   assert.ok(result.advertised.length > before, "something was still published");
   assert.ok(published.length > 3, `sealed, got ${published.length} bytes`);
   assert.equal(published[0] & 1, 1, "and still says it is encrypted");
+});
+
+test("a refused fallback is reported with the refusal that led to it", () => {
+  /* The fallback's own throw used to escape raw and alone, taking with it both
+   * the size of the packet that was refused first and the stack's reason for
+   * refusing it. That is how a Jolt.js reported `ERR 0x10 (INVALID ADDR)` from
+   * a stack frame pointing at setup(), with nothing to say whether the packet,
+   * the fallback or the options were at fault (espruino#8024, D-143). */
+  const result = run(load("single-light-standalone.js"));
+  result.refuse(() => true);
+
+  assert.throws(
+    () => result.context.bw.update(),
+    (error) =>
+      error.code === "advertising_rejected" &&
+      error.message.includes("and the 3-byte fallback too")
+  );
 });
 
 test("a plain device's fallback packet stays plain", () => {

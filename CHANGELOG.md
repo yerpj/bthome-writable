@@ -20,6 +20,27 @@ reads 0.2.0 until the next one is cut.
 
 ### Fixed
 
+- **The module stated five advertising options and inherited the sixth.**
+  Espruino holds the advertising flags in the stack rather than in the call, so
+  an option nobody passes keeps whatever the last caller left there, and
+  `scannable` is latched off for good by any use of the coded phy or of
+  extended advertising. Connectable advertising with scannable off is a
+  directed type, whose peer address the firmware leaves NULL, and on a
+  SoftDevice 6 board the radio then refuses to be configured at all:
+  `ERR 0x10 (INVALID ADDR)`, which is what @gfwilliams got from a Jolt.js
+  running 2v29 on 2026-10-26 where the same code works on a Puck.js.
+  `advOptions()` now names `scannable:true` with the rest, which changes
+  nothing on a device that never turned it off and leaves nothing of ours to
+  inherit (espruino#8024, D-143).
+- **A refused fallback packet threw away the refusal that led to it.** When the
+  radio refuses the real packet the module publishes a small one so the device
+  can still be found, then reports `advertising_rejected`. If the small packet
+  was refused too, its own raw error escaped alone: no packet size, no first
+  reason, no sign that a fallback had been tried, and a stack frame pointing at
+  `setup()`. That is the whole of what the Jolt.js report above had to go on.
+  One error now names both refusals and their sizes, and the cached packet is
+  cleared so the next rate change rebuilds instead of republishing bytes the
+  radio never took (D-143).
 - **A device whose advertising interval was set to 100 ms could never change
   rate again.** `setAdvertisingInterval()` republished only when the rate the
   radio was running differed from the *fast* interval, rather than from the

@@ -9422,3 +9422,70 @@ means one more EspruinoDocs pull request after #767, not an edit to it.
 **What stays the owner's.** The measurement itself, and @enaon's PPK2 figures
 remain his: the page credits both. Nothing here is published before the numbers
 exist.
+
+## D-143 — A Jolt.js refused both packets, and the module was inheriting the radio's state
+
+**2026-10-26, @gfwilliams in espruino#8024.** He ran the page's own example on
+a **Jolt.js with 2v29** and `setup()` threw
+`Uncaught Error: ERR 0x10 (INVALID ADDR) (:2908)`, with the frame pointing at
+the `refreshAdvertising()` call. His words: *"honestly I'm not sure why, or
+where it's coming from!"*. The same module and the same example work on the
+Puck.js he tested on 2026-10-07.
+
+**Where it comes from.** `(:2908)` is a firmware line, and in RELEASE_2V29
+`targets/nrf5x/bluetooth.c:2908` is the `jsble_check_error` on
+`jsble_advertising_update()` inside `jsble_advertising_start()`, which on
+SoftDevice 6 and up is `sd_ble_gap_adv_set_configure`. 0x10 is
+`NRF_ERROR_INVALID_ADDR`, documented in the S140 headers as **"Invalid pointer
+supplied"** -- a *Bluetooth* address that is malformed is a different code,
+`BLE_ERROR_GAP_INVALID_BLE_ADDR`. So the radio refused to be configured
+because a pointer it needed was missing, and the message names an address for
+a reason that has nothing to do with BLE addressing.
+
+**He reached the same function from the other end.** Later the same day:
+*"Looks like it's from jsble_advertising_update - I'm not sure why though. I
+guess it could be a generic issue rather than BTHome related."* It is generic:
+nothing `sd_ble_gap_adv_set_configure` is handed there belongs to BTHome, and
+all this module contributes is the combination of options that reaches the
+branch below. What it can still be blamed for is how little its own error
+said.
+
+**One defect of that report is ours.** A raw firmware error can only have come
+out of the *fallback* in `publish()`: the first refusal is caught and rethrown
+as `advertising_rejected` naming the packet and the reason, so a raw error
+means the small packet was refused too and its throw escaped alone, taking the
+first error with it. That is why his `onError` printed nothing and why the
+trace points at `setup()` rather than at a packet. Fixed here: the fallback has
+its own net, one `advertising_rejected` names **both** refusals and their
+sizes, and `lastSd` goes null so the next rate change rebuilds rather than
+republishing bytes the radio never took.
+
+**The likely cause of the refusal, which is not proven.** Espruino holds the
+advertising flags in the stack rather than in the call: an option nobody passes
+keeps whatever the last caller left there, and `phy:"coded"` or
+`extended:true` *latches* `BLE_IS_NOT_SCANNABLE` with a warning and never
+unlatches it. With scannable off and connectable on, `jsble_advertising_start`
+picks `BLE_GAP_ADV_TYPE_CONNECTABLE_NONSCANNABLE_DIRECTED` and then sets
+`adv_params.p_peer_addr = NULL` unconditionally: a directed advertising type
+with no peer address, which is exactly a missing pointer. That branch exists
+only on the SoftDevice 6 path, which is why an nRF52832 Puck cannot show it --
+SDK12 sets data and parameters in two separate calls -- and Jolt.js is the
+board whose own config carries
+`NRF_SDH_BLE_GAP_EVENT_LENGTH=6  # Needed to allow coded phy connections`, so
+a coded-phy experiment in that board's past is not a far-fetched history.
+
+**What changed on our side, and what it costs.** `advOptions()` now names
+every option, `scannable:true` included, so none of the module's advertising
+state is inherited from whatever the board was doing before. On a device that
+never turned scannable off this changes nothing at all: scannable is the
+default, so no advertising behaviour and no power coefficient moves. The
+published module is 24 971 bytes against the 25 000 budget, which leaves
+**29 bytes of headroom** -- the next change to this file pays for itself in
+first sentences before it pays for anything else.
+
+**What stays open, and whose it is.** The firmware half is @gfwilliams', and
+confirming the diagnosis needs a Jolt.js, which this bench does not have. Two
+commands on his board discriminate: the module's own options on a hand-written
+packet, which should reproduce `ERR 0x10` without the module involved, and the
+same with `scannable:true` added, which should not. The owner posts; the draft
+is his to send or to rewrite (D-091).
