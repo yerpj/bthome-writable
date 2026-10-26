@@ -9238,6 +9238,31 @@ the question: the figure that settles this one is not a device's idle current bu
 the charge of one command, and the comparison that makes it readable is the fast
 window the module already spends after every disconnect.
 
+**2026-10-26: the power arm is measured, and pinning is cheaper rather than
+dearer** (§23). Two recordings an hour apart on the Puck.js under the Otii Arc
+Pro, same board, same sketch, one statement different, ten commands driven from
+Home Assistant through the ESPHome proxy. **A command's connection costs
+1422 uC pinned against 1810 uC automatic**, a 21% saving, and the whole of it is
+in the stretch of unbroken radio a connection opens with: 79 ms pinned against
+190 ms. The link that follows and the 30 s fast window after it are unchanged,
+and the rig's own drift between the two sittings was 3%.
+
+**That removes the only argument against option 1 on this path, and it does not
+remove the guard question.** The worry was the 27x below: at 7.5 ms the radio
+wakes 27 times more often than at 200 ms *while connected*. It does not
+materialise here because the central already chose 7.5 ms with nothing asking
+it to, so there was never a slower interval to lose. For a central that would
+negotiate something slow and then hold the link, the arithmetic of the 27x
+stands untouched, and this bench cannot produce that central: `hold_link.py`
+auto against pinned is still the recording that would settle it.
+
+**So: option 1, unconditionally, is now supported by latency and by charge.** It
+is 2.2 s faster and 388 uC cheaper a command, which at one command a minute is
+82 days of a 220 mAh cell against 87. What is still owed is the held-open case,
+and the recommendation is to take option 1 and document the held-open link as
+the one case that wants `"auto"` back, rather than to hold the decision for a
+recording nobody is waiting on.
+
 **Why it is also a question for @gfwilliams.** The firmware comment says activity
 raises the interval back to 7.5 ms after more than one BLE operation. A folded
 command performs four to six and never leaves the grid, so either the raise is a

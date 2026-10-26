@@ -1860,7 +1860,7 @@ marker pulses, which is what `--gaps` reads:
 python -m tools.power_charge sweep.csv --digital GPI1 --gaps \
     --labels "-,100,200,500,1000,2000,3200,5000,10000" \
     --out power-puck-sweep.json
-python -m tools.power_charge commands.csv --digital GPI1 --baseline auto
+python -m tools.power_charge Enregistrement_3 --phases --commands \n    --baseline auto --capacity-mah 220 --out power-puck-commands-pinned.json
 python -m tools.power_table --fit power-puck-sweep.json --command-charge <Qcmd> \
     --life --capacity-mah 220
 ```
@@ -2046,6 +2046,68 @@ That is the third time in one day that a threshold or a window taken from the
 shape of the data rather than from what the hardware does has cost a
 measurement, and it is the one worth writing down: **the analysis has to
 account for all of the charge, and say so.**
+
+### The pinned connection interval, measured against it
+
+**2026-10-26, same board, same rig, same hour,
+`power-commands-pinned-storage.min.js` from `.bootcde`, one line different:
+`NRF.setConnectionInterval(7.5)`.** Ten commands this time, 45 s apart, and
+**ten of ten delivered**. The prediction in the section above was that this
+recording would be indistinguishable from the previous one, because the link
+was already running at 7.5 ms with nothing asking it to. It is not
+indistinguishable, and the difference goes the other way from the one D-141
+was worried about.
+
+Medians, the boot connection excluded from both:
+
+| | `CONNECTION_INTERVAL = null` | pinned at 7.5 ms |
+|---|---|---|
+| the interval the link actually ran at | 7.5 ms | 7.5 ms |
+| **the opening burst of unbroken radio** | **190 ms at 3.9 mA, 735 uC** | **79 ms at 3.6 mA, 287 uC** |
+| the link after it | 1716 ms at 590 uA, 1005 uC | 1823 ms at 596 uA, 1088 uC |
+| **the whole connection above idle** | **1810 uC** | **1422 uC** |
+| the fast window | 29.99 s at 148.3 uA | 29.99 s at 152.7 uA |
+| one command, all in | 5824 uC | 5590 uC |
+
+**Pinning does not cost power on this path. It saves 388 uC a command, and
+all of the saving is in one place.** The connection opens with a stretch of
+radio that has no gaps in it at all, and pinning cuts that stretch from 190
+ms to 79 ms: 111 ms and 448 uC less of continuous transmit, with the link
+that follows it and the fast window after that unchanged. 388 uC a command
+is 6.5 uA at one command a minute, which takes the 2 s row of the table
+below from 82 days to 87.
+
+**What the burst is has not been established here**, and the honest reading
+is the narrow one: the two images differ in one statement, the burst differs
+by a factor of two and a half, and nothing else in the trace moves. The
+explanation that fits is the connection parameter update procedure --
+Espruino's automatic mode adjusts the interval once a link is up, a pinned
+one has nothing to adjust -- and what would confirm it is a sniffer rather
+than a current trace. It is @gfwilliams' question at the end of D-141 seen
+from the power side.
+
+**The rig itself drifted 3% between the two sittings, and that is why the
+window figures are quoted as unchanged.** The idle floor went from 14.41 to
+14.87 uA and the fast window from 148.3 to 152.7, both +3.0 to 3.2%, on a
+supply whose median was 3.000 V in both recordings. So the window is
+identical relative to the floor, and the 21% drop in the connection charge
+is seven times the drift. The cause of the drift is not established: the
+board had been sitting on the meter for two and a half hours more, and the
+obvious candidate is its own temperature.
+
+**And the table's collapse was demonstrated by accident.** Two of the ten
+service calls took 20 and 23 s to return against 0.5 to 5.8 s for the other
+eight, and the trace says where that time went: the device was advertising
+quietly at 2 s throughout, there is no failed connection attempt in front of
+either of them, and each command still produced exactly one connection. The
+delay was entirely Home Assistant's, and the device paid nothing for it --
+but it arrived late enough to fall inside the fast window its predecessor
+was still spending, which truncated two windows to **25.64 and 20.81 s**
+instead of 30. That is precisely the mechanism the reference table predicts
+above two commands a minute, and it cost those two commands 4293 and 5481 uC
+instead of 5590: **a command that arrives inside another's window is the
+cheap one**, because the window it would have opened was already being paid
+for.
 
 ### The reference table, measured, and one cell checked
 

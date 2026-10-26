@@ -15,7 +15,14 @@ import statistics as st
 
 import pytest
 
-from tools.power_charge import Trace, main, summarise
+from tools.power_charge import (
+    Trace,
+    command_summary,
+    commands,
+    idle_floor,
+    main,
+    summarise,
+)
 
 PERIOD_MS = 1.0
 
@@ -364,3 +371,121 @@ def test_radio_that_never_stops_is_a_phase_of_its_own(tmp_path) -> None:
     # And the phases now account for essentially all of the charge, which is
     # the check that would have caught this without a trip to the bench.
     assert trace.coverage(runs) > 0.95
+
+
+def _phase(label: str, start_ms: float, duration_ms: float, mean_ua: float) -> dict:
+    """One window of a `--phases` report, as `summarise` writes it."""
+    return {
+        "start_ms": start_ms,
+        "duration_ms": duration_ms,
+        "mean_ua": mean_ua,
+        "max_ua": mean_ua,
+        "charge_uc": mean_ua * duration_ms / 1000.0,
+        "excess_uc": mean_ua * duration_ms / 1000.0,
+        "label": label,
+    }
+
+
+def _one_command(
+    at_ms: float, solid_ms: float, window_ms: float = 30000.0
+) -> list[dict]:
+    """The four phases a command is, in the order the trace holds them."""
+    return [
+        _phase("7.5", at_ms, 60.0, 1200.0),
+        _phase("0.0", at_ms + 60.0, solid_ms, 3600.0),
+        _phase("7.5", at_ms + 60.0 + solid_ms, 1800.0, 600.0),
+        _phase("104.5", at_ms + 60.0 + solid_ms + 1800.0, window_ms, 150.0),
+    ]
+
+
+def _recording(solid_ms: float = 80.0) -> list[dict]:
+    """A boot connection, idle, and three commands 45 s apart."""
+    windows = [_phase("0.0", 0.0, 15000.0, 565.0)]
+    windows += [_phase("104.5", 15000.0, 30000.0, 150.0)]
+    windows += [_phase("2005.0", 45000.0, 50000.0, 15.0)]
+    at = 95000.0
+    for _ in range(3):
+        windows += _one_command(at, solid_ms)
+        at = windows[-1]["start_ms"] + windows[-1]["duration_ms"]
+        windows += [_phase("2005.0", at, 13000.0, 15.0)]
+        at += 13000.0
+    return windows
+
+
+def test_the_floor_comes_from_the_long_idle_phases() -> None:
+    """Not from the scraps. A command recording holds one-event stretches of
+    idle between its phases, and their mean is the event rather than the
+    device: a floor taken from those would be hundreds of microamps and every
+    per-command charge would come out negative."""
+    windows = _recording()
+    windows.append(_phase("2005.0", 500000.0, 70.0, 790.0))
+    assert idle_floor(windows) == pytest.approx(15.0)
+
+
+def test_a_recording_with_no_idle_in_it_refuses_rather_than_guesses() -> None:
+    windows = [_phase("104.5", 0.0, 30000.0, 150.0)]
+    with pytest.raises(SystemExit, match="no idle phase"):
+        idle_floor(windows)
+
+
+def test_the_boot_connection_is_flagged_and_left_out_of_the_medians() -> None:
+    """A recording that starts before the board does opens with Home Assistant
+    connecting to a device it has never seen, which costs service discovery
+    once. Counting it as a command put recording 2's first three connections
+    1000 uC above the other six."""
+    found = commands(_recording())
+    assert [row["boot"] for row in found] == [True, False, False, False]
+    summary = command_summary(found, idle_floor(_recording()))
+    assert summary["n"] == 3
+    assert summary["boot_connection_uc"] == pytest.approx(8250.0, rel=0.01)
+
+
+def test_a_command_is_its_connection_plus_the_window_it_opens() -> None:
+    found = commands(_recording(solid_ms=80.0))
+    row = found[1]
+    # 60 ms at 1200 uA, 80 at 3600, 1800 at 600, all above a 15 uA floor.
+    assert row["solid_ms"] == pytest.approx(80.0)
+    assert row["solid_uc"] == pytest.approx(288.0, rel=0.01)
+    assert row["link_ms"] == pytest.approx(1800.0)
+    assert row["connection_uc"] == pytest.approx(
+        72.0 + 288.0 + 1080.0 - 15.0 * 1.94, rel=0.01
+    )
+    assert row["window_s"] == pytest.approx(30.0)
+    assert row["window_uc"] == pytest.approx(4500.0 - 450.0, rel=0.01)
+    assert row["all_in_uc"] == pytest.approx(
+        row["connection_uc"] + row["window_uc"], rel=1e-6
+    )
+    assert not row["window_truncated"]
+
+
+def test_pinning_shows_up_as_the_solid_block_and_nowhere_else() -> None:
+    """The finding of recording 3: one statement different on the device and
+    the opening burst of unbroken radio goes from 190 ms to 79 ms, with the
+    link after it and the fast window unchanged. The grouping has to put that
+    difference in one column, or the comparison is not readable."""
+    auto = command_summary(commands(_recording(190.0)), 15.0)
+    pinned = command_summary(commands(_recording(80.0)), 15.0)
+    assert auto["median_link_uc"] == pytest.approx(pinned["median_link_uc"])
+    assert auto["median_window_uc"] == pytest.approx(pinned["median_window_uc"])
+    # The connection difference is the solid block's, less the idle the longer
+    # block would have spent anyway: a charge above the floor, not a charge.
+    saved = auto["median_solid_uc"] - pinned["median_solid_uc"]
+    longer_s = (auto["median_solid_ms"] - pinned["median_solid_ms"]) / 1000.0
+    assert auto["median_connection_uc"] - pinned[
+        "median_connection_uc"
+    ] == pytest.approx(saved - 15.0 * longer_s, abs=0.1)  # the stored rounding
+
+
+def test_a_command_inside_another_s_window_truncates_it() -> None:
+    """Two of recording 3's ten commands arrived 20 s late and landed inside
+    the fast window their predecessor was still spending, which is the
+    saturation the reference table predicts. Such a window is not 30 s and its
+    charge must not be medianed with the ones that are."""
+    windows = _recording()
+    windows += _one_command(500000.0, 80.0, window_ms=20810.0)
+    found = commands(windows)
+    assert found[-1]["window_truncated"]
+    summary = command_summary(found, idle_floor(windows))
+    assert summary["n"] == 4
+    assert summary["n_full_window"] == 3
+    assert summary["median_window_s"] == pytest.approx(30.0)

@@ -13,6 +13,15 @@ This reads an exported trace and reports both:
     python -m tools.power_charge trace.csv --digital GPI1 --baseline auto
     python -m tools.power_charge trace.csv --digital GPI1 --digital-csv gpi.csv
     python -m tools.power_charge trace.csv --window 4200-7300 --out out.json
+    python -m tools.power_charge Enregistrement_3 --phases --commands
+
+**`--phases --commands` is the command recording's reading.** `--phases` finds
+the runs of radio and names none of them; `--commands` groups them the way a
+command recording is always shaped -- a connection, then the fast window its
+disconnection opens -- and reports one row a command with the medians under it.
+The boot connection is flagged rather than dropped, and a fast window that the
+next command arrived inside is flagged too, because neither is what a command
+costs.
 
 **It reads the file it is given rather than a format it was promised.** The
 measurement of §23 is made on an Otii Arc Pro and the arithmetic has to survive
@@ -89,6 +98,24 @@ how a clean sweep came back as 81 fragments instead of 9 steps.
 So: a milliamp. An advertising event on a Puck.js peaks at 4.5 to 5.6 mA and
 the calibration at 780 uA, so a milliamp sits in the gap with a factor of
 four each way, and `--burst-margin` moves it for a board that differs."""
+IDLE_GAP_MS = 1000.0
+"""A phase whose events are further apart than this is the device advertising
+on its own rather than anything to do with a connection. The idle intervals of
+interest are 1 s and up and a negotiated connection interval is tens of
+milliseconds at worst, so the two never meet."""
+FAST_GAP_MS = (90.0, 120.0)
+"""A phase at `fastInterval`, which the module sets to 100 ms. Measured at 104
+to 105 ms across two recordings, because the gap this reads is between the ends
+of consecutive events rather than between their starts."""
+SOLID_UA = 2000.0
+"""A phase with no gaps in it at all and a mean above this is the stretch of
+unbroken transmit a connection opens with. The link either side of it averages
+600 uA and an advertising event's own run averages 15, so the margin is three
+to one against the nearest thing it could be confused with."""
+IDLE_FLOOR_MS = 5000.0
+"""Idle phases shorter than this are not used for the floor: a command recording
+holds a few one-event scraps of idle between phases, and their mean is the event
+rather than the device."""
 THIN_WINDOW = 10
 """Fewer samples than this in a window and the charge is a guess, not a
 measurement: at an Arc Pro's 250 us a sample that is 2.5 ms."""
@@ -562,6 +589,135 @@ class Trace:
         return first, last
 
 
+def idle_floor(windows: list[dict]) -> float:
+    """What the device costs between connections, from the trace itself.
+
+    The fitted floor of the sweep plus one advertising event per idle interval
+    would do as well and would come from a different recording. This is the
+    same trace's own answer, which is what a per-command charge has to be taken
+    above.
+    """
+    idle = [
+        window["mean_ua"]
+        for window in windows
+        if float(window["label"]) > IDLE_GAP_MS
+        and window["duration_ms"] >= IDLE_FLOOR_MS
+    ]
+    if not idle:
+        raise SystemExit(
+            "no idle phase long enough to take a floor from: a command"
+            " recording needs stretches of undisturbed advertising between"
+            " the commands, which is what --every buys"
+        )
+    return st.median(idle)
+
+
+def commands(windows: list[dict], floor_ua: float | None = None) -> list[dict]:
+    """The phases of a command recording, grouped into commands.
+
+    `phases` reads a trace as runs of events at one rate and names none of
+    them, which is right: it has no way to know which run is which. A command
+    recording does have the structure, and it is always the same one -- a
+    connection, then the fast window `fastTimeout` long that the disconnection
+    opens -- so this walks the phases, takes every run at `fastInterval` as the
+    end of one command, and attributes everything between it and the last
+    stretch of idle to that command's connection.
+
+    The first group is the boot connection and is flagged rather than dropped:
+    a recording that starts before the board does begins with Home Assistant
+    connecting to a device it has never seen, which costs service discovery and
+    is not what a command costs. It is reported with `boot` true and left out
+    of the medians.
+    """
+    if floor_ua is None:
+        floor_ua = idle_floor(windows)
+    out: list[dict] = []
+    for index, window in enumerate(windows):
+        if not FAST_GAP_MS[0] < float(window["label"]) < FAST_GAP_MS[1]:
+            continue
+        first = index
+        while first > 0:
+            previous = windows[first - 1]
+            rate = float(previous["label"])
+            if rate > IDLE_GAP_MS or FAST_GAP_MS[0] < rate < FAST_GAP_MS[1]:
+                break
+            first -= 1
+        before = windows[first:index]
+        solid = [
+            w for w in before if float(w["label"]) == 0.0 and w["mean_ua"] > SOLID_UA
+        ]
+        link = [w for w in before if float(w["label"]) != 0.0]
+        longest = max(link, key=lambda w: w["duration_ms"]) if link else None
+
+        def above(group: list[dict]) -> float:
+            return sum(
+                w["charge_uc"] - floor_ua * w["duration_ms"] / 1000.0 for w in group
+            )
+
+        connection = above(before)
+        fast = above([window])
+        out.append(
+            {
+                "at_s": round(before[0]["start_ms"] / 1000.0, 2)
+                if before
+                else round(window["start_ms"] / 1000.0, 2),
+                "boot": first == 0,
+                "solid_ms": round(sum(w["duration_ms"] for w in solid), 2),
+                "solid_ua": round(st.mean([w["mean_ua"] for w in solid]), 1)
+                if solid
+                else 0.0,
+                "solid_uc": round(sum(w["charge_uc"] for w in solid), 1),
+                "link_ms": round(longest["duration_ms"], 2) if longest else 0.0,
+                "link_ua": round(longest["mean_ua"], 1) if longest else 0.0,
+                "link_uc": round(longest["charge_uc"], 1) if longest else 0.0,
+                "connection_uc": round(connection, 1),
+                "window_s": round(window["duration_ms"] / 1000.0, 3),
+                "window_ua": round(window["mean_ua"], 2),
+                "window_uc": round(fast, 1),
+                "all_in_uc": round(connection + fast, 1),
+                "window_truncated": window["duration_ms"] < 29000.0,
+            }
+        )
+    return out
+
+
+def command_summary(found: list[dict], floor_ua: float) -> dict:
+    """Medians over the commands, the boot connection excluded.
+
+    The median and not the mean, for the reason the first three connections of
+    recording 2 give: service discovery is paid once per central rather than
+    once per command, and a mean carries it into every cell of a table.
+    """
+    body = [row for row in found if not row["boot"]]
+    if not body:
+        return {"n": 0, "floor_ua": round(floor_ua, 2)}
+    full = [row for row in body if not row["window_truncated"]]
+
+    def median(field: str, rows: list[dict]) -> float:
+        return round(st.median([row[field] for row in rows]), 2)
+
+    summary = {
+        "n": len(body),
+        "n_full_window": len(full),
+        "floor_ua": round(floor_ua, 2),
+        "boot_connection_uc": next(
+            (row["connection_uc"] for row in found if row["boot"]), None
+        ),
+    }
+    for field in (
+        "solid_ms",
+        "solid_uc",
+        "link_ms",
+        "link_uc",
+        "connection_uc",
+        "all_in_uc",
+    ):
+        summary[f"median_{field}"] = median(field, body)
+    for field in ("window_s", "window_ua", "window_uc"):
+        summary[f"median_{field}"] = median(field, full or body)
+    return summary
+
+
 def _life(mean_ua: float, capacity_mah: float) -> dict:
     if mean_ua <= 0:
         return {}
@@ -764,6 +920,12 @@ def main(argv: list[str] | None = None) -> int:
         default=CR2032_MAH,
         help=f"battery capacity for the life figure (default {CR2032_MAH})",
     )
+    parser.add_argument(
+        "--commands",
+        action="store_true",
+        help="group the phases into commands: a connection and the fast window"
+        " it opens, one row each, medians with the boot connection left out",
+    )
     parser.add_argument("--out", type=Path, help="write the report as JSON")
     parser.add_argument("--label", help="what this trace is, carried into the JSON")
     args = parser.parse_args(argv)
@@ -855,6 +1017,45 @@ def main(argv: list[str] | None = None) -> int:
             f"  WARNING: {len(labels)} labels for"
             f" {len(report.get('windows', []))} windows"
         )
+
+    if args.commands:
+        if not args.phases:
+            raise SystemExit("--commands reads the phases, so it needs --phases")
+        floor = idle_floor(report["windows"])
+        found_commands = commands(report["windows"], floor)
+        summary = command_summary(found_commands, floor)
+        report["commands"] = found_commands
+        report["command_summary"] = summary
+        print(f"{len(found_commands)} commands, floor {floor:.2f} uA:")
+        print(
+            "     at s  solid ms  solid uC   link ms   link uC   conn uC"
+            "   win s  win uA  win uC   all uC"
+        )
+        for row in found_commands:
+            print(
+                f"  {row['at_s']:7.1f}"
+                f" {row['solid_ms']:9.1f} {row['solid_uc']:9.0f}"
+                f" {row['link_ms']:9.0f} {row['link_uc']:9.0f}"
+                f" {row['connection_uc']:9.0f}"
+                f" {row['window_s']:7.2f} {row['window_ua']:7.1f}"
+                f" {row['window_uc']:7.0f} {row['all_in_uc']:8.0f}"
+                + ("  boot" if row["boot"] else "")
+                + ("  truncated" if row["window_truncated"] else "")
+            )
+        if summary["n"]:
+            print(
+                f"  median of {summary['n']}"
+                f" ({summary['n_full_window']} with a full window):"
+                f" solid {summary['median_solid_ms']} ms"
+                f" {summary['median_solid_uc']} uC |"
+                f" link {summary['median_link_ms']} ms"
+                f" {summary['median_link_uc']} uC |"
+                f" connection {summary['median_connection_uc']} uC |"
+                f" window {summary['median_window_s']} s"
+                f" {summary['median_window_ua']} uA"
+                f" {summary['median_window_uc']} uC |"
+                f" all in {summary['median_all_in_uc']} uC"
+            )
 
     report["source"] = args.csv.name
     if args.label:
