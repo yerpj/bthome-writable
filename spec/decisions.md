@@ -9363,7 +9363,8 @@ allows.
 since §8 and it has never measured one. Every microamp in `docs/measurements.md`
 is @enaon's PPK2 on his own board, at a 1 s advertising interval, as a difference
 between two versions of the module: ~235 uA before the rebuild fix, ~50 uA after,
-~45 uA with the module not loaded (§8), and P1's whole recoverable cost inside
+~45 uA with the module not loaded but his own lamp script still running (§8),
+and P1's whole recoverable cost inside
 5 uA (§9). Those answered whether a change was worth making. None of them
 answers what a device running this module costs, which is the only power question
 an adopter has, and three sentences on the module page currently read as if they
@@ -9422,6 +9423,40 @@ means one more EspruinoDocs pull request after #767, not an edit to it.
 **What stays the owner's.** The measurement itself, and @enaon's PPK2 figures
 remain his: the page credits both. Nothing here is published before the numbers
 exist.
+
+**2026-10-26, @enaon: the floor we had been quoting was his whole
+application.** He read the published table and corrected the one figure in it
+that was not measured here. **~45 uA was never a floor**: it is his lamp script
+entire, about 15 uA of PIR polled every 400 ms, 8 uA of touch button, 17 uA of
+advertising and some 5 uA of floor, and he puts a bare nice!nano at **2 to
+6 uA**. So this Puck.js at 7.35 uA is the *higher* of the two floors the
+project has, not six times the lower, and the prediction that *"the firmware's
+floor dominates"* failed at its premise rather than at its arithmetic. What
+stings is that the caveat was already here, in his own 2026-10-15 figures
+above: *"a PIR and a touch button included, which he says account for some
+25 uA of each total"*. It was dropped in the copying, which is the one failure
+mode a measurements file has. Corrected in four places in §23 and §8; the
+public reply that used 45 as his floor is the owner's to correct, and it
+understated his autonomy rather than ours.
+
+**And he hands the campaign its first outside cross-check.** 14.19 uC an
+advertising event is 14.2 uA at a 1 s interval; he measures ~17 uA for
+advertising at 1 s, on a different board with a different instrument. Within
+20%, which is exactly the *"within tens of per cent"* the coefficient table
+claims for that row, and it is now cited there. A second figure worth keeping:
+a nice!nano clone wants `D13.reset()` before any measurement, or its VCC
+regulator adds some 50 uA.
+
+**His one open objection stays open, and it is his to settle.** He argues that
+on a coin cell the *peak* matters more than the average, because a pulse costs
+a cell more than its charge. Nothing in §23 contradicts him: the coefficients
+are charge per event, so the pulse is already integrated, and what pulses take
+out of a cell is the capacity it can still deliver -- which is the whole reason
+the days column runs on 154 mAh rather than 220. The measurement he proposes,
+peak and duration for advertising against a connection at 200 ms and at 7.5 ms,
+cannot be made on this bench: 250 us a sample resolves charge over a window,
+not the peak of one advertising event (§23). His PPK2 at 100 kHz can, and the
+question is worth the answer.
 
 ## D-143 — A Jolt.js refused both packets, and the module was inheriting the radio's state
 
