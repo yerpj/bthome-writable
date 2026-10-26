@@ -32,6 +32,15 @@ Web IDE to resolve anything and no network, so it has to carry everything. The
 inlining is the bundler's own flat pattern, `var exports = {}` before and a
 name bound after, with no closure around it.
 
+**And BTHome was not the only one.** The image with BTHome inlined booted and
+died on `require("AESCCM")` behind it, which is this project's own module and
+had been living in that same storage. Finding them one boot at a time is not a
+method, so `leftover_requires` now fails the build on any `require()` the
+firmware does not answer: the list of what it does answer is `BUILTINS`, which
+is `process.env.MODULES` on the board under test. A boot failure names the
+operation it was in the middle of, not the module it lacked, which is why the
+build is the place to catch this.
+
 Keeping a byte-identical copy rather than a rewrite is what makes it checkable:
 
     curl -s https://www.espruino.com/modules/BTHome.min.js | diff - BTHome.min.js

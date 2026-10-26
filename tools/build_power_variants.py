@@ -25,6 +25,7 @@ worth one power cycle. Erase it when the campaign ends.
 
 from __future__ import annotations
 
+from pathlib import Path
 import re
 import sys
 
@@ -38,16 +39,27 @@ from tools.build_espruino_bundle import (
 )
 
 SOURCE = BENCH / "power-arms.js"
-UPSTREAM = ROOT / "espruino" / "vendor" / "BTHome.min.js"
-"""Espruino's own BTHome module, unmodified, inlined into the image.
 
-A bundle that boots from `.bootcde` has no Web IDE to resolve a `require()` for
-it and no network to fetch it from, and the module had been living unrecorded in
-one board's Storage until that storage was erased on 2026-10-26. 1.6 kB settles
-it for good: see `espruino/vendor/README.md`, which is also where the reason
-this is not a fork is written down."""
-REQUIRED = 'require("BTHome")'
-INLINED = "BTHomeUpstream"
+INLINE: tuple[tuple[str, Path, str, bool], ...] = (
+    ("BTHome", ROOT / "espruino" / "vendor" / "BTHome.min.js", "BTHomeUpstream", False),
+    ("AESCCM", ROOT / "espruino" / "AESCCM.js", "AESCCMInlined", True),
+)
+"""Every module the image requires that the firmware does not provide, with the
+name it is bound to and whether its comments may be stripped.
+
+A sketch booting from `.bootcde` has no Web IDE to resolve a `require()` and no
+network to fetch one, so the image carries all of them. Both were found the
+hard way, one at a time, on a Puck whose storage had just been erased: BTHome
+had been sitting in that storage unrecorded since some earlier session, and
+AESCCM behind it. Hence `leftover_requires`, which is the part that stops this
+being discovered a third time.
+
+BTHome is upstream and is inlined byte for byte (`espruino/vendor/README.md`).
+AESCCM is this project's own and is comment-heavy on purpose, so it goes in
+stripped: 7.8 kB of it is mostly the explanation of CCM."""
+BUILTINS = frozenset({"Storage", "crypto", "Flash", "heatshrink", "neopixel"})
+"""Modules the firmware itself answers for, which is `process.env.MODULES` on
+the Puck under test, 2v27: anything else has to be in the image."""
 FLAGS = "E.setFlags({pretokenise: 1});"
 """The first statement of every image. Espruino keeps a function's source in
 RAM unless it is tokenised, and the bundle does not fit in a Puck.js otherwise:
@@ -105,15 +117,57 @@ def rewrite(source: str, constants: dict[str, str]) -> str:
     return source
 
 
+def leftover_requires(source: str) -> list[str]:
+    """Modules the image still asks for and the firmware will not answer.
+
+    This is the check that was missing. The first build inlined BTHome and
+    shipped, the board booted and died on AESCCM, and the only reason it was
+    one module rather than three is that there were only two. A boot failure
+    reports the symptom it reached, not the module it lacked, so the build is
+    the place to notice.
+    """
+    wanted = set(re.findall(r'require\("([^"]+)"\)', source))
+    return sorted(wanted - BUILTINS)
+
+
 def preamble() -> str:
-    """What has to be in the image before the module that needs it.
+    """Every inlined module, bound, before anything that uses one.
 
     The bundler's own flat pattern, and flat on purpose: a closure around a
     whole module is one enormous top-level statement, which the Espruino
     console truncates silently.
     """
-    upstream = UPSTREAM.read_text(encoding="utf-8").strip()
-    return FLAGS + "\nvar exports = {};\n" + upstream + f"\nvar {INLINED} = exports;\n"
+    # No section comments: a comment is a top-level line that does not end in
+    # a semicolon, which is exactly what repl_unsafe_lines refuses, and it is
+    # right to. The order here is the file's structure.
+    parts = [FLAGS]
+    for _name, path, bound, strip in INLINE:
+        source = path.read_text(encoding="utf-8")
+        parts.append("var exports = {};")
+        parts.append((strip_comments(source) if strip else source).strip())
+        parts.append(f"var {bound} = exports;")
+    return "\n".join(parts) + "\n"
+
+
+def resolve(name: str, body: str) -> str:
+    """Point every `require()` of an inlined module at its binding."""
+    for module, _path, bound, _strip in INLINE:
+        call = f'require("{module}")'
+        hits = body.count(call)
+        if hits == 0:
+            raise SystemExit(
+                f"{name}: nothing requires {module}, so inlining it is dead"
+                " weight in an image that has 274 JsVars to spare"
+            )
+        body = body.replace(call, bound)
+    missing = leftover_requires(body)
+    if missing:
+        raise SystemExit(
+            f"{name}: still requires {', '.join(missing)}, which a board"
+            " booting from .bootcde cannot resolve: inline them in INLINE or"
+            " name them in BUILTINS"
+        )
+    return body
 
 
 def main() -> int:
@@ -124,13 +178,7 @@ def main() -> int:
     for name, constants in VARIANTS.items():
         variant = staging / f"{name}.js"
         variant.write_text(rewrite(original, constants), encoding="utf-8")
-        body = strip_comments(bundle(variant))
-        if body.count(REQUIRED) != 1:
-            raise SystemExit(
-                f"{name}: {REQUIRED} appears {body.count(REQUIRED)} times,"
-                " expected exactly one to inline"
-            )
-        compact = preamble() + body.replace(REQUIRED, INLINED, 1)
+        compact = preamble() + resolve(name, strip_comments(bundle(variant)))
         offenders = repl_unsafe_lines(compact)
         if offenders:
             for lineno, line in offenders:

@@ -10,7 +10,16 @@ from __future__ import annotations
 
 import pytest
 
-from tools.build_power_variants import FLAGS, VARIANTS, rewrite
+from tools.build_power_variants import (
+    BUILTINS,
+    FLAGS,
+    INLINE,
+    VARIANTS,
+    leftover_requires,
+    preamble,
+    resolve,
+    rewrite,
+)
 
 
 def test_a_constant_is_replaced_exactly_once() -> None:
@@ -50,3 +59,44 @@ def test_every_recording_of_section_23_has_an_image() -> None:
 def test_an_image_tokenises_before_it_parses_anything_else() -> None:
     """A Puck.js has no room for 23 kB of function source text."""
     assert FLAGS.startswith("E.setFlags({pretokenise")
+
+
+def test_a_module_the_firmware_does_not_have_fails_the_build() -> None:
+    """The check that was missing. The first image inlined BTHome, shipped,
+    booted, and died on AESCCM behind it; a board booting from .bootcde
+    reports the symptom it reached rather than the module it lacked."""
+    assert leftover_requires('var a = require("AESCCM");') == ["AESCCM"]
+    assert leftover_requires('require("Zlib");require("AESCCM")') == [
+        "AESCCM",
+        "Zlib",
+    ]
+
+
+def test_the_firmware_s_own_modules_are_not_leftovers() -> None:
+    body = 'require("Storage").read("x");require("crypto").AES'
+    assert leftover_requires(body) == []
+    assert "Storage" in BUILTINS and "crypto" in BUILTINS
+
+
+def test_resolving_points_every_require_at_its_binding() -> None:
+    body = 'var b = require("BTHome");var c = require("AESCCM").encrypt;'
+    out = resolve("test", body)
+    assert out == "var b = BTHomeUpstream;var c = AESCCMInlined.encrypt;"
+    assert leftover_requires(out) == []
+
+
+def test_an_inlined_module_nobody_requires_is_an_error() -> None:
+    """Dead weight in an image with 274 JsVars to spare, and more likely a
+    rename that silently stopped resolving."""
+    with pytest.raises(SystemExit, match="nothing requires BTHome"):
+        resolve("test", 'require("AESCCM")')
+
+
+def test_the_preamble_binds_before_anything_uses_it() -> None:
+    text = preamble()
+    assert text.startswith(FLAGS)
+    for _name, _path, bound, _strip in INLINE:
+        assert f"var {bound} = exports;" in text
+    # One fresh exports per module, each closed off by its own binding.
+    assert text.count("var exports = {};") == len(INLINE)
+    assert leftover_requires(text) == []
