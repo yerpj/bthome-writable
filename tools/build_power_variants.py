@@ -38,6 +38,16 @@ from tools.build_espruino_bundle import (
 )
 
 SOURCE = BENCH / "power-arms.js"
+UPSTREAM = ROOT / "espruino" / "vendor" / "BTHome.min.js"
+"""Espruino's own BTHome module, unmodified, inlined into the image.
+
+A bundle that boots from `.bootcde` has no Web IDE to resolve a `require()` for
+it and no network to fetch it from, and the module had been living unrecorded in
+one board's Storage until that storage was erased on 2026-10-26. 1.6 kB settles
+it for good: see `espruino/vendor/README.md`, which is also where the reason
+this is not a fork is written down."""
+REQUIRED = 'require("BTHome")'
+INLINED = "BTHomeUpstream"
 FLAGS = "E.setFlags({pretokenise: 1});"
 """The first statement of every image. Espruino keeps a function's source in
 RAM unless it is tokenised, and the bundle does not fit in a Puck.js otherwise:
@@ -95,6 +105,17 @@ def rewrite(source: str, constants: dict[str, str]) -> str:
     return source
 
 
+def preamble() -> str:
+    """What has to be in the image before the module that needs it.
+
+    The bundler's own flat pattern, and flat on purpose: a closure around a
+    whole module is one enormous top-level statement, which the Espruino
+    console truncates silently.
+    """
+    upstream = UPSTREAM.read_text(encoding="utf-8").strip()
+    return FLAGS + "\nvar exports = {};\n" + upstream + f"\nvar {INLINED} = exports;\n"
+
+
 def main() -> int:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     original = SOURCE.read_text(encoding="utf-8")
@@ -103,7 +124,13 @@ def main() -> int:
     for name, constants in VARIANTS.items():
         variant = staging / f"{name}.js"
         variant.write_text(rewrite(original, constants), encoding="utf-8")
-        compact = FLAGS + "\n" + strip_comments(bundle(variant))
+        body = strip_comments(bundle(variant))
+        if body.count(REQUIRED) != 1:
+            raise SystemExit(
+                f"{name}: {REQUIRED} appears {body.count(REQUIRED)} times,"
+                " expected exactly one to inline"
+            )
+        compact = preamble() + body.replace(REQUIRED, INLINED, 1)
         offenders = repl_unsafe_lines(compact)
         if offenders:
             for lineno, line in offenders:
