@@ -80,9 +80,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--lead-in", type=float, default=LEAD_IN_S)
     parser.add_argument(
         "--service",
-        default="toggle",
-        help="the service on the entity's own domain (default toggle, which is"
-        " the one that always changes the value)",
+        default="alternate",
+        help="a service on the entity's own domain, or the default"
+        ' "alternate", which sends turn_on and turn_off in turn',
     )
     parser.add_argument("--out", type=Path, help="write the call times as JSON")
     args = parser.parse_args(argv)
@@ -101,12 +101,17 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit(f"{args.entity}: {exc}") from None
     state = before.get("state") if isinstance(before, dict) else None
     print(f"{args.entity} is {state!r}")
-    if state in (None, "unavailable", "unknown"):
+    # `unknown` is the right state here and not a fault: a writable value is
+    # never advertised (PROTOCOL.md section 3), so Home Assistant has nothing
+    # to show until something writes one. `unavailable` is the fault, and on
+    # this bench it meant the config entry held no bindkey while the device
+    # advertised sealed, so no declaration was ever read.
+    if state in (None, "unavailable"):
         raise SystemExit(
-            f"{args.entity} is {state!r}: Home Assistant will not command it."
-            " After a storage erase the device's counter restarts and"
-            " bthome-ble drops its advertisements as replays, which is what"
-            " this looks like. Reload the device's config entries first."
+            f"{args.entity} is {state!r}: Home Assistant has no declaration"
+            " for the device, so it will not command it. Check that the config"
+            " entry's bindkey matches the one the sketch seals with, and that"
+            " the device is advertising."
         )
 
     print(
@@ -122,11 +127,19 @@ def main(argv: list[str] | None = None) -> int:
             time.sleep(delay)
         at = time.monotonic() - started
         wall = time.time()
+        # Alternating explicitly rather than toggling: only a write that
+        # changes the value rebuilds the packet, so a run of identical writes
+        # would measure something cheaper than a command, and `toggle` from
+        # `unknown` is whatever the helper decides rather than what this run
+        # chose.
+        service = args.service
+        if service == "alternate":
+            service = "turn_on" if index % 2 else "turn_off"
         try:
             _call(
                 url,
                 token,
-                f"/api/services/{domain}/{args.service}",
+                f"/api/services/{domain}/{service}",
                 {"entity_id": args.entity},
             )
             failed = None
@@ -134,12 +147,13 @@ def main(argv: list[str] | None = None) -> int:
             failed = str(exc)
         took = time.monotonic() - started - at
         print(
-            f"  {index:>3}/{args.count}  at {at:7.2f} s"
+            f"  {index:>3}/{args.count}  {service:<9} at {at:7.2f} s"
             f"  returned in {took:5.2f} s" + (f"  FAILED: {failed}" if failed else "")
         )
         calls.append(
             {
                 "n": index,
+                "service": service,
                 "at_s": round(at, 3),
                 "wall": wall,
                 "returned_in_s": round(took, 3),
