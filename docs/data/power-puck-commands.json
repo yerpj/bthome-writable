@@ -1,0 +1,372 @@
+{
+  "samples": 2408512,
+  "period_ms": 0.25,
+  "span_s": 602.128,
+  "mean_ua": 125.42,
+  "median_ua": 4.32,
+  "max_ua": 39104.0,
+  "charge_uc": 75520.0,
+  "life_at_this_mean": {
+    "hours": 1754.1,
+    "days": 73.1,
+    "years": 0.2
+  },
+  "thin_windows": 0,
+  "capacity_mah": 220.0,
+  "unknown_digital_samples": 0,
+  "outside_windows_median_ua": 0.0,
+  "windows": [
+    {
+      "start_ms": 12077.25,
+      "duration_ms": 29998.25,
+      "mean_ua": 151.28,
+      "max_ua": 5601.4,
+      "charge_uc": 4538.09,
+      "excess_uc": 4538.09,
+      "label": "104.0"
+    },
+    {
+      "start_ms": 42082.5,
+      "duration_ms": 24057.25,
+      "mean_ua": 14.76,
+      "max_ua": 5475.1,
+      "charge_uc": 355.13,
+      "excess_uc": 355.13,
+      "label": "2005.0"
+    },
+    {
+      "start_ms": 66139.75,
+      "duration_ms": 335.75,
+      "mean_ua": 821.75,
+      "max_ua": 6409.4,
+      "charge_uc": 275.9,
+      "excess_uc": 275.9,
+      "label": "7.5"
+    },
+    {
+      "start_ms": 66768.0,
+      "duration_ms": 2293.0,
+      "mean_ua": 589.75,
+      "max_ua": 5532.4,
+      "charge_uc": 1352.3,
+      "excess_uc": 1352.3,
+      "label": "7.5"
+    },
+    {
+      "start_ms": 69061.0,
+      "duration_ms": 29979.0,
+      "mean_ua": 149.1,
+      "max_ua": 5612.6,
+      "charge_uc": 4469.98,
+      "excess_uc": 4469.98,
+      "label": "104.75"
+    },
+    {
+      "start_ms": 99040.0,
+      "duration_ms": 27.25,
+      "mean_ua": 1297.85,
+      "max_ua": 4522.8,
+      "charge_uc": 35.37,
+      "excess_uc": 35.37,
+      "label": "13.62"
+    },
+    {
+      "start_ms": 99067.25,
+      "duration_ms": 10020.75,
+      "mean_ua": 15.1,
+      "max_ua": 5355.2,
+      "charge_uc": 151.33,
+      "excess_uc": 151.33,
+      "label": "2004.25"
+    },
+    {
+      "start_ms": 109088.0,
+      "duration_ms": 68.5,
+      "mean_ua": 1105.21,
+      "max_ua": 5496.8,
+      "charge_uc": 75.71,
+      "excess_uc": 75.71,
+      "label": "7.5"
+    },
+    {
+      "start_ms": 109346.75,
+      "duration_ms": 2714.5,
+      "mean_ua": 599.15,
+      "max_ua": 5483.5,
+      "charge_uc": 1626.4,
+      "excess_uc": 1626.4,
+      "label": "7.5"
+    },
+    {
+      "start_ms": 112061.25,
+      "duration_ms": 29994.5,
+      "mean_ua": 148.28,
+      "max_ua": 5617.9,
+      "charge_uc": 4447.71,
+      "excess_uc": 4447.71,
+      "label": "104.75"
+    },
+    {
+      "start_ms": 142064.25,
+      "duration_ms": 22058.5,
+      "mean_ua": 14.19,
+      "max_ua": 5289.4,
+      "charge_uc": 312.95,
+      "excess_uc": 312.95,
+      "label": "2006.75"
+    },
+    {
+      "start_ms": 164122.75,
+      "duration_ms": 67.0,
+      "mean_ua": 1298.47,
+      "max_ua": 8527.1,
+      "charge_uc": 87.0,
+      "excess_uc": 87.0,
+      "label": "7.5"
+    },
+    {
+      "start_ms": 164379.75,
+      "duration_ms": 2677.25,
+      "mean_ua": 590.7,
+      "max_ua": 5593.4,
+      "charge_uc": 1581.45,
+      "excess_uc": 1581.45,
+      "label": "7.5"
+    },
+    {
+      "start_ms": 167057.0,
+      "duration_ms": 29928.0,
+      "mean_ua": 148.14,
+      "max_ua": 5608.2,
+      "charge_uc": 4433.67,
+      "excess_uc": 4433.67,
+      "label": "104.25"
+    },
+    {
+      "start_ms": 197061.25,
+      "duration_ms": 4012.0,
+      "mean_ua": 14.38,
+      "max_ua": 4600.9,
+      "charge_uc": 57.67,
+      "excess_uc": 57.67,
+      "label": "2006.0"
+    },
+    {
+      "start_ms": 201073.25,
+      "duration_ms": 75.25,
+      "mean_ua": 1475.4,
+      "max_ua": 9787.6,
+      "charge_uc": 111.02,
+      "excess_uc": 111.02,
+      "label": "7.5"
+    },
+    {
+      "start_ms": 201338.5,
+      "duration_ms": 1717.5,
+      "mean_ua": 585.25,
+      "max_ua": 5093.5,
+      "charge_uc": 1005.17,
+      "excess_uc": 1005.17,
+      "label": "7.5"
+    },
+    {
+      "start_ms": 203056.0,
+      "duration_ms": 29992.25,
+      "mean_ua": 147.25,
+      "max_ua": 5605.7,
+      "charge_uc": 4416.44,
+      "excess_uc": 4416.44,
+      "label": "105.25"
+    },
+    {
+      "start_ms": 233065.25,
+      "duration_ms": 12029.25,
+      "mean_ua": 13.78,
+      "max_ua": 5539.7,
+      "charge_uc": 165.76,
+      "excess_uc": 165.76,
+      "label": "2004.75"
+    },
+    {
+      "start_ms": 245094.5,
+      "duration_ms": 70.0,
+      "mean_ua": 1190.14,
+      "max_ua": 5511.9,
+      "charge_uc": 83.31,
+      "excess_uc": 83.31,
+      "label": "7.5"
+    },
+    {
+      "start_ms": 245354.5,
+      "duration_ms": 1692.5,
+      "mean_ua": 572.66,
+      "max_ua": 5553.9,
+      "charge_uc": 969.22,
+      "excess_uc": 969.22,
+      "label": "7.5"
+    },
+    {
+      "start_ms": 247047.0,
+      "duration_ms": 30004.25,
+      "mean_ua": 149.14,
+      "max_ua": 5610.3,
+      "charge_uc": 4474.94,
+      "excess_uc": 4474.94,
+      "label": "105.0"
+    },
+    {
+      "start_ms": 277061.0,
+      "duration_ms": 22046.0,
+      "mean_ua": 14.63,
+      "max_ua": 5618.7,
+      "charge_uc": 322.56,
+      "excess_uc": 322.56,
+      "label": "2003.25"
+    },
+    {
+      "start_ms": 299107.0,
+      "duration_ms": 63.0,
+      "mean_ua": 1218.73,
+      "max_ua": 5409.2,
+      "charge_uc": 76.78,
+      "excess_uc": 76.78,
+      "label": "7.5"
+    },
+    {
+      "start_ms": 299367.75,
+      "duration_ms": 1677.25,
+      "mean_ua": 577.54,
+      "max_ua": 5443.2,
+      "charge_uc": 968.69,
+      "excess_uc": 968.69,
+      "label": "7.5"
+    },
+    {
+      "start_ms": 301045.0,
+      "duration_ms": 29984.5,
+      "mean_ua": 149.91,
+      "max_ua": 5620.1,
+      "charge_uc": 4494.97,
+      "excess_uc": 4494.97,
+      "label": "105.0"
+    },
+    {
+      "start_ms": 331050.0,
+      "duration_ms": 4023.0,
+      "mean_ua": 19.03,
+      "max_ua": 5482.4,
+      "charge_uc": 76.58,
+      "excess_uc": 76.58,
+      "label": "2011.5"
+    },
+    {
+      "start_ms": 335073.0,
+      "duration_ms": 65.75,
+      "mean_ua": 1199.79,
+      "max_ua": 6060.0,
+      "charge_uc": 78.89,
+      "excess_uc": 78.89,
+      "label": "7.5"
+    },
+    {
+      "start_ms": 335327.5,
+      "duration_ms": 1716.5,
+      "mean_ua": 596.82,
+      "max_ua": 5553.7,
+      "charge_uc": 1024.44,
+      "excess_uc": 1024.44,
+      "label": "7.5"
+    },
+    {
+      "start_ms": 337044.0,
+      "duration_ms": 29944.25,
+      "mean_ua": 148.46,
+      "max_ua": 5610.4,
+      "charge_uc": 4445.59,
+      "excess_uc": 4445.59,
+      "label": "104.75"
+    },
+    {
+      "start_ms": 367058.0,
+      "duration_ms": 14037.75,
+      "mean_ua": 14.07,
+      "max_ua": 5666.6,
+      "charge_uc": 197.48,
+      "excess_uc": 197.48,
+      "label": "2005.75"
+    },
+    {
+      "start_ms": 381095.75,
+      "duration_ms": 61.75,
+      "mean_ua": 1317.76,
+      "max_ua": 8239.3,
+      "charge_uc": 81.37,
+      "excess_uc": 81.37,
+      "label": "7.75"
+    },
+    {
+      "start_ms": 381343.75,
+      "duration_ms": 1696.25,
+      "mean_ua": 577.06,
+      "max_ua": 4568.2,
+      "charge_uc": 978.84,
+      "excess_uc": 978.84,
+      "label": "7.5"
+    },
+    {
+      "start_ms": 383040.0,
+      "duration_ms": 30003.75,
+      "mean_ua": 148.31,
+      "max_ua": 5629.4,
+      "charge_uc": 4449.95,
+      "excess_uc": 4449.95,
+      "label": "104.75"
+    },
+    {
+      "start_ms": 413055.0,
+      "duration_ms": 44105.0,
+      "mean_ua": 14.44,
+      "max_ua": 5618.2,
+      "charge_uc": 637.0,
+      "excess_uc": 637.0,
+      "label": "2004.75"
+    },
+    {
+      "start_ms": 457160.0,
+      "duration_ms": 896.0,
+      "mean_ua": 677.67,
+      "max_ua": 9819.0,
+      "charge_uc": 607.19,
+      "excess_uc": 607.19,
+      "label": "7.5"
+    },
+    {
+      "start_ms": 458245.5,
+      "duration_ms": 29995.5,
+      "mean_ua": 147.04,
+      "max_ua": 5581.6,
+      "charge_uc": 4410.55,
+      "excess_uc": 4410.55,
+      "label": "104.62"
+    },
+    {
+      "start_ms": 488253.5,
+      "duration_ms": 112263.75,
+      "mean_ua": 14.39,
+      "max_ua": 5592.1,
+      "charge_uc": 1614.96,
+      "excess_uc": 1614.96,
+      "label": "2004.25"
+    }
+  ],
+  "window_summary": {
+    "n": 38,
+    "baseline_ua": 0.0,
+    "median_duration_ms": 4017.5,
+    "median_mean_ua": 150.59,
+    "median_charge_uc": 802.85,
+    "median_excess_uc": 802.85,
+    "total_excess_uc": 59492.36
+  },
+  "source": "Enregistrement_2"
+}

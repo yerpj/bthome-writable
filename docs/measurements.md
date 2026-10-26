@@ -1979,34 +1979,92 @@ device in its fast window draws `floor + Qadv/fastInterval` = 7.35 + 141.9 =
 saturation claim rests on is confirmed to half a per cent by a step that was in
 the sweep for exactly that reason.
 
-### The reference table, with two of three coefficients measured
+### The commands, measured
 
-Only the per-command charge is missing, and it is the small one: a connection is
-tens of microcoulombs, which is a microamp or two at a command a minute. The
-table below has it at zero, so every cell is a lower bound that the command
-recordings will raise by about that much.
+**2026-10-26, same board and rig, `power-commands-storage.min.js` from
+`.bootcde`, 2 s idle, `CONNECTION_INTERVAL = null`, ten commands driven from
+Home Assistant 45 s apart through the ESPHome proxy `bureau`.** Nine of the ten
+went out; the tenth never left, because the ninth service call took longer than
+thirty seconds to answer and `tools.power_commands` treated the timeout as
+fatal (it no longer does). The trace holds all nine, and `power_charge --phases`
+found every one of them without a marker channel.
+
+| | per command |
+|---|---|
+| the connection | **0.90 to 2.78 s**, first three 2.6 to 2.8 s and the rest 1.74 to 1.79 s |
+| its charge above idle | 594 to 1662 uC, **median 1078 uC** |
+| the fast window after it | **29.93 to 30.00 s** at 147.0 to 149.9 uA |
+| its charge above idle | 3979 to 4063 uC, **median 4016 uC** |
+| **one command, all in** | **5072 uC**, of which the fast window is **79%** |
+
+**`fastTimeout` and `fastInterval` are no longer assumptions.** Nine
+independent measurements of the fast window give 29.93 to 30.00 s against a
+30 s setting, at 104 to 105 ms against a 100 ms one, and its mean current
+matches the sweep's own 100 ms step to under two per cent across two separate
+recordings. The term the saturation claim rests on is measured three ways now.
+
+**And the connection ran at 7.5 ms with nothing asking it to.** The sketch had
+`CONNECTION_INTERVAL = null`, which leaves the interval to be negotiated, and
+every one of the nine connections came out at **7.5 ms** -- the minimum the
+specification allows. **That bears directly on D-141**, whose option 1 is to
+pin 7.5 ms in `setup()`: through an ESPHome proxy there is nothing left to pin,
+because the link is already there. Pinning would still matter for a central
+that negotiates something slower, so what the measurement settles is that the
+option is free of cost here rather than that it is worthless: recording 3, the
+pinned arm, should come out indistinguishable from this one, and if it does
+then D-141 needs no guard for this path.
+
+**A connection is 1.7 s long for one write**, which is the other thing worth
+staring at: 230 connection events at 7.5 ms to deliver one object. The first
+three are a second longer, which is service discovery. What the rest is doing
+is Home Assistant's business rather than the device's, but the device pays for
+it, and 1.06 mC of the 5.07 mC a command costs is that link being held open.
+
+### The reference table, measured
+
+Floor **7.35 uA**, one advertising event **14.19 uC**, one command's connection
+**1078 uC**, `fastInterval` 100 ms and `fastTimeout` 30 s as measured.
 
 | advertising interval | 0/min | 1/min | 2/min | 3/min | 4/min | 6/min |
 |---|---|---|---|---|---|---|
-| 200 ms | 78.3 | 113.8 | 149.3 | 149.3 | 149.3 | 149.3 |
-| 500 ms | 35.7 | 92.5 | 149.3 | 149.3 | 149.3 | 149.3 |
-| 1 s | 21.5 | 85.4 | 149.3 | 149.3 | 149.3 | 149.3 |
-| 2 s | 14.4 | 81.9 | 149.3 | 149.3 | 149.3 | 149.3 |
-| 3.2 s | 11.8 | 80.5 | 149.3 | 149.3 | 149.3 | 149.3 |
-| 5 s | 10.2 | 79.7 | 149.3 | 149.3 | 149.3 | 149.3 |
-| 10 s | 8.8 | 79.0 | 149.3 | 149.3 | 149.3 | 149.3 |
+| 200 ms | 78.3 | 131.8 | 185.2 | 203.2 | 221.2 | 257.1 |
+| 500 ms | 35.7 | 110.5 | 185.2 | 203.2 | 221.2 | 257.1 |
+| 1 s | 21.5 | 103.4 | 185.2 | 203.2 | 221.2 | 257.1 |
+| 2 s | 14.4 | 99.8 | 185.2 | 203.2 | 221.2 | 257.1 |
+| 3.2 s | 11.8 | 98.5 | 185.2 | 203.2 | 221.2 | 257.1 |
+| 5 s | 10.2 | 97.7 | 185.2 | 203.2 | 221.2 | 257.1 |
+| 10 s | 8.8 | 97.0 | 185.2 | 203.2 | 221.2 | 257.1 |
 
-In days of a 220 mAh CR2032: **634 days at the module's 2 s default with nobody
-writing, 1045 at 10 s, 117 at 200 ms, and 61 days flat from two commands a
-minute upward** whatever the interval is set to.
+Microamps. In days of a 220 mAh CR2032:
 
-**So the prediction holds, with numbers.** Above two commands a minute the
-advertising interval cannot be read in the current at all: the fast window never
-closes and every row collapses onto 149.3 uA. A device commanded that often
-lasts **61 days instead of 634**, a factor of ten, and the lever that recovers
-it is `fastTimeout`, not `interval`. That is the sentence the module page owes
-an adopter, and it is now measured on one board rather than argued from a
-datasheet.
+| advertising interval | 0/min | 1/min | 2/min | 3/min | 4/min | 6/min |
+|---|---|---|---|---|---|---|
+| 200 ms | 117 | 70 | 49 | 45 | 41 | 36 |
+| 500 ms | 256 | 83 | 49 | 45 | 41 | 36 |
+| 1 s | 426 | 89 | 49 | 45 | 41 | 36 |
+| **2 s** | **634** | **92** | **49** | 45 | 41 | 36 |
+| 3.2 s | 777 | 93 | 49 | 45 | 41 | 36 |
+| 5 s | 900 | 94 | 49 | 45 | 41 | 36 |
+| 10 s | 1045 | 95 | 49 | 45 | 41 | 36 |
+
+**Three sentences come out of this table, and none of them is "a write is
+expensive".**
+
+1. **A device nobody writes to lives on its advertising interval alone**, and
+   the range is wide: 117 days at 200 ms against 1045 at 10 s, with the module's
+   2 s default at 634.
+2. **One command a minute costs more than advertising does.** At 2 s it takes
+   the device from 634 days to 92, a factor of seven, and four fifths of that is
+   not the write: it is the thirty seconds of fast advertising the write leaves
+   behind.
+3. **From two commands a minute the advertising interval stops mattering
+   entirely.** Every row collapses: 49 days whether the device advertises at
+   200 ms or at 10 s, because the fast window never closes. The only lever left
+   is `fastTimeout`, and nobody has said so before.
+
+The first column and the last are what a reader should compare: **1045 days
+against 36**, both of them this same device, differing only in how often it is
+asked to do something and how long it stays alert afterwards.
 
 ### What the model already says, before anything is measured
 
