@@ -377,19 +377,66 @@ class Trace:
                 out.append(self._phase(starts[run_from], starts[index], run))
             run_from = index
             run = [gaps[index]] if index < len(gaps) else []
+        return self._with_solid(out)
+
+    def _with_solid(self, runs: list[dict]) -> list[dict]:
+        """The runs, plus what the runs cannot see.
+
+        A run is a run of gaps between events, which makes the reader blind to
+        exactly one thing: radio that never stops. A continuous block is one
+        event with no gaps in it at all, so it belongs to no run and is
+        silently dropped -- and on 2026-10-26 each command turned out to carry
+        a 0.19 s block at 3.9 mA, worth 740 uC, which is 40% of what a command
+        costs the device. The table was 15% light and nothing said so.
+
+        So the gaps between runs are examined too, and any that carries
+        current rather than idle comes back as a phase with a gap of zero.
+        Then the phases partition the recording, and `coverage` says how much
+        of its charge they account for: a blind spot announces itself in the
+        output instead of in a model that does not fit.
+        """
+        floor = st.median(self.currents)
+        wanted = floor + self.burst_margin_ua / 10.0
+        out: list[dict] = []
+        cursor = 0
+        for run in runs:
+            first, last = run["window"]
+            if first > cursor:
+                solid = self._phase(cursor, first, [0.0])
+                if solid["mean_ua"] > wanted:
+                    solid["events"] = 0
+                    out.append(solid)
+            out.append(run)
+            cursor = max(cursor, last)
+        if cursor < len(self.currents):
+            solid = self._phase(cursor, len(self.currents), [0.0])
+            if solid["mean_ua"] > wanted:
+                solid["events"] = 0
+                out.append(solid)
         return out
+
+    def coverage(self, runs: list[dict]) -> float:
+        """The share of the recording's charge the phases account for."""
+        total = sum(self.currents) * self.period_ms / 1000.0
+        if total <= 0:
+            return 1.0
+        held = sum(run["charge_uc"] for run in runs)
+        return held / total
 
     def _phase(self, first: int, last: int, gaps: list[float]) -> dict:
         """One run, with the figures anything would quote from it."""
         span = self.currents[first:last]
-        duration = self.times[last] - self.times[first]
+        # Clamped: a trailing phase runs to the end of the recording, and the
+        # sample after the last one has no timestamp.
+        end = self.times[min(last, len(self.times) - 1)]
+        duration = end - self.times[first]
         mean = st.mean(span) if span else 0.0
         return {
             "gap_ms": round(st.median(gaps), 2),
             "events": len(gaps) + 1,
             "window": (first, last),
             "from_ms": round(self.times[first], 1),
-            "to_ms": round(self.times[last], 1),
+            "to_ms": round(end, 1),
             "duration_ms": round(duration, 1),
             "mean_ua": round(mean, 2),
             "charge_uc": round(mean * duration / 1000.0, 2),
@@ -761,6 +808,7 @@ def main(argv: list[str] | None = None) -> int:
             )
         windows += [run["window"] for run in runs]
         found = runs
+        print(f"  phases account for {100 * trace.coverage(runs):.1f}% of the charge")
     if args.segment:
         wanted = tuple(int(part) for part in args.intervals.split(","))
         found = trace.segments(wanted)

@@ -335,3 +335,32 @@ def test_two_runs_at_one_interval_are_one_step(tmp_path) -> None:
     folder = _otii_folder(tmp_path, rows)
     steps = Trace.read(folder / "Main current - Arc.csv").segments((100, 200))
     assert [step["label"] for step in steps] == [100]
+
+
+def test_radio_that_never_stops_is_a_phase_of_its_own(tmp_path) -> None:
+    """A run is a run of gaps, which makes the reader blind to exactly one
+    thing: a continuous block. Each command of 2026-10-26 carried a 0.19 s
+    block at 3.9 mA, worth 740 uC and 40% of what a command costs, and it
+    belonged to no run. The table came out 15% light and nothing said so."""
+    rows = _events([(2000.0, 6.0, 4)])
+    # A solid 100 ms of radio, right after the fourth advertising event.
+    block_from = 6.2
+    rows = [
+        (when, 4000e-6 if block_from <= when < block_from + 0.1 else value)
+        for when, value in rows
+    ]
+    assert any(value == 4000e-6 for _when, value in rows)
+    folder = _otii_folder(tmp_path, rows)
+    trace = Trace.read(folder / "Main current - Arc.csv")
+    runs = trace.phases()
+    solid = [run for run in runs if run["gap_ms"] == 0.0]
+    assert solid, "the continuous block has to come back as a phase"
+    # Its charge, not its mean: a solid phase is the stretch no run covered,
+    # so it carries the block plus whatever idle sits either side of it, and
+    # the charge is the figure a per-command cost is taken from. 100 ms at
+    # 4 mA is 400 uC.
+    assert max(run["charge_uc"] for run in solid) > 380.0
+
+    # And the phases now account for essentially all of the charge, which is
+    # the check that would have caught this without a trip to the bench.
+    assert trace.coverage(runs) > 0.95

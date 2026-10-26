@@ -1989,13 +1989,20 @@ thirty seconds to answer and `tools.power_commands` treated the timeout as
 fatal (it no longer does). The trace holds all nine, and `power_charge --phases`
 found every one of them without a marker channel.
 
+A command is three things in the current, in this order:
+
 | | per command |
 |---|---|
-| the connection | **0.90 to 2.78 s**, first three 2.6 to 2.8 s and the rest 1.74 to 1.79 s |
-| its charge above idle | 594 to 1662 uC, **median 1078 uC** |
-| the fast window after it | **29.93 to 30.00 s** at 147.0 to 149.9 uA |
-| its charge above idle | 3979 to 4063 uC, **median 4016 uC** |
-| **one command, all in** | **5072 uC**, of which the fast window is **79%** |
+| **a solid block of radio**, no gaps in it at all | **0.19 s at 3.9 mA**, 730 uC |
+| **the link, at 7.5 ms** | 1.09 to 2.97 s at 0.58 to 0.82 mA |
+| **the two together, above idle** | 1330 to 2725 uC, **median 1810 uC** |
+| **the fast window after it** | **29.93 to 30.00 s** at 147.0 to 149.9 uA |
+| its charge above idle | 3979 to 4063 uC, **median 4017 uC** |
+| **one command, all in** | **5827 uC**, of which the fast window is **69%** |
+
+The first three commands cost 2356 to 2725 uC against 1330 to 1819 for the rest:
+service discovery, paid once per Home Assistant restart rather than per command,
+which is why the table below takes the median of the nine and not the mean.
 
 **`fastTimeout` and `fastInterval` are no longer assumptions.** Nine
 independent measurements of the fast window give 29.93 to 30.00 s against a
@@ -2014,38 +2021,66 @@ option is free of cost here rather than that it is worthless: recording 3, the
 pinned arm, should come out indistinguishable from this one, and if it does
 then D-141 needs no guard for this path.
 
-**A connection is 1.7 s long for one write**, which is the other thing worth
-staring at: 230 connection events at 7.5 ms to deliver one object. The first
-three are a second longer, which is service discovery. What the rest is doing
-is Home Assistant's business rather than the device's, but the device pays for
-it, and 1.06 mC of the 5.07 mC a command costs is that link being held open.
+**A connection is 1.9 s long for one write**, which is the other thing worth
+staring at: 250 connection events at 7.5 ms to deliver one object. What they
+are doing is Home Assistant's business rather than the device's, but the device
+pays for it, and 1.8 of the 5.8 mC a command costs is that link being held
+open.
 
-### The reference table, measured
+### The blind spot this found, which is the method and not the device
+
+The first reading of this trace gave 1078 uC a command and the check cell came
+out **15% light**: 123.66 uA predicted against 142.64 measured. The missing
+7225 uC were in nine stretches of 0.19 s at 3.9 mA, one per command.
+
+**A phase is a run of gaps between radio events, which makes the reader blind
+to exactly one thing: radio that never stops.** A continuous block is a single
+event with no gaps in it, so it belongs to no run and was dropped without a
+word -- and it was 40% of what a command costs. `phases()` now examines the
+stretches between its own runs and returns any that carries current as a phase
+of its own, and `power_charge --phases` **prints the share of the recording's
+charge its phases account for**: 100.0% for this trace. A blind spot now
+announces itself in the output rather than as a model that does not fit.
+
+That is the third time in one day that a threshold or a window taken from the
+shape of the data rather than from what the hardware does has cost a
+measurement, and it is the one worth writing down: **the analysis has to
+account for all of the charge, and say so.**
+
+### The reference table, measured, and one cell checked
 
 Floor **7.35 uA**, one advertising event **14.19 uC**, one command's connection
-**1078 uC**, `fastInterval` 100 ms and `fastTimeout` 30 s as measured.
+**1810 uC**, `fastInterval` 100 ms and `fastTimeout` 30 s as measured.
 
 | advertising interval | 0/min | 1/min | 2/min | 3/min | 4/min | 6/min |
 |---|---|---|---|---|---|---|
-| 200 ms | 78.3 | 131.8 | 185.2 | 203.2 | 221.2 | 257.1 |
-| 500 ms | 35.7 | 110.5 | 185.2 | 203.2 | 221.2 | 257.1 |
-| 1 s | 21.5 | 103.4 | 185.2 | 203.2 | 221.2 | 257.1 |
-| 2 s | 14.4 | 99.8 | 185.2 | 203.2 | 221.2 | 257.1 |
-| 3.2 s | 11.8 | 98.5 | 185.2 | 203.2 | 221.2 | 257.1 |
-| 5 s | 10.2 | 97.7 | 185.2 | 203.2 | 221.2 | 257.1 |
-| 10 s | 8.8 | 97.0 | 185.2 | 203.2 | 221.2 | 257.1 |
+| 200 ms | 78.3 | 144.0 | 209.6 | 239.8 | 270.0 | 330.3 |
+| 500 ms | 35.7 | 122.7 | 209.6 | 239.8 | 270.0 | 330.3 |
+| 1 s | 21.5 | 115.6 | 209.6 | 239.8 | 270.0 | 330.3 |
+| 2 s | 14.4 | 112.0 | 209.6 | 239.8 | 270.0 | 330.3 |
+| 3.2 s | 11.8 | 110.7 | 209.6 | 239.8 | 270.0 | 330.3 |
+| 5 s | 10.2 | 109.9 | 209.6 | 239.8 | 270.0 | 330.3 |
+| 10 s | 8.8 | 109.2 | 209.6 | 239.8 | 270.0 | 330.3 |
 
 Microamps. In days of a 220 mAh CR2032:
 
 | advertising interval | 0/min | 1/min | 2/min | 3/min | 4/min | 6/min |
 |---|---|---|---|---|---|---|
-| 200 ms | 117 | 70 | 49 | 45 | 41 | 36 |
-| 500 ms | 256 | 83 | 49 | 45 | 41 | 36 |
-| 1 s | 426 | 89 | 49 | 45 | 41 | 36 |
-| **2 s** | **634** | **92** | **49** | 45 | 41 | 36 |
-| 3.2 s | 777 | 93 | 49 | 45 | 41 | 36 |
-| 5 s | 900 | 94 | 49 | 45 | 41 | 36 |
-| 10 s | 1045 | 95 | 49 | 45 | 41 | 36 |
+| 200 ms | 117 | 64 | 44 | 38 | 34 | 28 |
+| 500 ms | 256 | 75 | 44 | 38 | 34 | 28 |
+| 1 s | 426 | 79 | 44 | 38 | 34 | 28 |
+| **2 s** | **634** | **82** | **44** | 38 | 34 | 28 |
+| 3.2 s | 777 | 83 | 44 | 38 | 34 | 28 |
+| 5 s | 900 | 83 | 44 | 38 | 34 | 28 |
+| 10 s | 1045 | 84 | 44 | 38 | 34 | 28 |
+
+**And one cell is checked against a recording rather than computed.** The
+command trace itself is a cell: nine commands over 422 s is 1.279 a minute at
+the 2 s interval, for which the table says **139.3 uA** and the recording
+measures **142.64 uA**, which is **2.3%**. Most of that residue is the three
+discovery-heavy first connections sitting inside the measured span while the
+table carries the median; with the mean connection charge of that span the
+table says 141.7 uA, which is 0.7%.
 
 **Three sentences come out of this table, and none of them is "a write is
 expensive".**
@@ -2053,17 +2088,16 @@ expensive".**
 1. **A device nobody writes to lives on its advertising interval alone**, and
    the range is wide: 117 days at 200 ms against 1045 at 10 s, with the module's
    2 s default at 634.
-2. **One command a minute costs more than advertising does.** At 2 s it takes
-   the device from 634 days to 92, a factor of seven, and four fifths of that is
-   not the write: it is the thirty seconds of fast advertising the write leaves
-   behind.
+2. **One command a minute costs eight times what advertising does.** At 2 s it
+   takes the device from 634 days to 82, and two thirds of that is not the
+   write: it is the thirty seconds of fast advertising the write leaves behind.
 3. **From two commands a minute the advertising interval stops mattering
-   entirely.** Every row collapses: 49 days whether the device advertises at
+   entirely.** Every row collapses: 44 days whether the device advertises at
    200 ms or at 10 s, because the fast window never closes. The only lever left
    is `fastTimeout`, and nobody has said so before.
 
 The first column and the last are what a reader should compare: **1045 days
-against 36**, both of them this same device, differing only in how often it is
+against 28**, both of them this same device, differing only in how often it is
 asked to do something and how long it stays alert afterwards.
 
 ### What the model already says, before anything is measured
