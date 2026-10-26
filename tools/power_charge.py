@@ -154,6 +154,21 @@ def _time_scale(header: str, override: str | None) -> float:
     return found
 
 
+def _despike(labels: list[int | None]) -> list[int | None]:
+    """One odd gap in a run of equal ones is the radio, not a step change.
+
+    An advertising event that collides with a connection event is delayed,
+    which shows up as one long gap followed by one short one. Left alone it
+    cuts a step in three; a neighbour vote removes it.
+    """
+    out = list(labels)
+    for index in range(1, len(labels) - 1):
+        before, after = labels[index - 1], labels[index + 1]
+        if before == after and labels[index] != before:
+            out[index] = before
+    return out
+
+
 def _column(
     headers: list[str], names: tuple[str, ...], skip: int = -1, required: bool = True
 ) -> int:
@@ -302,6 +317,82 @@ class Trace:
         if cursor < last:
             spans.append((cursor, last))
         return spans
+
+    def bursts(self, threshold_ua: float) -> list[tuple[int, int]]:
+        """The radio events: contiguous runs above a threshold."""
+        runs: list[tuple[int, int]] = []
+        first = None
+        for index, current in enumerate(self.currents):
+            if current > threshold_ua:
+                first = index if first is None else first
+            elif first is not None:
+                runs.append((first, index))
+                first = None
+        if first is not None:
+            runs.append((first, len(self.currents)))
+        return runs
+
+    def burst_threshold(self) -> float:
+        """Above the floor, below the peak, and nowhere near either."""
+        floor = st.median(self.currents)
+        peak = max(self.currents)
+        return floor + max(50.0, 0.05 * (peak - floor))
+
+    def segments(
+        self,
+        intervals_ms: tuple[int, ...],
+        tolerance: float = 0.15,
+        least: int = 4,
+    ) -> list[dict]:
+        """The swept steps, read out of the current itself.
+
+        A marker channel fences the steps of a sweep, and an Otii Arc samples
+        its digital inputs at 1 ksps, which is plenty. But the fence is not
+        actually necessary: a device advertising at 500 ms looks nothing like
+        the same device advertising at 2 s, so the interval is *in* the trace,
+        and reading it there is better than being told it. The step boundaries
+        come out of the measurement, and the step that does not match what was
+        programmed announces itself instead of hiding inside an average.
+
+        Each step is returned as the window between the first and the last
+        advertising event of a run at one interval, which holds a whole number
+        of periods and so gives a mean with no edge bias.
+        """
+        starts = [first for first, _ in self.bursts(self.burst_threshold())]
+        if len(starts) < 2:
+            return []
+        labelled: list[int | None] = []
+        for index in range(len(starts) - 1):
+            gap_ms = self.times[starts[index + 1]] - self.times[starts[index]]
+            nearest = min(intervals_ms, key=lambda ms: abs(gap_ms - ms))
+            # Bluetooth adds 0 to 10 ms of its own to every advertising event,
+            # which at a 100 ms interval is a tenth of it: the window has to
+            # admit that much and no more, or 375 ms passes for 500.
+            within = abs(gap_ms - nearest) <= max(tolerance * nearest, 12.0)
+            labelled.append(nearest if within else None)
+        labelled = _despike(labelled)
+
+        out: list[dict] = []
+        run_from = 0
+        for index in range(1, len(labelled) + 1):
+            same = index < len(labelled) and labelled[index] == labelled[run_from]
+            if same:
+                continue
+            label = labelled[run_from]
+            events = index - run_from + 1
+            if label is not None and events >= least:
+                first, last = starts[run_from], starts[index]
+                out.append(
+                    {
+                        "label": label,
+                        "events": events,
+                        "window": (first, last),
+                        "from_ms": round(self.times[first], 1),
+                        "to_ms": round(self.times[last], 1),
+                    }
+                )
+            run_from = index
+        return out
 
     def windows(
         self,
@@ -492,6 +583,17 @@ def main(argv: list[str] | None = None) -> int:
         help="a second export holding the marker channel, aligned by timestamp",
     )
     parser.add_argument(
+        "--segment",
+        action="store_true",
+        help="find the swept steps in the current itself, by the rate of the"
+        " advertising events, instead of from a marker channel",
+    )
+    parser.add_argument(
+        "--intervals",
+        default="100,200,500,1000,2000,3200,5000,10000",
+        help="the advertising intervals a --segment sweep may be at",
+    )
+    parser.add_argument(
         "--gaps",
         action="store_true",
         help="measure the stretches *between* marker pulses rather than under"
@@ -543,6 +645,18 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit("--digital-csv needs --digital to say which channel")
 
     windows: list[tuple[int, int]] = []
+    found: list[dict] = []
+    if args.segment:
+        wanted = tuple(int(part) for part in args.intervals.split(","))
+        found = trace.segments(wanted)
+        print(f"{len(found)} steps found by their advertising rate:")
+        for step in found:
+            print(
+                f"  {step['label']:>6} ms,"
+                f" {step['events']:>5} events,"
+                f" {step['from_ms'] / 1000:8.1f} -> {step['to_ms'] / 1000:8.1f} s"
+            )
+        windows += [step["window"] for step in found]
     if args.digital:
         windows += trace.windows(
             args.digital, args.digital_threshold, marker, args.gaps
@@ -556,14 +670,18 @@ def main(argv: list[str] | None = None) -> int:
 
     # Outside a sweep's steps there is nothing but the marker pulses, so an
     # inferred floor would be the pulse rather than the device.
-    if args.baseline == "auto" and args.gaps:
+    if args.baseline == "auto" and args.segment:
         baseline: float | None = 0.0
+    elif args.baseline == "auto" and args.gaps:
+        baseline = 0.0
     elif args.baseline == "auto":
         baseline = None
     else:
         baseline = float(args.baseline)
     report = summarise(trace, windows, baseline, args.capacity_mah)
     labels = [name.strip() for name in args.labels.split(",")] if args.labels else []
+    if found and not labels:
+        labels = [str(step["label"]) for step in found]
     for index, window in enumerate(report.get("windows", [])):
         if index < len(labels):
             window["label"] = labels[index]

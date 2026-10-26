@@ -123,20 +123,39 @@ def prompts(seen: bytes) -> int:
 
 async def _send_source(
     client: BleakClient, source: str, seen: bytearray, patience: float
-) -> tuple[int, int]:
-    """Write the source, one block at a time, paced by the console prompt."""
+) -> tuple[int, int, int]:
+    """Write the source a block at a time, paced but never interrupted.
+
+    Nothing of ours may go between the blocks. A sentinel expression after
+    each one would be a perfect round trip through the interpreter, and it is
+    not available: the minifier breaks lines inside expressions, so a block
+    boundary can fall in the middle of an argument list and an injected
+    statement there is a syntax error rather than a no-op. So the pace is the
+    prompt when the prompt comes, and `patience` when it does not, which is
+    most of the time while the interpreter is parsing a function body that
+    spans blocks.
+
+    A complaint on the console stops the send. A load that has already
+    overrun its buffer is lost, and the remaining blocks would only bury the
+    line that says so.
+    """
     stalled = 0
     parts = blocks(source)
-    for block in parts:
+    quiet = len(seen)
+    for index, block in enumerate(parts):
         wanted = prompts(seen) + block.count("\n")
         await _write(client, block)
         deadline = time.monotonic() + patience
         while prompts(seen) < wanted:
+            # Only what this load provoked: the console may still be holding
+            # an error from whatever ran on the board before it.
+            if complaints(seen[quiet:].decode("utf-8", "replace")):
+                return len(parts), stalled, index + 1
             if time.monotonic() > deadline:
                 stalled += 1
                 break
-            await asyncio.sleep(0.02)
-    return len(parts), stalled
+            await asyncio.sleep(0.01)
+    return len(parts), stalled, len(parts)
 
 
 async def run(
@@ -148,7 +167,8 @@ async def run(
     hold: float,
     raw: bool = False,
     pretokenise: bool = True,
-    patience: float = 4.0,
+    patience: float = 0.6,
+    clear: bool = True,
 ) -> int:
     device = await BleakScanner.find_device_by_address(address, timeout=40.0)
     if device is None:
@@ -170,6 +190,13 @@ async def run(
         await asyncio.sleep(0.4)
 
         if load is not None:
+            if clear:
+                # Sending a sketch on top of the one already running is not a
+                # replacement: the old timers keep firing, and the first
+                # `const` of the new copy is an assignment to a constant. The
+                # flags go after the reset, which clears them.
+                await _write(client, "reset();\n")
+                await asyncio.sleep(2.0)
             if pretokenise:
                 await _write(client, "E.setFlags({pretokenise: 1});\n")
                 await asyncio.sleep(0.4)
@@ -177,12 +204,14 @@ async def run(
             if not source.endswith("\n"):
                 source += "\n"
             sending = time.monotonic()
-            parts, stalled = await _send_source(client, source, seen, patience)
+            parts, stalled, done = await _send_source(client, source, seen, patience)
             print(
-                f"sent {len(source)} bytes in {parts} blocks,"
+                f"sent {len(source)} bytes in {done} of {parts} blocks,"
                 f" {time.monotonic() - sending:.1f} s"
-                + (f", {stalled} stalled" if stalled else "")
+                + (f", {stalled} paced out" if stalled else "")
             )
+            if done < parts:
+                print("stopped early: the board complained", file=sys.stderr)
             await asyncio.sleep(settle)
 
         said = len(seen)
@@ -237,8 +266,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--patience",
         type=float,
-        default=4.0,
-        help="seconds to wait for one block's echo before pressing on",
+        default=0.6,
+        help="seconds a block may take before the next one goes out anyway;"
+        " too small overruns the board's input buffer, too large is the seven"
+        " minutes a 4.0 cost",
+    )
+    parser.add_argument(
+        "--no-reset",
+        action="store_true",
+        help="load on top of whatever is running, which leaves its timers"
+        " firing and its constants in the way",
     )
     parser.add_argument(
         "--no-pretokenise",
@@ -268,6 +305,7 @@ def main(argv: list[str] | None = None) -> int:
             args.raw,
             not args.no_pretokenise,
             args.patience,
+            not args.no_reset,
         )
     )
 
