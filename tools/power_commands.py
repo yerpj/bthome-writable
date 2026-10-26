@@ -34,7 +34,6 @@ import os
 from pathlib import Path
 import sys
 import time
-from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 DEFAULT_URL = "http://haosjry.local:8123"
@@ -97,7 +96,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         before = _call(url, token, f"/api/states/{args.entity}", None)
-    except (HTTPError, URLError) as exc:
+    except OSError as exc:
         raise SystemExit(f"{args.entity}: {exc}") from None
     state = before.get("state") if isinstance(before, dict) else None
     print(f"{args.entity} is {state!r}")
@@ -143,8 +142,17 @@ def main(argv: list[str] | None = None) -> int:
                 {"entity_id": args.entity},
             )
             failed = None
-        except (HTTPError, URLError) as exc:
-            failed = str(exc)
+        except OSError as exc:
+            # OSError and not (HTTPError, URLError): a read that times out
+            # after the request went out raises TimeoutError, which is not a
+            # URLError, and on 2026-10-26 that killed a run after its eighth
+            # command with eight minutes of recording already on the meter.
+            # URLError and HTTPError are both OSError, so one clause covers
+            # every way a service call can fail to come back, and a command
+            # that failed is written down rather than ending the run: the
+            # trace is still being recorded and the schedule still has to be
+            # kept.
+            failed = f"{type(exc).__name__}: {exc}"
         took = time.monotonic() - started - at
         print(
             f"  {index:>3}/{args.count}  {service:<9} at {at:7.2f} s"
