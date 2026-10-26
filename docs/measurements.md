@@ -1784,7 +1784,7 @@ wrong rather than as a surprising result.
 
 | | |
 |---|---|
-| **Instrument** | an **Otii Arc Pro** (Qoitech), the owner's: a source measure unit that supplies the board and measures what it draws, nanoamps to 5 A at 5 nA resolution, **current at up to 4 ksps** and one of its two digital inputs on the marker pin |
+| **Instrument** | an **Otii Arc Pro** (Qoitech), the owner's: a source measure unit that supplies the board and measures what it draws, nanoamps to 5 A at 5 nA resolution, **current at up to 4 ksps** and one of its two digital inputs on the marker pin. Three numbers in its datasheet shape what the rig can see, and all three are fine for this measurement: 4 ksps is the main current channel **in the 19 mA range only** (above it the Arc auto-ranges and drops to 1 ksps, so keep the peak under 19 mA, which a Puck's 6 mA transmit does); every other channel including **GPI1 is 1 ksps**, so a marker edge is placed to a millisecond; and the current channel's analog bandwidth is **400 Hz**, so it integrates honestly and shows no peaks |
 | **Puck.js** `C8:80:32:AD:F7:B9` | cell **out of the holder**, the Arc feeding 3.0 V into the 3V and GND pads. A coin cell cannot be measured in series without becoming the thing measured, and 3.0 V is inside the Arc's high-accuracy range on USB power alone |
 | **nice!nano** `E0:A4:BA:16:54:89` (lamp3) | USB **unplugged**, the Arc feeding 3.7 V into the battery pads, so the figure includes the board's charger and regulator -- which is what a real device pays. 3.7 V is above the 3.75 V ceiling of the Arc's high-accuracy range on USB power, so this arm wants the **7-9 V DC adapter**. Not lamp `F5:A8:93:67:CB:25`: that one is in the §17 and §21 campaigns and should stay on its cable |
 | **Sketch** | `espruino/bench/power-arms.js`, four constants selecting the arm, loaded **over the radio** from the Web IDE so that nothing is on the cable and nothing is written to flash |
@@ -1937,8 +1937,20 @@ anything measured here, and **the sample rate decides which of these the rig can
 actually see**: at 4 ksps a sample is 250 us, so a connection is twelve thousand
 samples and a rebuild of 26-38 ms is a hundred, both of which integrate
 honestly, while one advertising event is six samples and its *peak* is not a
-figure this rig produces. That costs nothing, because what a battery cares about
-is the mean over minutes, which is arm B. an advertising event on three channels is roughly 1.5 ms
+figure this rig produces, the 400 Hz analog bandwidth having smoothed it before
+the sampler ever saw it. That costs nothing, because what a battery cares about
+is the mean over minutes, and every coefficient in the model above is a charge
+rather than a peak.
+
+**A PPK2 would see the peaks and would not help.** Nordic's kit samples current
+at 100 ksps, twenty-five times the Arc, which is what it takes to draw the
+shape of a single transmit; the Arc answers a different question, and this is
+that question. Where the Arc is the better instrument here is the floor: 5 nA of
+resolution against the PPK2's 100 nA, on a measurement whose whole long-interval
+end *is* the floor. The one place the rate does bite is the marker, at 1 ksps on
+GPI1: a window edge is right to a millisecond, which is 0.4% of a 250 ms
+connection and invisible in a 120 s sweep step, so the one-second pulses of
+`power-arms.js` are deliberately coarse. an advertising event on three channels is roughly 1.5 ms
 of radio at about 6 mA, so **9 uC per event** -- 9 uA at a 1 s interval, 4.5 at
 2 s, 2.8 at 3.2 s. An empty connection event is shorter, call it 4 uC, so **20
 uA at a 200 ms interval and about 530 uA at 7.5 ms**, which is where the 27x of
