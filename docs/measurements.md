@@ -1842,10 +1842,16 @@ floor is the intercept, one advertising event the slope.
 | **3. the same, pinned** | recording 2 with `CONNECTION_INTERVAL = 7.5`, which is what puts D-141's cost in the same table as everything else | **8 min** |
 | **4. two checks** | 10 min at 2000 ms with 1 command a minute, then 5 min at 2000 ms with 4 a minute, on the **automatic** image, which is the arm the table is built from. Compare each span's mean against what the table says it should be. It found a 14% error in the model at the second cell | **18 min** |
 
-**Call it 45 minutes a board**, and the second board is the same 45 minutes. The
+**Call it 45 minutes a board.** The
 checks are not optional: a table computed from three coefficients and verified
 nowhere is a table that should not go on anybody's documentation page. Two cells
 are enough, one each side of the saturation below.
+
+**It ran in an hour and a half on 2026-10-26, and there is one board rather than
+two.** The owner called the nice!nano off the same day the Puck.js finished: one
+characterised board is enough for the page. That is his call to make and it costs
+one of the four coefficients rather than the table -- see "What the Puck.js
+answers for and what it does not", below the table.
 
 **Why 120 s a step is enough**, when §23 used to ask for a hundred advertising
 events: the short intervals get them anyway, 1200 at 100 ms, and at the long end
@@ -2152,6 +2158,31 @@ Two consequences beyond the corrected cell:
 * **the rows collapse exactly rather than nearly.** Taking the connection's seconds out of the idle term as well as the fast one is what makes the 2/min column identical at 200 ms and at 10 s; leaving them in the idle term left 5 uA of the advertising interval showing at saturation, which would have been a second wrong claim hiding behind a right one.
 
 **This is the fourth time in two days that a figure taken from the shape of the arithmetic rather than from what the hardware does has cost a measurement**, and it is the first one the checks caught instead of the bench. Two cells were in the plan for exactly this and the plan was right: a 49-cell table computed from four coefficients and verified nowhere would have gone on the module page 14% wrong in the cell it exists to make.
+
+### What the Puck.js answers for and what it does not
+
+**2026-10-26, the owner: one board is enough.** The nice!nano arm of D-142 is off. That is worth taking seriously rather than apologising for, because three of the four coefficients are not the board's and the fourth is the one an adopter can measure in a minute.
+
+| coefficient | whose property is it | how far it travels |
+|---|---|---|
+| `fastInterval` 100 ms, `fastTimeout` 30 s | **the module's**, and they are constants in `setup()` | exactly, to every device running it |
+| `Qadv` **14.19 uC** an advertising event | **the radio's**: three channels of a 20-byte packet at 0 dBm | between nRF52 boards at the same TX power, within tens of per cent |
+| `Qcmd` **1810 uC** over **2.34 s** | **the central's**, mostly: it is 600 uA of held-open link and the device does not choose the duration | between boards, better than it travels between centrals. It moved 27% between two cells of one recording |
+| `floor` **7.35 uA** | **the board's and the firmware's** | not at all, and this is the one to say so about |
+
+**The floor is the coefficient that does not travel, and it is the easy one to replace.** 7.35 uA is this Puck.js on 3.0 V with Espruino 2v29, of which 0.90 uA is the SoftDevice calibrating its RC oscillator every 8.000 s because a Puck.js has no 32 kHz crystal. @enaon's board idles at about 45 uA with this module not loaded at all (§8), six times as much. So a second board would have given a second floor and the same other three coefficients, which is a day's work for one number -- and the number is one a reader can measure on their own board with nothing but the meter and no sketch at all.
+
+That is what the module page should say, and it is better advice than a
+two-board table: **take your board's idle current, add our three, and the
+row is yours.** `power_table --floor <yours> --adv-charge 14.194
+--command-charge 1810 --command-seconds 2.34` is that arithmetic, and the
+0/min column of the published table is the only one the floor dominates.
+
+**Three things the campaign does not cover at all, and they are not about the second board.**
+
+* **A device whose advertised values move.** Every arm here advertises two writables and nothing that gets re-read, so `Qrebuild` is unmeasured and the table is for a device whose advertised sensors sit still. `bench.rebuild()` and `power_table --rebuild-charge` are both in place for it.
+* **A link held open.** The one case a per-command charge cannot represent, and the one that could still put a guard into D-141: `tools/hold_link.py` auto against pinned.
+* **Any supply but 3.0 V.** A coin cell ends its life near 2.5 V and the radio draws more current there for the same transmit. The published table is a nominal-cell table and should say so.
 
 ### What the model already says, before anything is measured
 

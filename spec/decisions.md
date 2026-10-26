@@ -9297,6 +9297,23 @@ decision: because only one board sits on the meter at a time, the floor arm is
 part of each board's own sitting and no row of the published table compares the
 two boards under one setup.
 
+**2026-10-26, the owner: the nice!nano arm is off, one board is enough.**
+The Puck.js campaign ran the same day and the table is complete, so the
+second board's 45 minutes would have bought exactly one coefficient: three
+of the four are the module's, the radio's and the central's, and only the
+floor is the board's. His call, and the right one -- a reader can measure
+their own floor with the meter and no sketch at all, which is better advice
+than a table of two boards they do not own.
+
+What goes on the page changes with it. The table is published as **a Puck.js
+on 3.0 V with Espruino 2v29**, named as such, with the arithmetic for
+substituting another floor beside it: `--floor <yours> --adv-charge 14.194
+--command-charge 1810 --command-seconds 2.34`. §23 says which coefficient
+travels and which does not. The three gaps that remain are not the second
+board's -- a device whose advertised values move (`Qrebuild`), a link held
+open, and any supply below 3.0 V -- and the first two were already deferred
+for cause.
+
 **2026-10-26, the campaign ran and the two checks earned their place.** Four
 recordings on the Puck.js, 49 commands, and the whole table is measured
 (§23). The one thing worth promoting out of the measurements file into this
