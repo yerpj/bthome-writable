@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Puck.js battery life against advertising interval</title>
+<!-- The constants and the model below are lifted verbatim from the interactive
+     map, so this figure and that page cannot disagree. Render it the way
+     docs/figures/README.md says, at 960x600. -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/plotly.js@2.35.2/dist/plotly.min.js"></script>
+<style>
+  /* A fixed-size light figure: this file exists to be screenshotted, so it
+     carries no theme switching and no controls. */
+  :root {
+    color-scheme: light;
+    --surface-1: #fcfcfb;
+    --surface-2: #f3f4f3;
+    --line: #dcdee2;
+    --line-strong: #c3c7cd;
+    --text-primary: #0b0b0b;
+    --text-secondary: #4f535a;
+    --text-muted: #7c8089;
+    --series-1: #2a78d6;
+    --series-2: #e05c28;
+    --series-3: #169a6a;
+    --series-4: #b07d00;
+    --series-5: #c0477e;
+    --font-body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+    --font-data: "IBM Plex Mono", ui-monospace, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    width: 960px; height: 600px;
+    background: var(--surface-1);
+    color: var(--text-primary);
+    font-family: var(--font-body);
+    padding: 20px 24px 16px;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  h1 { margin: 0; font-size: 19px; font-weight: 600; letter-spacing: -0.01em; }
+  .sub { margin: 0; font-size: 12.5px; color: var(--text-secondary); }
+  .sub b { font-family: var(--font-data); font-weight: 500; color: var(--text-primary); }
+  #plot { flex: 1 1 auto; min-height: 0; }
+  .foot {
+    margin: 0; font-size: 11px; line-height: 1.45; color: var(--text-muted);
+    border-top: 1px solid var(--line); padding-top: 8px;
+  }
+  .foot span { font-family: var(--font-data); }
+</style>
+</head>
+<body>
+  <h1>Puck.js battery life against advertising interval, bthome-writable</h1>
+  <p class="sub">Measured 2026-10-26 on a sealed Puck.js at <b>3.000 V</b> with an Otii Arc Pro:
+    floor <b>7.35 uA</b>, one advertising event <b>14.19 uC</b>, one command <b>1810 uC</b> over <b>2.34 s</b>,
+    fast window <b>30 s at 100 ms</b>. Life on <b>154 mAh</b>, 70 % of a CR2032's 220 mAh.</p>
+  <div id="plot"></div>
+  <p class="foot">The interval axis is the radio's own limit: the module refuses anything outside
+    <span>20 ms to 10 s</span>. Dotted lines are six months, one year and two years; the dots mark where each
+    rate reaches one year. <span>726</span> days at one command a day and 10 s is the ceiling of everything the
+    module can be set to do, so the two-year line is there to show that nothing reaches it. The 70 % is a flat
+    allowance for what a coin cell does not give back (a 2.0 V rating, about 1 % a year of self-discharge, a
+    rising internal resistance) and is not itself measured.</p>
+
+<script>
+var C = { floor: 7.35, qadv: 14.194, qcmd: 1810.0, tcmd: 2.34, fastMs: 100.0, fastTimeout: 30.0 };
+var CAPACITY_MAH = 220.0;
+var USABLE = 0.70;
+function currentUa(intervalMs, perDay) {
+      var n = perDay / 1440.0;
+      var connected = Math.min(1.0, n * C.tcmd / 60.0);
+      var fast = Math.min(1.0 - connected, n * C.fastTimeout / 60.0);
+      var idle = (1.0 - connected - fast) * C.qadv / (intervalMs / 1000.0);
+      return C.floor + idle + fast * C.qadv / (C.fastMs / 1000.0) + n * C.qcmd / 60.0;
+    }
+function days(intervalMs, perDay) {
+      return CAPACITY_MAH * USABLE * 1000.0 / currentUa(intervalMs, perDay) / 24.0;
+    }
+function logspace(from, to, n) {
+      var a = Math.log10(from), b = Math.log10(to), out = [];
+      for (var i = 0; i < n; i++) out.push(Math.pow(10, a + (b - a) * i / (n - 1)));
+      return out;
+    }
+function intervalLabel(ms) {
+      return ms < 1000 ? Math.round(ms) + " ms" : (ms / 1000).toFixed(ms % 1000 ? 1 : 0) + " s";
+    }
+function crossing(perDay, target) {
+      var lo = 100, hi = 10000;
+      if (days(lo, perDay) > target || days(hi, perDay) < target) return null;
+      for (var i = 0; i < 60; i++) {
+        var mid = (lo + hi) / 2;
+        if (days(mid, perDay) < target) lo = mid; else hi = mid;
+      }
+      return (lo + hi) / 2;
+    }
+
+var RATES = [
+  { perDay: 1,   name: "1 command a day", tag: "1/day",   token: "--series-1" },
+  { perDay: 10,  name: "10 a day",        tag: "10/day",  token: "--series-2" },
+  { perDay: 50,  name: "50 a day",        tag: "50/day",  token: "--series-3" },
+  { perDay: 100, name: "100 a day",       tag: "100/day", token: "--series-4" },
+  { perDay: 200, name: "200 a day",       tag: "200/day", token: "--series-5" }
+];
+var MILESTONES = [
+  { days: 183, label: "six months" },
+  { days: 365, label: "one year" },
+  { days: 730, label: "two years, which nothing reaches" }
+];
+var INTERVAL_TICKS = [100, 200, 500, 1000, 2000, 5000, 10000];
+
+function token(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+}
+
+var xs = logspace(100, 10000, 220);
+var traces = RATES.map(function (r) {
+  return {
+    type: "scatter", mode: "lines", name: r.name,
+    x: xs, y: xs.map(function (ms) { return days(ms, r.perDay); }),
+    line: { color: token(r.token), width: 2 }, hoverinfo: "skip"
+  };
+});
+var reach = RATES.map(function (r) { return { r: r, ms: crossing(r.perDay, 365) }; })
+  .filter(function (m) { return m.ms !== null; });
+traces.push({
+  type: "scatter", mode: "markers", showlegend: false, cliponaxis: false, hoverinfo: "skip",
+  x: reach.map(function (m) { return m.ms; }),
+  y: reach.map(function () { return 365; }),
+  marker: {
+    size: 10, color: reach.map(function (m) { return token(m.r.token); }),
+    line: { width: 2, color: token("--surface-2") }
+  }
+});
+
+Plotly.newPlot("plot", traces, {
+  paper_bgcolor: token("--surface-2"),
+  plot_bgcolor: token("--surface-2"),
+  margin: { l: 64, r: 70, t: 30, b: 46 },
+  font: { family: "IBM Plex Sans, system-ui, sans-serif", color: token("--text-secondary") },
+  showlegend: true,
+  legend: {
+    orientation: "h", x: 0, xanchor: "left", y: 1.13, yanchor: "top",
+    font: { size: 11.5, color: token("--text-secondary") }, bgcolor: "rgba(0,0,0,0)"
+  },
+  shapes: MILESTONES.map(function (m) {
+    return {
+      type: "line", xref: "paper", x0: 0, x1: 1, yref: "y", y0: m.days, y1: m.days,
+      line: { color: token("--line-strong"), width: 1, dash: "dot" }, layer: "below"
+    };
+  }).concat([{
+    // Where the module sits out of the box, in log units because the axis is one.
+    type: "line", xref: "x", x0: 2000, x1: 2000,
+    yref: "paper", y0: 0, y1: 1,
+    line: { color: token("--text-primary"), width: 1.4, dash: "dash" }, layer: "below"
+  }]),
+  annotations: MILESTONES.map(function (m) {
+    return {
+      xref: "paper", x: 0.012, xanchor: "left", yref: "y", y: m.days, yanchor: "bottom",
+      text: m.label, showarrow: false,
+      font: { family: "IBM Plex Sans, system-ui, sans-serif", size: 10, color: token("--text-muted") }
+    };
+  }).concat([{
+    xref: "x", x: Math.log10(2000), xanchor: "left", yref: "paper", y: 0.015, yanchor: "bottom",
+    text: "  the module's default, 2 s", showarrow: false,
+    font: { family: "IBM Plex Sans, system-ui, sans-serif", size: 10.5, color: token("--text-primary") }
+  }]).concat(RATES.map(function (r) {
+    return {
+      xref: "paper", x: 1.015, xanchor: "left", yref: "y", y: days(10000, r.perDay), yanchor: "middle",
+      text: r.tag, showarrow: false,
+      font: { family: "IBM Plex Mono, monospace", size: 11, color: token(r.token) }
+    };
+  })),
+  xaxis: {
+    type: "log",
+    title: { text: "advertising interval", font: { size: 12, color: token("--text-secondary") } },
+    tickvals: INTERVAL_TICKS, ticktext: INTERVAL_TICKS.map(intervalLabel),
+    tickfont: { family: "IBM Plex Mono, monospace", size: 10.5, color: token("--text-muted") },
+    gridcolor: token("--line"), linecolor: token("--line-strong"), zeroline: false,
+    range: [Math.log10(100), Math.log10(10000)]
+  },
+  yaxis: {
+    title: { text: "days on 154 mAh, 70 % of a CR2032", font: { size: 12, color: token("--text-secondary") } },
+    tickfont: { family: "IBM Plex Mono, monospace", size: 10.5, color: token("--text-muted") },
+    gridcolor: token("--line"), linecolor: token("--line-strong"), zeroline: false,
+    range: [0, 790], dtick: 100
+  }
+}, { displayModeBar: false, staticPlot: true }).then(function () {
+  document.title = "ready";
+});
+</script>
+</body>
+</html>

@@ -1932,7 +1932,7 @@ What the trace gives anyway, read out of the idle minute and the long stretch:
 | floor between everything | **4.34 uA** (median of 4.3 million samples) |
 | one sealed advertising event, 9 bytes of service data | 5.5 to 6.75 ms, peak 4.5 to 5.6 mA, **14.6 to 21.1 uC** |
 | the two-interval solve, 2003 ms against 104.5 ms | **Qadv 14.8 uC, floor 7.0 uA** |
-| the device at its 2 s default | **14.4 uA**, which is 637 days of a 220 mAh cell |
+| the device at its 2 s default | **14.4 uA**, which is 446 days of the 154 mAh a CR2032 is worth here (section 23) |
 | power-up | 1.41 s and **8.6 mC**, peaking at 138 mA |
 
 **And a 7.2 uC event every 8.000 seconds that is not the radio.** Seventeen
@@ -2098,17 +2098,28 @@ connection interval, which is the module as it ships.
 | 5 s | 10.2 | 109.8 | 198.6 | 223.2 | 247.8 | 297.1 |
 | 10 s | 8.8 | 109.1 | 198.6 | 223.2 | 247.8 | 297.1 |
 
-Microamps. In days of a 220 mAh CR2032:
+Microamps. In days of **154 mAh**, which is 70% of a CR2032's nominal 220:
 
 | advertising interval | 0/min | 1/min | 2/min | 3/min | 4/min | 6/min |
 |---|---|---|---|---|---|---|
-| 200 ms | 117 | 65 | 46 | 41 | 37 | 31 |
-| 500 ms | 256 | 75 | 46 | 41 | 37 | 31 |
-| 1 s | 426 | 80 | 46 | 41 | 37 | 31 |
-| **2 s** | **634** | **82** | **46** | 41 | 37 | 31 |
-| 3.2 s | 777 | 83 | 46 | 41 | 37 | 31 |
-| 5 s | 900 | 83 | 46 | 41 | 37 | 31 |
-| 10 s | 1045 | 84 | 46 | 41 | 37 | 31 |
+| 200 ms | 82 | 45 | 32 | 29 | 26 | 22 |
+| 500 ms | 180 | 53 | 32 | 29 | 26 | 22 |
+| 1 s | 298 | 56 | 32 | 29 | 26 | 22 |
+| **2 s** | **444** | **57** | **32** | 29 | 26 | 22 |
+| 3.2 s | 544 | 58 | 32 | 29 | 26 | 22 |
+| 5 s | 630 | 58 | 32 | 29 | 26 | 22 |
+| 10 s | 732 | 59 | 32 | 29 | 26 | 22 |
+
+**Why 70% rather than the 220 mAh on the datasheet.** The 220 is rated down to
+2.0 V, which is below where Espruino browns out; a coin cell also loses about 1%
+a year to self-discharge, and its internal resistance climbs as it empties,
+which is exactly what the 5.6 mA peak of an advertising event pulls on. Every
+measurement in this section was taken at a flat 3.000 V, so none of the three is
+modelled and 0.7 is a flat allowance rather than a result. **The microamps are
+measured and only the days carry it**, which is also why the two tables are
+printed separately: `power_table --capacity-mah 154` is the whole of it, and a
+reader who disagrees with the allowance can change one number without touching
+anything that was measured.
 
 **Both cells are now measured rather than computed, and they bracket the table.** Recording 4 ran 10 commands a minute apart and then 20 commands fifteen seconds apart, on the same board at the same 2 s interval:
 
@@ -2127,19 +2138,33 @@ measures **142.64 uA**, which is **2.6%**.
 expensive".**
 
 1. **A device nobody writes to lives on its advertising interval alone**, and
-   the range is wide: 117 days at 200 ms against 1045 at 10 s, with the module's
-   2 s default at 634.
+   the range is wide: 82 days at 200 ms against 732 at 10 s, with the module's
+   2 s default at 444.
 2. **One command a minute costs eight times what advertising does.** At 2 s it
-   takes the device from 634 days to 82, and two thirds of that is not the
+   takes the device from 444 days to 57, and two thirds of that is not the
    write: it is the thirty seconds of fast advertising the write leaves behind.
 3. **From two commands a minute the advertising interval stops mattering
-   entirely.** Every row collapses: 46 days whether the device advertises at
+   entirely.** Every row collapses: 32 days whether the device advertises at
    200 ms or at 10 s, because the fast window never closes. The only lever left
    is `fastTimeout`, and nobody has said so before.
 
-The first column and the last are what a reader should compare: **1045 days
-against 31**, both of them this same device, differing only in how often it
+The first column and the last are what a reader should compare: **732 days
+against 22**, both of them this same device, differing only in how often it
 is asked to do something and how long it stays alert afterwards.
+
+**And the figure for the module page is `docs/figures/puck-battery-life.png`**,
+the same arithmetic drawn rather than tabulated: days against the advertising
+interval at 1, 10, 50, 100 and 200 commands a day, with the 2 s default marked.
+It stops at 10 s because that is where the module stops: `checkInterval` refuses
+anything outside **20 ms to 10 s** for `interval` and `fastInterval` alike, so
+the 10 s row of the table above is the last row that exists. The figure carries
+one thing the table does not. **726 days, at one command a day and 10 s, is the
+ceiling of everything this module can be set to do**, which is 1.99 years: two
+years on a coin cell is out of reach whatever is configured, and the two-year
+line is on the plot to show that nothing reaches it. Source beside it in
+`docs/figures/puck-battery-life.html`, rendered the way `docs/figures/README.md`
+says, with its model block lifted from these same four coefficients so the
+figure and the table cannot disagree.
 
 ### The model was 14% out at four commands a minute, and the check caught it
 
@@ -2175,14 +2200,15 @@ Two consequences beyond the corrected cell:
 That is what the module page should say, and it is better advice than a
 two-board table: **take your board's idle current, add our three, and the
 row is yours.** `power_table --floor <yours> --adv-charge 14.194
---command-charge 1810 --command-seconds 2.34` is that arithmetic, and the
-0/min column of the published table is the only one the floor dominates.
+--command-charge 1810 --command-seconds 2.34 --life --capacity-mah 154` is that
+arithmetic, and the 0/min column of the published table is the only one the
+floor dominates.
 
 **Three things the campaign does not cover at all, and they are not about the second board.**
 
 * **A device whose advertised values move.** Every arm here advertises two writables and nothing that gets re-read, so `Qrebuild` is unmeasured and the table is for a device whose advertised sensors sit still. `bench.rebuild()` and `power_table --rebuild-charge` are both in place for it.
 * **A link held open.** The one case a per-command charge cannot represent, and the one that could still put a guard into D-141: `tools/hold_link.py` auto against pinned.
-* **Any supply but 3.0 V.** A coin cell ends its life near 2.5 V and the radio draws more current there for the same transmit. The published table is a nominal-cell table and should say so.
+* **Any supply but 3.0 V.** A coin cell ends its life near 2.5 V and the radio draws more current there for the same transmit. The days column answers for this with a flat 70% of the nominal capacity and says so in as many words; that allowance is a judgement, not a measurement, and it is the only number in this section that is.
 
 ### What the model already says, before anything is measured
 
@@ -2259,7 +2285,7 @@ of them changes a decision if it is wrong:
    is 30 s at ~90 uA, **2.6 mC**, already larger than the pinned command. A
    module that spends that without anyone objecting cannot object to this.
 3. **A held-open link is the exception, and it is a big one.** At 530 uA a
-   220 mAh cell is gone in about 17 days of being connected, against years at
+   154 mAh is gone in about 12 days of being connected, against years at
    200 ms. If a device somebody leaves connected to Espruino Hub is a case this
    module supports, option 1 of D-141 -- pin it once in `setup()` -- needs a
    guard after all, and the held-open recording is what decides it.
@@ -2296,7 +2322,7 @@ Sealed, nothing advertised that has to be re-read, <board> at <voltage>.
 | 2 s                  |       |       |       |       |       |       |
 | 10 s                 |       |       |       |       |       |       |
 
-Microamps, and the same table again in days on a CR2032.
+Microamps, and the same table again in days on 154 mAh, 70% of a CR2032.
 
 Measured: the floor and one advertising event from a swept recording, one
 command's charge from ten commands, two cells checked against the rest.
