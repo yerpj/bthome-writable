@@ -318,6 +318,63 @@ class Trace:
             spans.append((cursor, last))
         return spans
 
+    def phases(self, tolerance: float = 0.3, least: int = 3) -> list[dict]:
+        """Runs of radio events at one rate, without being told the rates.
+
+        `segments` matches the gaps against a list of advertising intervals,
+        which is right for the sweep: the list is what was programmed, so the
+        match is the check. A command recording has no such list. What it has
+        is a device advertising at its idle interval, a connection whose events
+        come at whatever interval the central negotiated, and a fast window
+        after the disconnection at `fastInterval` -- three runs of similar
+        gaps, and the interesting numbers are in the two the module does not
+        choose. So this reads the runs as they come and names none of them:
+        a run at 45 ms is a connection, one at 100 ms is the fast window, and
+        one at the idle interval is the device at rest. Which is which is a
+        reading, not an assumption, and the length of the fast window is then
+        measured rather than taken from `fastTimeout`.
+        """
+        starts = [first for first, _ in self.bursts(self.burst_threshold())]
+        if len(starts) < 3:
+            return []
+        gaps = [
+            self.times[starts[i + 1]] - self.times[starts[i]]
+            for i in range(len(starts) - 1)
+        ]
+
+        out: list[dict] = []
+        run = [gaps[0]]
+        run_from = 0
+        for index in range(1, len(gaps) + 1):
+            typical = st.median(run)
+            joins = index < len(gaps) and abs(gaps[index] - typical) <= max(
+                tolerance * typical, 12.0
+            )
+            if joins:
+                run.append(gaps[index])
+                continue
+            if len(run) + 1 >= least:
+                out.append(self._phase(starts[run_from], starts[index], run))
+            run_from = index
+            run = [gaps[index]] if index < len(gaps) else []
+        return out
+
+    def _phase(self, first: int, last: int, gaps: list[float]) -> dict:
+        """One run, with the figures anything would quote from it."""
+        span = self.currents[first:last]
+        duration = self.times[last] - self.times[first]
+        mean = st.mean(span) if span else 0.0
+        return {
+            "gap_ms": round(st.median(gaps), 2),
+            "events": len(gaps) + 1,
+            "window": (first, last),
+            "from_ms": round(self.times[first], 1),
+            "to_ms": round(self.times[last], 1),
+            "duration_ms": round(duration, 1),
+            "mean_ua": round(mean, 2),
+            "charge_uc": round(mean * duration / 1000.0, 2),
+        }
+
     def bursts(self, threshold_ua: float) -> list[tuple[int, int]]:
         """The radio events: contiguous runs above a threshold."""
         runs: list[tuple[int, int]] = []
@@ -583,6 +640,13 @@ def main(argv: list[str] | None = None) -> int:
         help="a second export holding the marker channel, aligned by timestamp",
     )
     parser.add_argument(
+        "--phases",
+        action="store_true",
+        help="read the runs of radio events at one rate out of the current,"
+        " without a list of expected rates: the idle advertising, each"
+        " connection, and the fast window after it",
+    )
+    parser.add_argument(
         "--segment",
         action="store_true",
         help="find the swept steps in the current itself, by the rate of the"
@@ -646,6 +710,21 @@ def main(argv: list[str] | None = None) -> int:
 
     windows: list[tuple[int, int]] = []
     found: list[dict] = []
+    if args.phases:
+        runs = trace.phases()
+        print(f"{len(runs)} runs of events at one rate:")
+        print("    rate    events    duration        mean     charge      from")
+        for run in runs:
+            print(
+                f"  {run['gap_ms']:>7} ms"
+                f" {run['events']:>8}"
+                f" {run['duration_ms'] / 1000.0:>10.2f} s"
+                f" {run['mean_ua']:>9.1f} uA"
+                f" {run['charge_uc'] / 1000.0:>8.2f} mC"
+                f" {run['from_ms'] / 1000.0:>9.1f} s"
+            )
+        windows += [run["window"] for run in runs]
+        found = runs
     if args.segment:
         wanted = tuple(int(part) for part in args.intervals.split(","))
         found = trace.segments(wanted)
@@ -670,7 +749,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # Outside a sweep's steps there is nothing but the marker pulses, so an
     # inferred floor would be the pulse rather than the device.
-    if args.baseline == "auto" and args.segment:
+    if args.baseline == "auto" and (args.segment or args.phases):
         baseline: float | None = 0.0
     elif args.baseline == "auto" and args.gaps:
         baseline = 0.0
@@ -681,7 +760,9 @@ def main(argv: list[str] | None = None) -> int:
     report = summarise(trace, windows, baseline, args.capacity_mah)
     labels = [name.strip() for name in args.labels.split(",")] if args.labels else []
     if found and not labels:
-        labels = [str(step["label"]) for step in found]
+        labels = [
+            str(step["label"] if "label" in step else step["gap_ms"]) for step in found
+        ]
     for index, window in enumerate(report.get("windows", [])):
         if index < len(labels):
             window["label"] = labels[index]

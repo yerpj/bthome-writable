@@ -242,3 +242,59 @@ def test_the_marker_file_is_found_in_the_folder(tmp_path) -> None:
     payload = json.loads(report.read_text(encoding="utf-8"))
     assert len(payload["windows"]) == 1
     assert round(payload["windows"][0]["mean_ua"]) == 6000
+
+
+def _events(plan: list[tuple[float, float, int]]) -> list[tuple[float, float]]:
+    """Samples for a run of radio events: (interval_ms, length_ms, count)."""
+    rows: list[tuple[float, float]] = []
+    now = 0.0
+    hot: list[tuple[float, float]] = []
+    for interval, length, count in plan:
+        for _ in range(count):
+            hot.append((now, now + length))
+            now += interval
+    samples = int(now / 0.25)
+    pending = iter(hot)
+    event = next(pending, None)
+    for index in range(samples):
+        t = index * 0.25
+        while event is not None and t >= event[1]:
+            event = next(pending, None)
+        inside = event is not None and event[0] <= t < event[1]
+        rows.append((t / 1000.0, (2000.0 if inside else 4.0) * 1e-6))
+    return rows
+
+
+def test_a_connection_and_the_fast_window_after_it_are_read_apart(tmp_path) -> None:
+    """The command recordings have no marker either, and three things to find
+    in them: the idle interval, the connection at whatever interval the
+    central negotiated, and the fast window the disconnection opens."""
+    folder = _otii_folder(
+        tmp_path,
+        _events(
+            [
+                (2000.0, 6.0, 5),  # idle
+                (45.0, 1.5, 10),  # one connection
+                (100.0, 6.0, 40),  # the fast window after it
+                (2000.0, 6.0, 5),  # idle again
+            ]
+        ),
+    )
+    runs = Trace.read(folder / "Main current - Arc.csv").phases()
+    rates = [run["gap_ms"] for run in runs]
+    assert [round(rate / 5) * 5 for rate in rates] == [2000, 45, 100, 2000]
+    connection = runs[1]
+    # Eleven, not ten: a run is a run of *gaps*, so the event that ends the
+    # last connection gap is the first event of the fast window. The boundary
+    # belongs to both runs and the charge of one event is not the figure
+    # anything here quotes.
+    assert connection["events"] == 11
+    assert 400 < connection["duration_ms"] < 460
+    # The fast window is measured, not taken from fastTimeout.
+    assert 3900 < runs[2]["duration_ms"] < 4100
+
+
+def test_a_run_of_two_events_is_not_a_run(tmp_path) -> None:
+    folder = _otii_folder(tmp_path, _events([(2000.0, 6.0, 5), (45.0, 1.5, 2)]))
+    runs = Trace.read(folder / "Main current - Arc.csv").phases()
+    assert [round(run["gap_ms"] / 5) * 5 for run in runs] == [2000]
