@@ -1,0 +1,88 @@
+{
+  "entity": "switch.bureau_mobilesensf7b9_light",
+  "service": "switch.alternate",
+  "count": 10,
+  "every_s": 60.0,
+  "calls": [
+    {
+      "n": 1,
+      "service": "turn_on",
+      "at_s": 60.0,
+      "wall": 1793016687.1958253,
+      "returned_in_s": 7.937,
+      "error": "HTTPError: HTTP Error 500: Internal Server Error"
+    },
+    {
+      "n": 2,
+      "service": "turn_off",
+      "at_s": 120.0,
+      "wall": 1793016747.19973,
+      "returned_in_s": 14.281,
+      "error": null
+    },
+    {
+      "n": 3,
+      "service": "turn_on",
+      "at_s": 180.0,
+      "wall": 1793016807.192856,
+      "returned_in_s": 2.953,
+      "error": null
+    },
+    {
+      "n": 4,
+      "service": "turn_off",
+      "at_s": 240.0,
+      "wall": 1793016867.1946182,
+      "returned_in_s": 3.984,
+      "error": null
+    },
+    {
+      "n": 5,
+      "service": "turn_on",
+      "at_s": 300.0,
+      "wall": 1793016927.19984,
+      "returned_in_s": 11.0,
+      "error": null
+    },
+    {
+      "n": 6,
+      "service": "turn_off",
+      "at_s": 360.015,
+      "wall": 1793016987.2031207,
+      "returned_in_s": 17.985,
+      "error": null
+    },
+    {
+      "n": 7,
+      "service": "turn_on",
+      "at_s": 420.0,
+      "wall": 1793017047.1982648,
+      "returned_in_s": 2.937,
+      "error": null
+    },
+    {
+      "n": 8,
+      "service": "turn_off",
+      "at_s": 480.015,
+      "wall": 1793017107.2178724,
+      "returned_in_s": 8.0,
+      "error": null
+    },
+    {
+      "n": 9,
+      "service": "turn_on",
+      "at_s": 540.0,
+      "wall": 1793017167.1892474,
+      "returned_in_s": 2.968,
+      "error": null
+    },
+    {
+      "n": 10,
+      "service": "turn_off",
+      "at_s": 600.0,
+      "wall": 1793017227.2024388,
+      "returned_in_s": 3.968,
+      "error": null
+    }
+  ]
+}

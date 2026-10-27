@@ -1118,7 +1118,15 @@ function setAdvertisingInterval(ms) {
   // Re-armed, not just re-installed: this is also the interval an entry
   // inherits and the one an `interval: 0` entry is read at.
   schedule();
-  if (st.fastTimer === undefined && st.advInterval !== st.fastInterval) {
+  // Against st.interval, which was just assigned above, and not against
+  // st.fastInterval: the test is whether the radio is already at the rate
+  // being asked for. Comparing with the fast interval instead meant that a
+  // device whose idle interval was set to 100 ms -- the fast interval's own
+  // default -- stopped republishing for good, so every later change updated
+  // st.interval and was never handed to the radio. Found on the bench
+  // 2026-10-26: a swept measurement starting at 100 ms advertised at 100 ms
+  // for seventeen minutes while believing it had changed rate eight times.
+  if (st.fastTimer === undefined && st.advInterval !== st.interval) {
     st.advInterval = st.interval;
     republishRate();
   }

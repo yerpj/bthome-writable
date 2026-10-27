@@ -13,6 +13,15 @@ This reads an exported trace and reports both:
     python -m tools.power_charge trace.csv --digital GPI1 --baseline auto
     python -m tools.power_charge trace.csv --digital GPI1 --digital-csv gpi.csv
     python -m tools.power_charge trace.csv --window 4200-7300 --out out.json
+    python -m tools.power_charge Enregistrement_3 --phases --commands
+
+**`--phases --commands` is the command recording's reading.** `--phases` finds
+the runs of radio and names none of them; `--commands` groups them the way a
+command recording is always shaped -- a connection, then the fast window its
+disconnection opens -- and reports one row a command with the medians under it.
+The boot connection is flagged rather than dropped, and a fast window that the
+next command arrived inside is flagged too, because neither is what a command
+costs.
 
 **It reads the file it is given rather than a format it was promised.** The
 measurement of §23 is made on an Otii Arc Pro and the arithmetic has to survive
@@ -70,6 +79,43 @@ CURRENT_NAMES = ("current", "amps")
 UNITS = {"ua": 1.0, "µa": 1.0, "ma": 1000.0, "a": 1e6, "na": 0.001}
 TIME_UNITS = {"s": 1000.0, "sec": 1000.0, "ms": 1.0, "us": 0.001, "µs": 0.001}
 DIGITAL = re.compile(r"^\s*(?:gpi\s*|d|logic\s*)(\d)\s*(?:[(\[].*)?$", re.IGNORECASE)
+BURST_MARGIN_UA = 1000.0
+"""How far above the floor a sample has to be to count as a radio event.
+
+Twice found the hard way on 2026-10-26, and both times for the same reason:
+a threshold has to come from what the hardware does, not from the trace.
+
+A fraction of the peak was the first idea. The trace opens with tens of
+milliamps of power-up inrush, which put a five-per-cent threshold at 6.9 mA and
+found none of the eighteen minutes of advertising events behind it.
+
+200 uA was the second, and it is above the floor but **below the SoftDevice's
+calibration of the low-frequency RC oscillator**, which a Puck.js runs every
+8.000 s for want of a 32 kHz crystal: 17 ms at 780 uA of peak. Counted as a
+radio event it splits an advertising run in two every eight seconds, which is
+how a clean sweep came back as 81 fragments instead of 9 steps.
+
+So: a milliamp. An advertising event on a Puck.js peaks at 4.5 to 5.6 mA and
+the calibration at 780 uA, so a milliamp sits in the gap with a factor of
+four each way, and `--burst-margin` moves it for a board that differs."""
+IDLE_GAP_MS = 1000.0
+"""A phase whose events are further apart than this is the device advertising
+on its own rather than anything to do with a connection. The idle intervals of
+interest are 1 s and up and a negotiated connection interval is tens of
+milliseconds at worst, so the two never meet."""
+FAST_GAP_MS = (90.0, 120.0)
+"""A phase at `fastInterval`, which the module sets to 100 ms. Measured at 104
+to 105 ms across two recordings, because the gap this reads is between the ends
+of consecutive events rather than between their starts."""
+SOLID_UA = 2000.0
+"""A phase with no gaps in it at all and a mean above this is the stretch of
+unbroken transmit a connection opens with. The link either side of it averages
+600 uA and an advertising event's own run averages 15, so the margin is three
+to one against the nearest thing it could be confused with."""
+IDLE_FLOOR_MS = 5000.0
+"""Idle phases shorter than this are not used for the floor: a command recording
+holds a few one-event scraps of idle between phases, and their mean is the event
+rather than the device."""
 THIN_WINDOW = 10
 """Fewer samples than this in a window and the charge is a guess, not a
 measurement: at an Arc Pro's 250 us a sample that is 2.5 ms."""
@@ -93,6 +139,49 @@ def _channel_name(header: str) -> str:
     return squashed
 
 
+def _otii_headers(path: Path, headers: list[str]) -> list[str]:
+    """An Otii export names its channel in the file name, not in the header.
+
+    One recording comes out as a folder of one-channel files, each of them
+    `"Timestamp","Value"` with the timestamp in seconds and the value in the
+    quantity's SI unit: `Main current - Arc.csv` is amperes, `GPI1 - Arc.csv`
+    is the marker. Rewrite the two headers into the named, unit-carrying ones
+    the rest of the reader already understands, so that an Arc export needs no
+    flags at all.
+    """
+    if [header.strip().lower() for header in headers] != ["timestamp", "value"]:
+        return headers
+    channel = path.stem.split(" - ")[0].strip()
+    if DIGITAL.match(channel):
+        return ["Timestamp(s)", channel]
+    if "current" in channel.lower():
+        return ["Timestamp(s)", "Current(A)"]
+    # Voltage, power and energy are exported the same way and are not current:
+    # named rather than renamed, they fall through to `require_current=False`.
+    return ["Timestamp(s)", channel]
+
+
+def _otii_export(directory: Path) -> tuple[Path, Path | None, str | None]:
+    """The current file and the marker file out of an Arc export folder."""
+    files = sorted(directory.glob("*.csv"))
+    current = [path for path in files if "current" in path.stem.lower()]
+    markers = [path for path in files if DIGITAL.match(path.stem.split(" - ")[0])]
+    if not current:
+        raise SystemExit(
+            f"{directory}: no current channel among"
+            f" {[path.name for path in files] or 'nothing'}"
+        )
+    if len(markers) > 1:
+        raise SystemExit(
+            f"{directory}: more than one marker channel"
+            f" ({', '.join(path.stem for path in markers)}): name one with"
+            " --digital-csv"
+        )
+    marker = markers[0] if markers else None
+    channel = _channel_name(marker.stem.split(" - ")[0]) if marker else None
+    return current[0], marker, channel
+
+
 def _unit_scale(header: str) -> float:
     """How many microamps one unit of this column is, from its own header."""
     return UNITS.get(_header_unit(header) or "", 1.0)
@@ -109,6 +198,21 @@ def _time_scale(header: str, override: str | None) -> float:
             " pass --time-unit s, ms or us"
         )
     return found
+
+
+def _despike(labels: list[int | None]) -> list[int | None]:
+    """One odd gap in a run of equal ones is the radio, not a step change.
+
+    An advertising event that collides with a connection event is delayed,
+    which shows up as one long gap followed by one short one. Left alone it
+    cuts a step in three; a neighbour vote removes it.
+    """
+    out = list(labels)
+    for index in range(1, len(labels) - 1):
+        before, after = labels[index - 1], labels[index + 1]
+        if before == after and labels[index] != before:
+            out[index] = before
+    return out
 
 
 def _column(
@@ -133,6 +237,7 @@ class Trace:
         self.currents = currents
         self.digital = digital
         self.unknown = 0
+        self.burst_margin_ua = BURST_MARGIN_UA
 
     @classmethod
     def read(
@@ -152,6 +257,7 @@ class Trace:
             headers = next(rows, None)
             if headers is None:
                 raise SystemExit(f"{path}: empty")
+            headers = _otii_headers(path, headers)
             time_at = _column(headers, TIME_NAMES)
             time_scale = _time_scale(headers[time_at], time_unit)
             current_at = _column(
@@ -259,6 +365,193 @@ class Trace:
             spans.append((cursor, last))
         return spans
 
+    def phases(self, tolerance: float = 0.3, least: int = 3) -> list[dict]:
+        """Runs of radio events at one rate, without being told the rates.
+
+        `segments` matches the gaps against a list of advertising intervals,
+        which is right for the sweep: the list is what was programmed, so the
+        match is the check. A command recording has no such list. What it has
+        is a device advertising at its idle interval, a connection whose events
+        come at whatever interval the central negotiated, and a fast window
+        after the disconnection at `fastInterval` -- three runs of similar
+        gaps, and the interesting numbers are in the two the module does not
+        choose. So this reads the runs as they come and names none of them:
+        a run at 45 ms is a connection, one at 100 ms is the fast window, and
+        one at the idle interval is the device at rest. Which is which is a
+        reading, not an assumption, and the length of the fast window is then
+        measured rather than taken from `fastTimeout`.
+        """
+        starts = [first for first, _ in self.bursts(self.burst_threshold())]
+        if len(starts) < 3:
+            return []
+        gaps = [
+            self.times[starts[i + 1]] - self.times[starts[i]]
+            for i in range(len(starts) - 1)
+        ]
+
+        out: list[dict] = []
+        run = [gaps[0]]
+        run_from = 0
+        for index in range(1, len(gaps) + 1):
+            typical = st.median(run)
+            joins = index < len(gaps) and abs(gaps[index] - typical) <= max(
+                tolerance * typical, 12.0
+            )
+            if joins:
+                run.append(gaps[index])
+                continue
+            if len(run) + 1 >= least:
+                out.append(self._phase(starts[run_from], starts[index], run))
+            run_from = index
+            run = [gaps[index]] if index < len(gaps) else []
+        return self._with_solid(out)
+
+    def _with_solid(self, runs: list[dict]) -> list[dict]:
+        """The runs, plus what the runs cannot see.
+
+        A run is a run of gaps between events, which makes the reader blind to
+        exactly one thing: radio that never stops. A continuous block is one
+        event with no gaps in it at all, so it belongs to no run and is
+        silently dropped -- and on 2026-10-26 each command turned out to carry
+        a 0.19 s block at 3.9 mA, worth 740 uC, which is 40% of what a command
+        costs the device. The table was 15% light and nothing said so.
+
+        So the gaps between runs are examined too, and any that carries
+        current rather than idle comes back as a phase with a gap of zero.
+        Then the phases partition the recording, and `coverage` says how much
+        of its charge they account for: a blind spot announces itself in the
+        output instead of in a model that does not fit.
+        """
+        floor = st.median(self.currents)
+        wanted = floor + self.burst_margin_ua / 10.0
+        out: list[dict] = []
+        cursor = 0
+        for run in runs:
+            first, last = run["window"]
+            if first > cursor:
+                solid = self._phase(cursor, first, [0.0])
+                if solid["mean_ua"] > wanted:
+                    solid["events"] = 0
+                    out.append(solid)
+            out.append(run)
+            cursor = max(cursor, last)
+        if cursor < len(self.currents):
+            solid = self._phase(cursor, len(self.currents), [0.0])
+            if solid["mean_ua"] > wanted:
+                solid["events"] = 0
+                out.append(solid)
+        return out
+
+    def coverage(self, runs: list[dict]) -> float:
+        """The share of the recording's charge the phases account for."""
+        total = sum(self.currents) * self.period_ms / 1000.0
+        if total <= 0:
+            return 1.0
+        held = sum(run["charge_uc"] for run in runs)
+        return held / total
+
+    def _phase(self, first: int, last: int, gaps: list[float]) -> dict:
+        """One run, with the figures anything would quote from it."""
+        span = self.currents[first:last]
+        # Clamped: a trailing phase runs to the end of the recording, and the
+        # sample after the last one has no timestamp.
+        end = self.times[min(last, len(self.times) - 1)]
+        duration = end - self.times[first]
+        mean = st.mean(span) if span else 0.0
+        return {
+            "gap_ms": round(st.median(gaps), 2),
+            "events": len(gaps) + 1,
+            "window": (first, last),
+            "from_ms": round(self.times[first], 1),
+            "to_ms": round(end, 1),
+            "duration_ms": round(duration, 1),
+            "mean_ua": round(mean, 2),
+            "charge_uc": round(mean * duration / 1000.0, 2),
+        }
+
+    def bursts(self, threshold_ua: float) -> list[tuple[int, int]]:
+        """The radio events: contiguous runs above a threshold."""
+        runs: list[tuple[int, int]] = []
+        first = None
+        for index, current in enumerate(self.currents):
+            if current > threshold_ua:
+                first = index if first is None else first
+            elif first is not None:
+                runs.append((first, index))
+                first = None
+        if first is not None:
+            runs.append((first, len(self.currents)))
+        return runs
+
+    def burst_threshold(self) -> float:
+        """The floor, plus a margin nothing in the trace can inflate."""
+        return st.median(self.currents) + self.burst_margin_ua
+
+    def segments(
+        self,
+        intervals_ms: tuple[int, ...],
+        tolerance: float = 0.15,
+        least: int = 4,
+    ) -> list[dict]:
+        """The swept steps, read out of the current itself.
+
+        A marker channel fences the steps of a sweep, and an Otii Arc samples
+        its digital inputs at 1 ksps, which is plenty. But the fence is not
+        actually necessary: a device advertising at 500 ms looks nothing like
+        the same device advertising at 2 s, so the interval is *in* the trace,
+        and reading it there is better than being told it. The step boundaries
+        come out of the measurement, and the step that does not match what was
+        programmed announces itself instead of hiding inside an average.
+
+        Each step is returned as the window between the first and the last
+        advertising event of a run at one interval, which holds a whole number
+        of periods and so gives a mean with no edge bias.
+        """
+        starts = [first for first, _ in self.bursts(self.burst_threshold())]
+        if len(starts) < 2:
+            return []
+        labelled: list[int | None] = []
+        for index in range(len(starts) - 1):
+            gap_ms = self.times[starts[index + 1]] - self.times[starts[index]]
+            nearest = min(intervals_ms, key=lambda ms: abs(gap_ms - ms))
+            # Bluetooth adds 0 to 10 ms of its own to every advertising event,
+            # which at a 100 ms interval is a tenth of it: the window has to
+            # admit that much and no more, or 375 ms passes for 500.
+            within = abs(gap_ms - nearest) <= max(tolerance * nearest, 12.0)
+            labelled.append(nearest if within else None)
+        labelled = _despike(labelled)
+
+        out: list[dict] = []
+        run_from = 0
+        for index in range(1, len(labelled) + 1):
+            same = index < len(labelled) and labelled[index] == labelled[run_from]
+            if same:
+                continue
+            label = labelled[run_from]
+            events = index - run_from + 1
+            if label is not None and events >= least:
+                first, last = starts[run_from], starts[index]
+                # One step, even when an anomaly cut it: a run that carries the
+                # same interval as the one before it is the same step with a
+                # dropped event in the middle, and two short windows at one
+                # interval are a worse measurement than one long one.
+                if out and out[-1]["label"] == label:
+                    out[-1]["events"] += events - 1
+                    out[-1]["window"] = (out[-1]["window"][0], last)
+                    out[-1]["to_ms"] = round(self.times[last], 1)
+                else:
+                    out.append(
+                        {
+                            "label": label,
+                            "events": events,
+                            "window": (first, last),
+                            "from_ms": round(self.times[first], 1),
+                            "to_ms": round(self.times[last], 1),
+                        }
+                    )
+            run_from = index
+        return out
+
     def windows(
         self,
         channel: str,
@@ -294,6 +587,137 @@ class Trace:
             (i for i, t in enumerate(self.times) if t >= end_ms), len(self.times)
         )
         return first, last
+
+
+def idle_floor(windows: list[dict]) -> float:
+    """What the device costs between connections, from the trace itself.
+
+    The fitted floor of the sweep plus one advertising event per idle interval
+    would do as well and would come from a different recording. This is the
+    same trace's own answer, which is what a per-command charge has to be taken
+    above.
+    """
+    idle = [
+        window["mean_ua"]
+        for window in windows
+        if float(window["label"]) > IDLE_GAP_MS
+        and window["duration_ms"] >= IDLE_FLOOR_MS
+    ]
+    if not idle:
+        raise SystemExit(
+            "no idle phase long enough to take a floor from: a command"
+            " recording needs stretches of undisturbed advertising between"
+            " the commands, which is what --every buys"
+        )
+    return st.median(idle)
+
+
+def commands(windows: list[dict], floor_ua: float | None = None) -> list[dict]:
+    """The phases of a command recording, grouped into commands.
+
+    `phases` reads a trace as runs of events at one rate and names none of
+    them, which is right: it has no way to know which run is which. A command
+    recording does have the structure, and it is always the same one -- a
+    connection, then the fast window `fastTimeout` long that the disconnection
+    opens -- so this walks the phases, takes every run at `fastInterval` as the
+    end of one command, and attributes everything between it and the last
+    stretch of idle to that command's connection.
+
+    The first group is the boot connection and is flagged rather than dropped:
+    a recording that starts before the board does begins with Home Assistant
+    connecting to a device it has never seen, which costs service discovery and
+    is not what a command costs. It is reported with `boot` true and left out
+    of the medians.
+    """
+    if floor_ua is None:
+        floor_ua = idle_floor(windows)
+    out: list[dict] = []
+    for index, window in enumerate(windows):
+        if not FAST_GAP_MS[0] < float(window["label"]) < FAST_GAP_MS[1]:
+            continue
+        first = index
+        while first > 0:
+            previous = windows[first - 1]
+            rate = float(previous["label"])
+            if rate > IDLE_GAP_MS or FAST_GAP_MS[0] < rate < FAST_GAP_MS[1]:
+                break
+            first -= 1
+        before = windows[first:index]
+        solid = [
+            w for w in before if float(w["label"]) == 0.0 and w["mean_ua"] > SOLID_UA
+        ]
+        link = [w for w in before if float(w["label"]) != 0.0]
+        longest = max(link, key=lambda w: w["duration_ms"]) if link else None
+
+        def above(group: list[dict]) -> float:
+            return sum(
+                w["charge_uc"] - floor_ua * w["duration_ms"] / 1000.0 for w in group
+            )
+
+        connection = above(before)
+        fast = above([window])
+        out.append(
+            {
+                "at_s": round(before[0]["start_ms"] / 1000.0, 2)
+                if before
+                else round(window["start_ms"] / 1000.0, 2),
+                "boot": first == 0,
+                "connection_ms": round(sum(w["duration_ms"] for w in before), 2),
+                "solid_ms": round(sum(w["duration_ms"] for w in solid), 2),
+                "solid_ua": round(st.mean([w["mean_ua"] for w in solid]), 1)
+                if solid
+                else 0.0,
+                "solid_uc": round(sum(w["charge_uc"] for w in solid), 1),
+                "link_ms": round(longest["duration_ms"], 2) if longest else 0.0,
+                "link_ua": round(longest["mean_ua"], 1) if longest else 0.0,
+                "link_uc": round(longest["charge_uc"], 1) if longest else 0.0,
+                "connection_uc": round(connection, 1),
+                "window_s": round(window["duration_ms"] / 1000.0, 3),
+                "window_ua": round(window["mean_ua"], 2),
+                "window_uc": round(fast, 1),
+                "all_in_uc": round(connection + fast, 1),
+                "window_truncated": window["duration_ms"] < 29000.0,
+            }
+        )
+    return out
+
+
+def command_summary(found: list[dict], floor_ua: float) -> dict:
+    """Medians over the commands, the boot connection excluded.
+
+    The median and not the mean, for the reason the first three connections of
+    recording 2 give: service discovery is paid once per central rather than
+    once per command, and a mean carries it into every cell of a table.
+    """
+    body = [row for row in found if not row["boot"]]
+    if not body:
+        return {"n": 0, "floor_ua": round(floor_ua, 2)}
+    full = [row for row in body if not row["window_truncated"]]
+
+    def median(field: str, rows: list[dict]) -> float:
+        return round(st.median([row[field] for row in rows]), 2)
+
+    summary = {
+        "n": len(body),
+        "n_full_window": len(full),
+        "floor_ua": round(floor_ua, 2),
+        "boot_connection_uc": next(
+            (row["connection_uc"] for row in found if row["boot"]), None
+        ),
+    }
+    for field in (
+        "connection_ms",
+        "solid_ms",
+        "solid_uc",
+        "link_ms",
+        "link_uc",
+        "connection_uc",
+        "all_in_uc",
+    ):
+        summary[f"median_{field}"] = median(field, body)
+    for field in ("window_s", "window_ua", "window_uc"):
+        summary[f"median_{field}"] = median(field, full or body)
+    return summary
 
 
 def _life(mean_ua: float, capacity_mah: float) -> dict:
@@ -414,7 +838,12 @@ def _print(report: dict) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("csv", type=Path, help="an exported current trace")
+    parser.add_argument(
+        "csv",
+        type=Path,
+        help="an exported current trace, or an Otii export folder holding one"
+        " file per channel",
+    )
     parser.add_argument(
         "--digital", help="a digital channel whose high stretches are the windows"
     )
@@ -443,6 +872,31 @@ def main(argv: list[str] | None = None) -> int:
         help="a second export holding the marker channel, aligned by timestamp",
     )
     parser.add_argument(
+        "--burst-margin",
+        type=float,
+        default=BURST_MARGIN_UA,
+        help=f"microamps above the floor that count as a radio event"
+        f" (default {BURST_MARGIN_UA:g})",
+    )
+    parser.add_argument(
+        "--phases",
+        action="store_true",
+        help="read the runs of radio events at one rate out of the current,"
+        " without a list of expected rates: the idle advertising, each"
+        " connection, and the fast window after it",
+    )
+    parser.add_argument(
+        "--segment",
+        action="store_true",
+        help="find the swept steps in the current itself, by the rate of the"
+        " advertising events, instead of from a marker channel",
+    )
+    parser.add_argument(
+        "--intervals",
+        default="100,200,500,1000,2000,3200,5000,10000",
+        help="the advertising intervals a --segment sweep may be at",
+    )
+    parser.add_argument(
         "--gaps",
         action="store_true",
         help="measure the stretches *between* marker pulses rather than under"
@@ -451,7 +905,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--labels",
         help="comma-separated names for the windows, in order, e.g. the swept"
-        " advertising intervals",
+        " advertising intervals. With --gaps there is one window more than there"
+        " are steps, because the stretch before the first marker pulse is a gap"
+        " too: label it - and the fit will skip it",
     )
     parser.add_argument(
         "--digital-threshold",
@@ -466,11 +922,29 @@ def main(argv: list[str] | None = None) -> int:
         default=CR2032_MAH,
         help=f"battery capacity for the life figure (default {CR2032_MAH})",
     )
+    parser.add_argument(
+        "--commands",
+        action="store_true",
+        help="group the phases into commands: a connection and the fast window"
+        " it opens, one row each, medians with the boot connection left out",
+    )
     parser.add_argument("--out", type=Path, help="write the report as JSON")
     parser.add_argument("--label", help="what this trace is, carried into the JSON")
     args = parser.parse_args(argv)
 
-    trace = Trace.read(args.csv, args.unit, args.time_unit)
+    # An Arc recording is a folder, not a file: find the two channels in it
+    # rather than making the run sheet spell out four paths under pressure.
+    source, found_marker, found_channel = args.csv, None, None
+    if args.csv.is_dir():
+        source, found_marker, found_channel = _otii_export(args.csv)
+        print(f"Otii export: {source.name}", end="")
+        print(f" + {found_marker.name}" if found_marker else " (no marker channel)")
+        if args.digital_csv is None:
+            args.digital_csv = found_marker
+        if args.digital is None:
+            args.digital = found_channel
+
+    trace = Trace.read(source, args.unit, args.time_unit)
     marker = (
         Trace.read(args.digital_csv, args.unit, args.time_unit, require_current=False)
         if args.digital_csv
@@ -479,7 +953,37 @@ def main(argv: list[str] | None = None) -> int:
     if marker and not args.digital:
         raise SystemExit("--digital-csv needs --digital to say which channel")
 
+    trace.burst_margin_ua = args.burst_margin
+
     windows: list[tuple[int, int]] = []
+    found: list[dict] = []
+    if args.phases:
+        runs = trace.phases()
+        print(f"{len(runs)} runs of events at one rate:")
+        print("    rate    events    duration        mean     charge      from")
+        for run in runs:
+            print(
+                f"  {run['gap_ms']:>7} ms"
+                f" {run['events']:>8}"
+                f" {run['duration_ms'] / 1000.0:>10.2f} s"
+                f" {run['mean_ua']:>9.1f} uA"
+                f" {run['charge_uc'] / 1000.0:>8.2f} mC"
+                f" {run['from_ms'] / 1000.0:>9.1f} s"
+            )
+        windows += [run["window"] for run in runs]
+        found = runs
+        print(f"  phases account for {100 * trace.coverage(runs):.1f}% of the charge")
+    if args.segment:
+        wanted = tuple(int(part) for part in args.intervals.split(","))
+        found = trace.segments(wanted)
+        print(f"{len(found)} steps found by their advertising rate:")
+        for step in found:
+            print(
+                f"  {step['label']:>6} ms,"
+                f" {step['events']:>5} events,"
+                f" {step['from_ms'] / 1000:8.1f} -> {step['to_ms'] / 1000:8.1f} s"
+            )
+        windows += [step["window"] for step in found]
     if args.digital:
         windows += trace.windows(
             args.digital, args.digital_threshold, marker, args.gaps
@@ -493,14 +997,20 @@ def main(argv: list[str] | None = None) -> int:
 
     # Outside a sweep's steps there is nothing but the marker pulses, so an
     # inferred floor would be the pulse rather than the device.
-    if args.baseline == "auto" and args.gaps:
+    if args.baseline == "auto" and (args.segment or args.phases):
         baseline: float | None = 0.0
+    elif args.baseline == "auto" and args.gaps:
+        baseline = 0.0
     elif args.baseline == "auto":
         baseline = None
     else:
         baseline = float(args.baseline)
     report = summarise(trace, windows, baseline, args.capacity_mah)
     labels = [name.strip() for name in args.labels.split(",")] if args.labels else []
+    if found and not labels:
+        labels = [
+            str(step["label"] if "label" in step else step["gap_ms"]) for step in found
+        ]
     for index, window in enumerate(report.get("windows", [])):
         if index < len(labels):
             window["label"] = labels[index]
@@ -509,6 +1019,45 @@ def main(argv: list[str] | None = None) -> int:
             f"  WARNING: {len(labels)} labels for"
             f" {len(report.get('windows', []))} windows"
         )
+
+    if args.commands:
+        if not args.phases:
+            raise SystemExit("--commands reads the phases, so it needs --phases")
+        floor = idle_floor(report["windows"])
+        found_commands = commands(report["windows"], floor)
+        summary = command_summary(found_commands, floor)
+        report["commands"] = found_commands
+        report["command_summary"] = summary
+        print(f"{len(found_commands)} commands, floor {floor:.2f} uA:")
+        print(
+            "     at s  solid ms  solid uC   link ms   link uC   conn uC"
+            "   win s  win uA  win uC   all uC"
+        )
+        for row in found_commands:
+            print(
+                f"  {row['at_s']:7.1f}"
+                f" {row['solid_ms']:9.1f} {row['solid_uc']:9.0f}"
+                f" {row['link_ms']:9.0f} {row['link_uc']:9.0f}"
+                f" {row['connection_uc']:9.0f}"
+                f" {row['window_s']:7.2f} {row['window_ua']:7.1f}"
+                f" {row['window_uc']:7.0f} {row['all_in_uc']:8.0f}"
+                + ("  boot" if row["boot"] else "")
+                + ("  truncated" if row["window_truncated"] else "")
+            )
+        if summary["n"]:
+            print(
+                f"  median of {summary['n']}"
+                f" ({summary['n_full_window']} with a full window):"
+                f" solid {summary['median_solid_ms']} ms"
+                f" {summary['median_solid_uc']} uC |"
+                f" link {summary['median_link_ms']} ms"
+                f" {summary['median_link_uc']} uC |"
+                f" connection {summary['median_connection_uc']} uC |"
+                f" window {summary['median_window_s']} s"
+                f" {summary['median_window_ua']} uA"
+                f" {summary['median_window_uc']} uC |"
+                f" all in {summary['median_all_in_uc']} uC"
+            )
 
     report["source"] = args.csv.name
     if args.label:

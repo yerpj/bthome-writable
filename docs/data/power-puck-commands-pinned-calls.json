@@ -1,0 +1,88 @@
+{
+  "entity": "switch.bureau_mobilesensf7b9_light",
+  "service": "switch.alternate",
+  "count": 10,
+  "every_s": 45.0,
+  "calls": [
+    {
+      "n": 1,
+      "service": "turn_on",
+      "at_s": 60.0,
+      "wall": 1793015140.2939267,
+      "returned_in_s": 3.0,
+      "error": null
+    },
+    {
+      "n": 2,
+      "service": "turn_off",
+      "at_s": 105.016,
+      "wall": 1793015185.3069766,
+      "returned_in_s": 4.781,
+      "error": null
+    },
+    {
+      "n": 3,
+      "service": "turn_on",
+      "at_s": 150.0,
+      "wall": 1793015230.2867115,
+      "returned_in_s": 5.797,
+      "error": null
+    },
+    {
+      "n": 4,
+      "service": "turn_off",
+      "at_s": 195.0,
+      "wall": 1793015275.2902482,
+      "returned_in_s": 2.813,
+      "error": null
+    },
+    {
+      "n": 5,
+      "service": "turn_on",
+      "at_s": 240.0,
+      "wall": 1793015320.287366,
+      "returned_in_s": 19.844,
+      "error": null
+    },
+    {
+      "n": 6,
+      "service": "turn_off",
+      "at_s": 285.0,
+      "wall": 1793015365.2905872,
+      "returned_in_s": 3.344,
+      "error": null
+    },
+    {
+      "n": 7,
+      "service": "turn_on",
+      "at_s": 330.016,
+      "wall": 1793015410.3052294,
+      "returned_in_s": 4.797,
+      "error": null
+    },
+    {
+      "n": 8,
+      "service": "turn_off",
+      "at_s": 375.0,
+      "wall": 1793015455.2946012,
+      "returned_in_s": 3.766,
+      "error": null
+    },
+    {
+      "n": 9,
+      "service": "turn_on",
+      "at_s": 420.0,
+      "wall": 1793015500.2928104,
+      "returned_in_s": 22.813,
+      "error": null
+    },
+    {
+      "n": 10,
+      "service": "turn_off",
+      "at_s": 465.0,
+      "wall": 1793015545.282547,
+      "returned_in_s": 0.532,
+      "error": null
+    }
+  ]
+}

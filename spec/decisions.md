@@ -9238,6 +9238,40 @@ the question: the figure that settles this one is not a device's idle current bu
 the charge of one command, and the comparison that makes it readable is the fast
 window the module already spends after every disconnect.
 
+**2026-10-26: the power arm is measured, and pinning is not expensive**
+(§23). Three recordings on the Puck.js under the Otii Arc Pro, 49 commands
+driven from Home Assistant through the ESPHome proxy: two on the automatic
+interval and one pinned. **A command's connection costs 1422 uC pinned
+against a pooled 1810 uC automatic**, and the mechanism is the one §22
+measured as latency: the link is held open 1.96 s instead of 2.34. The fast
+window and the advertising are untouched.
+
+**The 27x does not appear, and that is the answer the decision needed.** At
+7.5 ms the radio wakes 27 times more often than at 200 ms *while connected*,
+and it never cost anything here because the central had already chosen 7.5
+ms with nothing asking it to: there was no slower interval to lose. For a
+central that would negotiate something slow and then hold the link, the
+arithmetic stands untouched, and this bench cannot produce that central.
+`hold_link.py` auto against pinned is still the recording that would settle
+it.
+
+**The saving is real in direction and weak in size, and an earlier reading
+of it was wrong.** Against the first automatic recording alone the whole 388
+uC appeared to sit in the burst of unbroken radio a connection opens with,
+190 ms automatic against 79 pinned, which pointed straight at the connection
+parameter update procedure. The second automatic recording came back at 80
+ms, so that burst is the same in both arms and 190 ms was the first
+recording's own: there was an unlabelled second variable on the Home
+Assistant side. The arms are also separated by less than the automatic arm's
+own spread, 1330 to 2725 uC against 1390 to 2277. So what the power arm
+establishes is that **option 1 costs nothing**; §22's 100 commands an arm is
+what establishes that it gains 2.2 s.
+
+**The recommendation is unchanged and now cheaper to defend: option 1,
+unconditionally**, with the held-open link documented as the one case that
+wants `"auto"` back. Holding the decision for a recording nobody is waiting
+on buys less than taking it and writing down the exception.
+
 **Why it is also a question for @gfwilliams.** The firmware comment says activity
 raises the interval back to 7.5 ms after more than one BLE operation. A folded
 command performs four to six and never leaves the grid, so either the raise is a
@@ -9262,6 +9296,68 @@ over windows rather than the peak of a single advertising event -- and one is a
 decision: because only one board sits on the meter at a time, the floor arm is
 part of each board's own sitting and no row of the published table compares the
 two boards under one setup.
+
+**2026-10-26, the owner: the nice!nano arm is off, one board is enough.**
+The Puck.js campaign ran the same day and the table is complete, so the
+second board's 45 minutes would have bought exactly one coefficient: three
+of the four are the module's, the radio's and the central's, and only the
+floor is the board's. His call, and the right one -- a reader can measure
+their own floor with the meter and no sketch at all, which is better advice
+than a table of two boards they do not own.
+
+What goes on the page changes with it. The table is published as **a Puck.js
+on 3.0 V with Espruino 2v29**, named as such, with the arithmetic for
+substituting another floor beside it: `--floor <yours> --adv-charge 14.194
+--command-charge 1810 --command-seconds 2.34 --life --capacity-mah 154`. §23 says which coefficient
+travels and which does not. The three gaps that remain are not the second
+board's -- a device whose advertised values move (`Qrebuild`), a link held
+open, and any supply below 3.0 V -- and the first two were already deferred
+for cause.
+
+**2026-10-26, the campaign ran and the two checks earned their place.** Four
+recordings on the Puck.js, 49 commands, and the whole table is measured
+(§23). The one thing worth promoting out of the measurements file into this
+log is what the checks did: the 7-by-7 table was **14% wrong in the cell
+that carries its headline claim**, and nothing but a recorded cell could
+have found it. The model billed the seconds a command spends connected to
+the fast window as well as to the command, which is invisible at one command
+a minute and is the whole error at four. `power_table` now carries a fourth
+coefficient for it.
+
+So the sentence in this decision that the checks are not optional was right,
+and it is worth keeping for the second board: **a cell computed from
+coefficients is not a measurement, and the cells to record are the ones
+whose value an argument rests on.** The saturation moved from 2.00 to 1.855
+commands a minute with the fix, which leaves the published advice intact and
+with less margin than it looked to have.
+
+**2026-10-26, the owner: the published life is 70% of the cell, and the
+figure stops where the radio does.** Two changes to what gets published,
+both his call, and the second of them found a mistake.
+
+The days table is computed on **154 mAh**, 70% of a CR2032's nominal 220.
+The rating runs down to 2.0 V, which is under Espruino's brown-out; the cell
+loses about 1% a year to self-discharge; and its internal resistance climbs
+as it empties, against the 5.6 mA peak of a transmit. None of the three is
+modelled and every measurement was taken at a flat 3.000 V, so 0.7 is an
+allowance rather than a result and §23 says so in as many words. **The
+microamps stay as measured and only the days carry it**, which keeps the
+judgement in one number a reader can change: `power_table --capacity-mah
+154`.
+
+And the module page gets **a figure as well as a table**,
+`docs/figures/puck-battery-life.png`: days against the advertising interval
+at 1, 10, 50, 100 and 200 commands a day, with the 2 s default marked. It
+stops at 10 s because `checkInterval` refuses anything outside **20 ms to
+10 s** for `interval` and `fastInterval` alike, which the table's own 10 s
+row had never said out loud and which a draft of the figure had already
+violated by drawing out to 30 s. The figure carries the one statement the
+table cannot: **726 days is the ceiling of everything this module can be set
+to do**, 1.99 years, so two years on a coin cell is out of reach whatever is
+configured. That sharpens the published advice rather than changing it:
+`fastTimeout` is the lever above about 105 commands a day at the 2 s
+default, and below it the lever is `interval`, as far as the 10 s the radio
+allows.
 
 **What it fixes, and it is a real gap.** This project has quoted current figures
 since §8 and it has never measured one. Every microamp in `docs/measurements.md`

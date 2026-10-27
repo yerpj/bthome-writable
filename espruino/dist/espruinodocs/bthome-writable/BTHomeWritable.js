@@ -664,7 +664,8 @@ function setAdvertisingInterval(ms) {
   for (let i = 0; i < ord.length; i++) if (ord[i].inheritsInterval) ord[i].readInterval = st.interval;
 
   schedule();
-  if (st.fastTimer === undefined && st.advInterval !== st.fastInterval) {
+
+  if (st.fastTimer === undefined && st.advInterval !== st.interval) {
     st.advInterval = st.interval;
     republishRate();
   }

@@ -1837,15 +1837,21 @@ floor is the intercept, one advertising event the slope.
 
 | recording | what it is | how long |
 |---|---|---|
-| **1. the sweep** | `SWEEP = [100, 200, 500, 1000, 2000, 3200, 5000, 10000]` in `power-arms.js`, `SWEEP_MS = 120000`: the device walks the intervals on its own, pulsing the marker a second at each step. No central, no reload, one recording. 100 ms is in it because that is `fastInterval`, so the fast term is measured rather than extrapolated | **16 min** |
+| **1. the sweep** | `SWEEP = [200, 500, 1000, 2000, 3200, 5000, 10000, 100]` in `power-arms.js`, `SWEEP_MS = 120000`: the device walks the intervals on its own. No central, no reload, one recording, and no marker channel either -- the steps are read out of the advertising rate in the current itself (`power_charge --segment`), which also checks each step against the interval that was programmed. 100 ms is in it because that is `fastInterval`, so the fast term is measured rather than extrapolated, and it is **last** because it is the one step that touches a code path the others do not | **17 min** |
 | **2. the commands** | 10 commands from Home Assistant, **45 s apart** because `fastTimeout` is 30 s and a command sent sooner is measured inside the fast window rather than from idle. The marker is high over each connection, and the median excess above the floor is `Qcmd` | **8 min** |
 | **3. the same, pinned** | recording 2 with `CONNECTION_INTERVAL = 7.5`, which is what puts D-141's cost in the same table as everything else | **8 min** |
-| **4. two checks** | 10 min at 2000 ms with 1 command a minute, then 5 min at 2000 ms with 4 a minute. Compare the whole recording's mean against what the table says it should be | **15 min** |
+| **4. two checks** | 10 min at 2000 ms with 1 command a minute, then 5 min at 2000 ms with 4 a minute, on the **automatic** image, which is the arm the table is built from. Compare each span's mean against what the table says it should be. It found a 14% error in the model at the second cell | **18 min** |
 
-**Call it 45 minutes a board**, and the second board is the same 45 minutes. The
+**Call it 45 minutes a board.** The
 checks are not optional: a table computed from three coefficients and verified
 nowhere is a table that should not go on anybody's documentation page. Two cells
 are enough, one each side of the saturation below.
+
+**It ran in an hour and a half on 2026-10-26, and there is one board rather than
+two.** The owner called the nice!nano off the same day the Puck.js finished: one
+characterised board is enough for the page. That is his call to make and it costs
+one of the four coefficients rather than the table -- see "What the Puck.js
+answers for and what it does not", below the table.
 
 **Why 120 s a step is enough**, when §23 used to ask for a hundred advertising
 events: the short intervals get them anyway, 1200 at 100 ms, and at the long end
@@ -1858,11 +1864,21 @@ marker pulses, which is what `--gaps` reads:
 
 ```
 python -m tools.power_charge sweep.csv --digital GPI1 --gaps \
-    --labels "100,200,500,1000,2000,3200,5000,10000" --out power-puck-sweep.json
-python -m tools.power_charge commands.csv --digital GPI1 --baseline auto
-python -m tools.power_table --fit power-puck-sweep.json --command-charge <Qcmd> \
-    --life --capacity-mah 220
+    --labels "-,100,200,500,1000,2000,3200,5000,10000" \
+    --out power-puck-sweep.json
+python -m tools.power_charge Enregistrement_4 --phases --commands \
+    --baseline auto --capacity-mah 220 --out power-puck-checks.json
+python -m tools.power_charge Enregistrement_4 --window 101500-701500 \
+    --window 775400-1075400 --labels "1 a minute,4 a minute" --baseline 0
+python -m tools.power_table --fit power-puck-sweep.json --command-charge 1810 \
+    --command-seconds 2.34 --life --capacity-mah 220
 ```
+
+**Nine labels for eight steps**, because the quiet before the first marker
+pulse is a gap like any other: it is the minute the sketch spends at
+`ADV_INTERVAL` while the console lets go and the fast window its disconnect
+opened expires. `-` is the label that drops it, and a mismatch between labels
+and windows is reported rather than silently shifting every step by one.
 
 The fit prints its own worst residual, which is the first thing to look at: a
 model that does not fit the sweep it came from has no business predicting a
@@ -1896,6 +1912,303 @@ Then the three things that quietly ruin a recording:
 3. **Take the lock.** `python -m tools.bench_lock acquire --note "D-142: current"`,
    because the command recordings drive Home Assistant and another agent's run
    would land inside a trace.
+
+### What the first run gave, including the two things it was not looking for
+
+**2026-10-26, Puck.js f7b9 at 3.0 V on the Arc, sealed, boot from `.bootcde`,
+18 minutes at 4 ksps.** The sweep itself failed: the device advertised at
+104.5 ms for 1020 seconds while believing it had changed rate eight times,
+because the first step set 100 ms, which is the module's own fast interval, and
+`setAdvertisingInterval` guarded its republish on the rate differing from the
+*fast* interval rather than from the one being asked for. Once the two were
+equal the test was false for good. That is a module bug, it is fixed and has a
+regression test, and 100 ms now goes **last** in the sweep so that the next
+peculiarity at that step costs seven steps less.
+
+What the trace gives anyway, read out of the idle minute and the long stretch:
+
+| | measured |
+|---|---|
+| floor between everything | **4.34 uA** (median of 4.3 million samples) |
+| one sealed advertising event, 9 bytes of service data | 5.5 to 6.75 ms, peak 4.5 to 5.6 mA, **14.6 to 21.1 uC** |
+| the two-interval solve, 2003 ms against 104.5 ms | **Qadv 14.8 uC, floor 7.0 uA** |
+| the device at its 2 s default | **14.4 uA**, which is 446 days of the 154 mAh a CR2032 is worth here (section 23) |
+| power-up | 1.41 s and **8.6 mC**, peaking at 138 mA |
+
+**And a 7.2 uC event every 8.000 seconds that is not the radio.** Seventeen
+milliseconds long, peaking at 780 uA where an advertising event peaks at 5 mA:
+too slow and too weak to be a transmission, and exactly periodic. That is the
+SoftDevice recalibrating the low-frequency RC oscillator, which a Puck.js needs
+because it has no 32 kHz crystal. It costs **0.90 uA continuously**, which is a
+fifth of the floor and a seventh of what the device spends advertising at 2 s,
+and no datasheet figure or model in this file predicted it. It is also why the
+fitted floor comes out at 7.0 uA against a 4.34 uA median: the floor is the
+median plus the calibration plus the part of every event that falls under the
+detection margin.
+
+The power-up figure is worth keeping for a different question: a device that
+sleeps and reboots rather than advertising slowly pays 8.6 mC a cycle, which is
+the advertising of nine minutes at 2 s.
+
+### The sweep, measured
+
+**2026-10-26, Puck.js f7b9 at 3.0 V, sealed, booting from `.bootcde`, no
+central, 18.9 minutes at 4 ksps, the steps read out of the advertising rate
+itself.** Every detected interval came back as the one that was programmed,
+which is the check a marker channel would have given and better, because it is
+a reading rather than a label.
+
+| interval | duration | mean | peak |
+|---|---|---|---|
+| 100 ms | 221.2 s | **148.63 uA** | 5.6 mA |
+| 200 ms | 120.0 s | **79.42 uA** | 5.6 mA |
+| 500 ms | 119.6 s | **36.25 uA** | 5.6 mA |
+| 1 s | 118.5 s | **21.88 uA** | 5.6 mA |
+| 2 s | 116.3 s | **14.35 uA** | 5.6 mA |
+| 2 s, again, before the sweep began | 58.0 s | **14.47 uA** | 5.6 mA |
+| 3.2 s | 115.4 s | **11.46 uA** | 5.6 mA |
+| 5 s | 115.0 s | **9.86 uA** | 5.5 mA |
+| 10 s | 119.0 s | **8.20 uA** | 5.6 mA |
+
+The two 2 s figures are 0.8% apart, measured nine minutes and six intervals
+from each other, which is the repeatability of the whole rig in one line.
+
+**The fit, on all nine points: a floor of 7.35 uA and 14.19 uC an advertising
+event, worst residual 1.1 uA.** Over an eighteenfold range of interval and a
+range of current from 8 to 149 uA, a two-term model is never more than a
+microamp out, so the additive model of this section is not an approximation
+worth worrying about. The residuals lean one way, positive at the short
+intervals and negative at the long ones, by about half a microamp: there is a
+little convexity the model does not carry, and it is smaller than the thing it
+would explain.
+
+**And the fast window is now measured rather than modelled.** The model says a
+device in its fast window draws `floor + Qadv/fastInterval` = 7.35 + 141.9 =
+**149.3 uA**; the 100 ms step measures **148.63 uA**. The term the whole
+saturation claim rests on is confirmed to half a per cent by a step that was in
+the sweep for exactly that reason.
+
+### The commands, measured
+
+**2026-10-26, same board and rig, `power-commands-storage.min.js` from
+`.bootcde`, 2 s idle, `CONNECTION_INTERVAL = null`, ten commands driven from
+Home Assistant 45 s apart through the ESPHome proxy `bureau`.** Nine of the ten
+went out; the tenth never left, because the ninth service call took longer than
+thirty seconds to answer and `tools.power_commands` treated the timeout as
+fatal (it no longer does). The trace holds all nine, and `power_charge --phases`
+found every one of them without a marker channel.
+
+A command is three things in the current, in this order:
+
+| | per command |
+|---|---|
+| **a solid block of radio**, no gaps in it at all | **0.19 s at 3.9 mA**, 730 uC |
+| **the link, at 7.5 ms** | 1.09 to 2.97 s at 0.58 to 0.82 mA |
+| **the two together, above idle** | 1330 to 2725 uC, **median 1810 uC** |
+| **the fast window after it** | **29.93 to 30.00 s** at 147.0 to 149.9 uA |
+| its charge above idle | 3979 to 4063 uC, **median 4017 uC** |
+| **one command, all in** | **5827 uC**, of which the fast window is **69%** |
+
+The first three commands cost 2356 to 2725 uC against 1330 to 1819 for the rest:
+service discovery, paid once per Home Assistant restart rather than per command,
+which is why the table below takes the median of the nine and not the mean.
+
+**`fastTimeout` and `fastInterval` are no longer assumptions.** Nine
+independent measurements of the fast window give 29.93 to 30.00 s against a
+30 s setting, at 104 to 105 ms against a 100 ms one, and its mean current
+matches the sweep's own 100 ms step to under two per cent across two separate
+recordings. The term the saturation claim rests on is measured three ways now.
+
+**And the connection ran at 7.5 ms with nothing asking it to.** The sketch had
+`CONNECTION_INTERVAL = null`, which leaves the interval to be negotiated, and
+every one of the nine connections came out at **7.5 ms** -- the minimum the
+specification allows. **That bears directly on D-141**, whose option 1 is to
+pin 7.5 ms in `setup()`: through an ESPHome proxy there is nothing left to pin,
+because the link is already there. Pinning would still matter for a central
+that negotiates something slower, so what the measurement settles is that the
+option is free of cost here rather than that it is worthless: recording 3, the
+pinned arm, should come out indistinguishable from this one, and if it does
+then D-141 needs no guard for this path.
+
+**A connection is 1.9 s long for one write**, which is the other thing worth
+staring at: 250 connection events at 7.5 ms to deliver one object. What they
+are doing is Home Assistant's business rather than the device's, but the device
+pays for it, and 1.8 of the 5.8 mC a command costs is that link being held
+open.
+
+### The blind spot this found, which is the method and not the device
+
+The first reading of this trace gave 1078 uC a command and the check cell came
+out **15% light**: 123.66 uA predicted against 142.64 measured. The missing
+7225 uC were in nine stretches of 0.19 s at 3.9 mA, one per command.
+
+**A phase is a run of gaps between radio events, which makes the reader blind
+to exactly one thing: radio that never stops.** A continuous block is a single
+event with no gaps in it, so it belongs to no run and was dropped without a
+word -- and it was 40% of what a command costs. `phases()` now examines the
+stretches between its own runs and returns any that carries current as a phase
+of its own, and `power_charge --phases` **prints the share of the recording's
+charge its phases account for**: 100.0% for this trace. A blind spot now
+announces itself in the output rather than as a model that does not fit.
+
+That is the third time in one day that a threshold or a window taken from the
+shape of the data rather than from what the hardware does has cost a
+measurement, and it is the one worth writing down: **the analysis has to
+account for all of the charge, and say so.**
+
+### The pinned connection interval, measured against it
+
+**2026-10-26, same board and rig, `power-commands-pinned-storage.min.js` from `.bootcde`, one line different: `NRF.setConnectionInterval(7.5)`.** Ten commands 45 s apart, **ten of ten delivered**. The prediction in the section above was that this recording would be indistinguishable from the automatic one, because the link was already running at 7.5 ms with nothing asking it to. It is not, and the difference goes the other way from the one D-141 was worried about.
+
+**Recording 4 is in this comparison and it has to be**, because it is the second automatic recording and it disagrees with the first. Medians, boot connections excluded, the two automatic recordings pooled as one arm of 39 commands:
+
+| | automatic, 39 commands | pinned, 10 commands |
+|---|---|---|
+| the interval the link actually ran at | 7.5 ms | 7.5 ms |
+| the opening burst of unbroken radio | 81.0 ms | 79.4 ms |
+| **how long the link was held open** | **2.34 s** (1.09 to 2.97) | **1.96 s** (1.93 to 2.89) |
+| **the whole connection above idle** | **1810 uC** (1330 to 2725) | **1422 uC** (1390 to 2277) |
+| the fast window | 29.99 s at 148.3 to 152.7 uA | 29.99 s at 152.7 uA |
+
+**Pinning does not cost charge, and it looks like it saves about a fifth of a command's connection.** 1422 uC against 1810, and the mechanism is the one §22 already measured as latency: the link is held open 0.38 s less. There is nothing in the fast window and nothing in the advertising, which is what D-141 needed to know -- the 27x it worried about never appears, because the central had already chosen 7.5 ms and there was no slower interval to lose.
+
+**What this section claimed this morning about the opening burst was wrong, and recording 4 is what refuted it.** Against recording 2 alone, the pinned arm's burst of unbroken radio was 79 ms where the automatic arm's was 190, consistently across nine commands and three times the charge; the whole 388 uC looked like it lived there, and the connection parameter update procedure was the obvious explanation. Recording 4 then ran the **automatic** image and came back at 80 ms, like the pinned one. So 190 ms was recording 2's own, the burst is the same in both arms, and the saving is in the link duration instead. `CONNECTION_INTERVAL` was read back off the board as `null` after recording 4 to be sure of which image had run.
+
+**Two things follow, and the second is the uncomfortable one.** The first is that a mechanism inferred from two recordings with one variable between them is not a mechanism: there was a second variable, unlabelled, somewhere between 11:29 and 12:54 on the Home Assistant side, and it moved a figure by a factor of two and a half. The second is that the arms are now separated by less than the automatic arm's own spread: 1330 to 2725 uC against 1390 to 2277. The medians differ by 21% and the ranges overlap almost completely, so **the right claim is that pinning is not expensive**, which is what the decision asked, and not that it saves 388 uC. The latency measurement of §22 is 100 commands an arm and it is the one that carries the direction.
+
+**The floors say the same thing about how much to trust one recording.** 14.41 uA in recording 2 and 14.40 in recording 4, which is a reproducibility of 0.07% on an idle device two hours apart; 14.87 in recording 3, which is 3.2% above both. The pinned recording is the one with the anomalous floor, and nothing in the sketch can raise an idle device by three per cent. Supply was 3.000 V in all three.
+
+**And the table's collapse was demonstrated by accident.** Two of the ten service calls took 20 and 23 s to return against 0.5 to 5.8 s for the other eight, and the trace says where the time went: the device advertised quietly at 2 s throughout, there is no failed connection attempt in front of either, and each command still produced exactly one connection. The delay was Home Assistant's and the device paid nothing for it -- but it arrived inside the fast window its predecessor was still spending, which truncated two windows to **25.64 and 20.81 s**. That is the mechanism the reference table predicts above two commands a minute, and it cost those commands 4293 and 5481 uC instead of 5551: **a command that arrives inside another's window is the cheap one**, because the window it would have opened was already being paid for.
+
+### The reference table, measured, and both cells checked
+
+Floor **7.35 uA**, one advertising event **14.19 uC**, one command's
+connection **1810 uC** over **2.34 s**, `fastInterval` 100 ms and
+`fastTimeout` 30 s as measured. The two command coefficients are the medians
+of **39 commands** across recordings 2 and 4, both on the automatic
+connection interval, which is the module as it ships.
+
+| advertising interval | 0/min | 1/min | 2/min | 3/min | 4/min | 6/min |
+|---|---|---|---|---|---|---|
+| 200 ms | 78.3 | 141.2 | 198.6 | 223.2 | 247.8 | 297.1 |
+| 500 ms | 35.7 | 121.6 | 198.6 | 223.2 | 247.8 | 297.1 |
+| 1 s | 21.5 | 115.0 | 198.6 | 223.2 | 247.8 | 297.1 |
+| 2 s | 14.4 | 111.8 | 198.6 | 223.2 | 247.8 | 297.1 |
+| 3.2 s | 11.8 | 110.5 | 198.6 | 223.2 | 247.8 | 297.1 |
+| 5 s | 10.2 | 109.8 | 198.6 | 223.2 | 247.8 | 297.1 |
+| 10 s | 8.8 | 109.1 | 198.6 | 223.2 | 247.8 | 297.1 |
+
+Microamps. In days of **154 mAh**, which is 70% of a CR2032's nominal 220:
+
+| advertising interval | 0/min | 1/min | 2/min | 3/min | 4/min | 6/min |
+|---|---|---|---|---|---|---|
+| 200 ms | 82 | 45 | 32 | 29 | 26 | 22 |
+| 500 ms | 180 | 53 | 32 | 29 | 26 | 22 |
+| 1 s | 298 | 56 | 32 | 29 | 26 | 22 |
+| **2 s** | **444** | **57** | **32** | 29 | 26 | 22 |
+| 3.2 s | 544 | 58 | 32 | 29 | 26 | 22 |
+| 5 s | 630 | 58 | 32 | 29 | 26 | 22 |
+| 10 s | 732 | 59 | 32 | 29 | 26 | 22 |
+
+**Why 70% rather than the 220 mAh on the datasheet.** The 220 is rated down to
+2.0 V, which is below where Espruino browns out; a coin cell also loses about 1%
+a year to self-discharge, and its internal resistance climbs as it empties,
+which is exactly what the 5.6 mA peak of an advertising event pulls on. Every
+measurement in this section was taken at a flat 3.000 V, so none of the three is
+modelled and 0.7 is a flat allowance rather than a result. **The microamps are
+measured and only the days carry it**, which is also why the two tables are
+printed separately: `power_table --capacity-mah 154` is the whole of it, and a
+reader who disagrees with the allowance can change one number without touching
+anything that was measured.
+
+**Both cells are now measured rather than computed, and they bracket the table.** Recording 4 ran 10 commands a minute apart and then 20 commands fifteen seconds apart, on the same board at the same 2 s interval:
+
+| cell | span | measured | the table | out by |
+|---|---|---|---|---|
+| **1 command a minute** | 600 s, 10 commands | **116.90 uA** | 111.8 | **4.4% low** |
+| **4 commands a minute** | 300 s, 20 commands | **236.45 uA** | 247.8 | **4.8% high** |
+
+**The two residues have opposite signs, and the reason is not the model.** A command's charge is mostly Home Assistant holding the link open, and it held it for **2.85 s** in the first cell against **2.25 s** in the second: 1970 uC a command against 1550, a 27% spread inside one recording. Given each cell its own measured connection, the model lands **2.2% under both**, with the same sign and the same size, which is the residue of a two-term model rather than of a coefficient. So the table's 5% is the spread of the central's behaviour, not arithmetic, and it is the honest accuracy to publish.
+
+Recording 2 is a third cell of its own: nine commands over 422 s is 1.279 a
+minute at 2 s, for which the table says **138.9 uA** and the recording
+measures **142.64 uA**, which is **2.6%**.
+
+**Three sentences come out of this table, and none of them is "a write is
+expensive".**
+
+1. **A device nobody writes to lives on its advertising interval alone**, and
+   the range is wide: 82 days at 200 ms against 732 at 10 s, with the module's
+   2 s default at 444.
+2. **One command a minute costs eight times what advertising does.** At 2 s it
+   takes the device from 444 days to 57, and two thirds of that is not the
+   write: it is the thirty seconds of fast advertising the write leaves behind.
+3. **From two commands a minute the advertising interval stops mattering
+   entirely.** Every row collapses: 32 days whether the device advertises at
+   200 ms or at 10 s, because the fast window never closes. The only lever left
+   is `fastTimeout`, and nobody has said so before.
+
+The first column and the last are what a reader should compare: **732 days
+against 22**, both of them this same device, differing only in how often it
+is asked to do something and how long it stays alert afterwards.
+
+**And the figure for the module page is `docs/figures/puck-battery-life.png`**,
+the same arithmetic drawn rather than tabulated: days against the advertising
+interval at 1, 10, 50, 100 and 200 commands a day, with the 2 s default marked.
+It stops at 10 s because that is where the module stops: `checkInterval` refuses
+anything outside **20 ms to 10 s** for `interval` and `fastInterval` alike, so
+the 10 s row of the table above is the last row that exists. The figure carries
+one thing the table does not. **726 days, at one command a day and 10 s, is the
+ceiling of everything this module can be set to do**, which is 1.99 years: two
+years on a coin cell is out of reach whatever is configured, and the two-year
+line is on the plot to show that nothing reaches it. Source beside it in
+`docs/figures/puck-battery-life.html`, rendered the way `docs/figures/README.md`
+says, with its model block lifted from these same four coefficients so the
+figure and the table cannot disagree.
+
+### The model was 14% out at four commands a minute, and the check caught it
+
+The first version of this table said **270.0 uA** at four commands a minute
+where recording 4 measures **236.45**. That is the one cell whose value
+carries the third sentence above, and it was wrong for a reason worth
+writing down.
+
+**A connection is not a fast window, and the model billed the same seconds twice.** `I = floor + (1-f) Qadv/T + f Qadv/Tfast + n Qcmd/60` charges the whole minute to the two advertising terms and then adds the commands on top. But a device that is connected advertises at neither rate: its 2.34 s belong to the link. At one command a minute that is 2.34 s of 60 and the error hides inside the idle term, which is why cell 1 was never going to catch it. At four a minute it is 2.34 s of 15, and the fast window is 141.9 uA, so the double count is **22 uA of 248** -- the whole discrepancy, to within a microamp.
+
+`power_table` now carries a fourth coefficient, `Tcmd`, and a connected
+share `c = min(1, n Tcmd / 60)` that comes out of both advertising terms.
+Two consequences beyond the corrected cell:
+
+* **the saturation moves from 2.00 to 1.855 commands a minute**, since a command has to fit its own seconds into the minute as well as its window. The third sentence above still holds at two a minute, with less margin than it had;
+* **the rows collapse exactly rather than nearly.** Taking the connection's seconds out of the idle term as well as the fast one is what makes the 2/min column identical at 200 ms and at 10 s; leaving them in the idle term left 5 uA of the advertising interval showing at saturation, which would have been a second wrong claim hiding behind a right one.
+
+**This is the fourth time in two days that a figure taken from the shape of the arithmetic rather than from what the hardware does has cost a measurement**, and it is the first one the checks caught instead of the bench. Two cells were in the plan for exactly this and the plan was right: a 49-cell table computed from four coefficients and verified nowhere would have gone on the module page 14% wrong in the cell it exists to make.
+
+### What the Puck.js answers for and what it does not
+
+**2026-10-26, the owner: one board is enough.** The nice!nano arm of D-142 is off. That is worth taking seriously rather than apologising for, because three of the four coefficients are not the board's and the fourth is the one an adopter can measure in a minute.
+
+| coefficient | whose property is it | how far it travels |
+|---|---|---|
+| `fastInterval` 100 ms, `fastTimeout` 30 s | **the module's**, and they are constants in `setup()` | exactly, to every device running it |
+| `Qadv` **14.19 uC** an advertising event | **the radio's**: three channels of a 20-byte packet at 0 dBm | between nRF52 boards at the same TX power, within tens of per cent |
+| `Qcmd` **1810 uC** over **2.34 s** | **the central's**, mostly: it is 600 uA of held-open link and the device does not choose the duration | between boards, better than it travels between centrals. It moved 27% between two cells of one recording |
+| `floor` **7.35 uA** | **the board's and the firmware's** | not at all, and this is the one to say so about |
+
+**The floor is the coefficient that does not travel, and it is the easy one to replace.** 7.35 uA is this Puck.js on 3.0 V with Espruino 2v29, of which 0.90 uA is the SoftDevice calibrating its RC oscillator every 8.000 s because a Puck.js has no 32 kHz crystal. @enaon's board idles at about 45 uA with this module not loaded at all (§8), six times as much. So a second board would have given a second floor and the same other three coefficients, which is a day's work for one number -- and the number is one a reader can measure on their own board with nothing but the meter and no sketch at all.
+
+That is what the module page should say, and it is better advice than a
+two-board table: **take your board's idle current, add our three, and the
+row is yours.** `power_table --floor <yours> --adv-charge 14.194
+--command-charge 1810 --command-seconds 2.34 --life --capacity-mah 154` is that
+arithmetic, and the 0/min column of the published table is the only one the
+floor dominates.
+
+**Three things the campaign does not cover at all, and they are not about the second board.**
+
+* **A device whose advertised values move.** Every arm here advertises two writables and nothing that gets re-read, so `Qrebuild` is unmeasured and the table is for a device whose advertised sensors sit still. `bench.rebuild()` and `power_table --rebuild-charge` are both in place for it.
+* **A link held open.** The one case a per-command charge cannot represent, and the one that could still put a guard into D-141: `tools/hold_link.py` auto against pinned.
+* **Any supply but 3.0 V.** A coin cell ends its life near 2.5 V and the radio draws more current there for the same transmit. The days column answers for this with a flat 70% of the nominal capacity and says so in as many words; that allowance is a judgement, not a measurement, and it is the only number in this section that is.
 
 ### What the model already says, before anything is measured
 
@@ -1972,7 +2285,7 @@ of them changes a decision if it is wrong:
    is 30 s at ~90 uA, **2.6 mC**, already larger than the pinned command. A
    module that spends that without anyone objecting cannot object to this.
 3. **A held-open link is the exception, and it is a big one.** At 530 uA a
-   220 mAh cell is gone in about 17 days of being connected, against years at
+   154 mAh is gone in about 12 days of being connected, against years at
    200 ms. If a device somebody leaves connected to Espruino Hub is a case this
    module supports, option 1 of D-141 -- pin it once in `setup()` -- needs a
    guard after all, and the held-open recording is what decides it.
@@ -1984,8 +2297,9 @@ of them changes a decision if it is wrong:
 ### What lands where
 
 Each recording produces one CSV and one JSON next to it:
-`docs/data/power-<board>-sweep.json`, `-commands.json`, `-commands-pinned.json`
-and `-checks.json`, written by `tools.power_charge --out`, plus the table itself
+`docs/data/power-<board>-sweep.json`, `-commands.json`, `-commands-pinned.json`,
+`-checks.json` and `-checks-cells.json`, written by `tools.power_charge --out`,
+the call schedules as `-calls.json` beside them, plus the table itself
 as `power-<board>-table.json` from `tools.power_table --out`. The CSV traces stay
 out of the repository: sixteen minutes at 4 ksps is nearly four million samples,
 and the JSON holds every figure anything quotes.
@@ -2008,7 +2322,7 @@ Sealed, nothing advertised that has to be re-read, <board> at <voltage>.
 | 2 s                  |       |       |       |       |       |       |
 | 10 s                 |       |       |       |       |       |       |
 
-Microamps, and the same table again in days on a CR2032.
+Microamps, and the same table again in days on 154 mAh, 70% of a CR2032.
 
 Measured: the floor and one advertising event from a swept recording, one
 command's charge from ten commands, two cells checked against the rest.

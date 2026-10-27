@@ -59,16 +59,16 @@ var CONNECTION_INTERVAL = null;
 /* A free pad wired to the meter's digital input: D1 on a Puck.js, D1 on a
    nice!nano. Tell the meter the board's logic level, or a 3 V marker read
    against a 5 V threshold never goes high. null disables the marker. */
-var MARK = null;
+var MARK = D1;
 
 /* Advertising intervals the device steps through on its own, in
    milliseconds, or null for a single-interval run. SWEEP_MS is how long each
    step lasts and SWEEP_START_MS how long it waits first -- long enough for the
    Web IDE to let go and for the 30 s fast window that its disconnect opens to
    expire, so disconnect as soon as the sketch is loaded. */
-var SWEEP = null;
-var SWEEP_MS = 180000;
-var SWEEP_START_MS = 60000;
+var SWEEP = [200, 500, 1000, 2000, 3200, 5000, 10000, 100];
+var SWEEP_MS = 120000;
+var SWEEP_START_MS = 120000;
 
 /* Milliseconds between re-reads of the one advertised sensor, or null for a
    device that advertises nothing it has to read -- which holds no timer at

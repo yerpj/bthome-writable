@@ -10,14 +10,30 @@ write rate, because the terms add up:
                  + the commands themselves
                  + a rebuild per advertised value that moves, if any
 
-    I(T, n) = floor + (1 - f) * Qadv / T + f * Qadv / Tfast + n * Qcmd / 60
-    f = min(1, n * fastTimeout / 60)
+    I(T, n) = floor + (1 - c - f) * Qadv / T + f * Qadv / Tfast + n * Qcmd / 60
+    c = min(1, n * Tcmd / 60)
+    f = min(1 - c, n * fastTimeout / 60)
 
 `T` is the idle advertising interval in seconds, `n` the commands per minute,
-`Qadv` the charge of one advertising event and `Qcmd` the charge of one
-command's connection above the idle floor. `f` is the share of the minute spent
-in the fast window, which a command opens for `fastTimeout` seconds at
-`fastInterval`.
+`Qadv` the charge of one advertising event, `Qcmd` the charge of one command's
+connection above the bare floor and `Tcmd` how long that connection lasts. `f`
+is the share of the minute spent in the fast window, which a command opens for
+`fastTimeout` seconds at `fastInterval`.
+
+**`c` is there because a connection is not a fast window**, and leaving it out
+is what made recording 4's four-a-minute cell come back 14% under the table
+(section 23). A device that is connected is not advertising at all, so the
+seconds a command spends on the link cannot also be billed at `fastInterval`:
+at one command a minute that is 2.3 s of 60 and the error hides inside the
+idle term, and at four a minute it is 2.3 s of 15, which is the whole of the
+discrepancy. A connected device advertises at
+neither rate, so `c` takes its seconds out of both terms, and that is also
+what makes the rows collapse exactly rather than nearly at saturation.
+
+`power_charge --commands` reports `Qcmd` above an *idling* device rather than
+above the bare floor, which on the Puck.js is 16 uC of 1810, or 0.9%: inside
+the coefficient's own spread of 1330 to 2725 uC across 39 commands, and
+ignored here rather than carried as a fifth coefficient.
 
 So a 7-by-7 table is four measurements and arithmetic, not 49 recordings:
 
@@ -61,6 +77,9 @@ def fit(report: dict) -> dict:
     one event's charge divided by the interval, so against 1/T it is an
     intercept and a slope. The residual is reported with them, because a model
     that does not fit its own measurement is the first thing to notice.
+
+    Windows whose label is not a number are skipped, which is how `-` drops the
+    stretch of trace before the sweep's first marker pulse.
     """
     xs: list[float] = []
     ys: list[float] = []
@@ -68,7 +87,14 @@ def fit(report: dict) -> dict:
         label = window.get("label")
         if label is None:
             continue
-        interval_s = float(label) / 1000.0
+        try:
+            interval_s = float(label) / 1000.0
+        except ValueError:
+            # A window the run sheet labelled "-", which is how a sweep drops
+            # the stretch before its first marker pulse: that one holds the
+            # sketch load, the console's disconnect and the fast window the
+            # disconnect opened, so it is not an advertising interval at all.
+            continue
         xs.append(1.0 / interval_s)
         ys.append(float(window["mean_ua"]))
     if len(xs) < 2:
@@ -103,6 +129,7 @@ class Model:
         floor_ua: float,
         adv_charge_uc: float,
         command_charge_uc: float,
+        command_seconds: float = 2.34,
         fast_interval_ms: float = 100.0,
         fast_timeout_s: float = 30.0,
         rebuild_charge_uc: float = 0.0,
@@ -111,18 +138,31 @@ class Model:
         self.floor_ua = floor_ua
         self.adv_charge_uc = adv_charge_uc
         self.command_charge_uc = command_charge_uc
+        self.command_seconds = command_seconds
         self.rebuild_charge_uc = rebuild_charge_uc
         self.rebuilds_per_min = rebuilds_per_min
         self.fast_interval_ms = fast_interval_ms
         self.fast_timeout_s = fast_timeout_s
 
+    def connected_share(self, rate_per_min: float) -> float:
+        """The share of a minute spent on a link rather than advertising."""
+        return min(1.0, rate_per_min * self.command_seconds / 60.0)
+
     def fast_share(self, rate_per_min: float) -> float:
-        """The share of a minute spent advertising fast, which saturates."""
-        return min(1.0, rate_per_min * self.fast_timeout_s / 60.0)
+        """The share of a minute spent advertising fast, which saturates.
+
+        Capped by the time the commands themselves do not take: a connection
+        and a fast window are different states and a second cannot be both.
+        """
+        connected = self.connected_share(rate_per_min)
+        return min(1.0 - connected, rate_per_min * self.fast_timeout_s / 60.0)
 
     def terms(self, interval_ms: float, rate_per_min: float) -> dict[str, float]:
         share = self.fast_share(rate_per_min)
-        idle = (1.0 - share) * self.adv_charge_uc / (interval_ms / 1000.0)
+        connected = self.connected_share(rate_per_min)
+        # A connected device advertises at neither rate, so its seconds come
+        # out of both terms rather than out of the fast one alone.
+        idle = (1.0 - share - connected) * self.adv_charge_uc / (interval_ms / 1000.0)
         fast = share * self.adv_charge_uc / (self.fast_interval_ms / 1000.0)
         commands = rate_per_min * self.command_charge_uc / 60.0
         # A device with an advertised sensor also rebuilds its packet when the
@@ -136,6 +176,7 @@ class Model:
             "commands_ua": round(commands, 2),
             "rebuilds_ua": round(rebuilds, 2),
             "fast_share": round(share, 3),
+            "connected_share": round(connected, 3),
             "total_ua": round(total, 2),
         }
 
@@ -156,7 +197,7 @@ class Model:
         Above it the idle advertising interval does not show in the current,
         and `fastTimeout` is the lever instead.
         """
-        return 60.0 / self.fast_timeout_s
+        return 60.0 / (self.fast_timeout_s + self.command_seconds)
 
 
 def table(
@@ -209,6 +250,14 @@ def main(argv: list[str] | None = None) -> int:
         required=True,
         help="charge of one command's connection above the floor, uC",
     )
+    parser.add_argument(
+        "--command-seconds",
+        type=float,
+        default=2.34,
+        help="how long one command holds the link, s: the median of 39"
+        " commands on the Puck.js, and the central's choice rather than the"
+        " device's",
+    )
     parser.add_argument("--fast-interval", type=float, default=100.0)
     parser.add_argument("--fast-timeout", type=float, default=30.0)
     parser.add_argument(
@@ -250,10 +299,11 @@ def main(argv: list[str] | None = None) -> int:
         floor,
         adv_charge,
         args.command_charge,
-        args.fast_interval,
-        args.fast_timeout,
-        args.rebuild_charge,
-        args.rebuilds_per_minute,
+        command_seconds=args.command_seconds,
+        fast_interval_ms=args.fast_interval,
+        fast_timeout_s=args.fast_timeout,
+        rebuild_charge_uc=args.rebuild_charge,
+        rebuilds_per_min=args.rebuilds_per_minute,
     )
 
     if args.interval is not None and args.writes is not None:
@@ -291,6 +341,7 @@ def main(argv: list[str] | None = None) -> int:
                 "floor_ua": floor,
                 "adv_charge_uc": adv_charge,
                 "command_charge_uc": args.command_charge,
+                "command_seconds": args.command_seconds,
                 "fast_interval_ms": args.fast_interval,
                 "fast_timeout_s": args.fast_timeout,
                 "rebuild_charge_uc": args.rebuild_charge,

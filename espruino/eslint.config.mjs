@@ -31,6 +31,7 @@ export default [
         LED2: "readonly",
         LED3: "readonly",
         I2C: "readonly",
+        D1: "readonly",
         D2: "readonly",
         D29: "readonly",
         D45: "readonly",

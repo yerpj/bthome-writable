@@ -1,0 +1,48 @@
+{
+  "samples": 4704368,
+  "period_ms": 0.25,
+  "span_s": 1176.092,
+  "mean_ua": 148.77,
+  "median_ua": 4.35,
+  "max_ua": 39186.0,
+  "charge_uc": 174964.6,
+  "life_at_this_mean": {
+    "hours": 1478.8,
+    "days": 61.6,
+    "years": 0.17
+  },
+  "thin_windows": 0,
+  "capacity_mah": 220.0,
+  "unknown_digital_samples": 0,
+  "outside_windows_median_ua": 4.31,
+  "windows": [
+    {
+      "start_ms": 101500.0,
+      "duration_ms": 600000.0,
+      "mean_ua": 116.9,
+      "max_ua": 10155.4,
+      "charge_uc": 70142.27,
+      "excess_uc": 70142.27,
+      "label": "1 a minute"
+    },
+    {
+      "start_ms": 775400.0,
+      "duration_ms": 300000.0,
+      "mean_ua": 236.45,
+      "max_ua": 8814.1,
+      "charge_uc": 70933.94,
+      "excess_uc": 70933.94,
+      "label": "4 a minute"
+    }
+  ],
+  "window_summary": {
+    "n": 2,
+    "baseline_ua": 0.0,
+    "median_duration_ms": 450000.0,
+    "median_mean_ua": 176.68,
+    "median_charge_uc": 70538.11,
+    "median_excess_uc": 70538.11,
+    "total_excess_uc": 141076.21
+  },
+  "source": "Enregistrement_4"
+}

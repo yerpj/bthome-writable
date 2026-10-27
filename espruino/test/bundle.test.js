@@ -1474,3 +1474,27 @@ test("a packet the radio refuses does not end the device's windows for good", ()
   result.context.bw.changed();
   assert.notEqual(windowOf(result), undefined, "and another window can still be armed");
 });
+
+test("the interval still changes after it has been set to the fast interval", () => {
+  /* 100 ms is a legal idle interval and it is also the fast window's own
+   * default rate, which used to be the end of the device's ability to change
+   * rate: the republish was guarded on the advertised rate differing from the
+   * *fast* interval rather than from the interval being asked for, so once the
+   * two were equal nothing was ever handed to the radio again. A swept power
+   * measurement found it on 2026-10-26 by advertising at 100 ms for seventeen
+   * minutes while st.interval walked through eight values. */
+  const result = run(load("single-light-standalone.js"));
+
+  assert.equal(result.context.bw.setAdvertisingInterval(100), 100);
+  assert.equal(result.options[result.options.length - 1].interval, 100);
+
+  assert.equal(result.context.bw.setAdvertisingInterval(200), 200);
+  assert.equal(
+    result.options[result.options.length - 1].interval,
+    200,
+    "the radio was told the new interval"
+  );
+
+  assert.equal(result.context.bw.setAdvertisingInterval(3200), 3200);
+  assert.equal(result.options[result.options.length - 1].interval, 3200);
+});

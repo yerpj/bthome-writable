@@ -1118,7 +1118,15 @@ function setAdvertisingInterval(ms) {
   // Re-armed, not just re-installed: this is also the interval an entry
   // inherits and the one an `interval: 0` entry is read at.
   schedule();
-  if (st.fastTimer === undefined && st.advInterval !== st.fastInterval) {
+  // Against st.interval, which was just assigned above, and not against
+  // st.fastInterval: the test is whether the radio is already at the rate
+  // being asked for. Comparing with the fast interval instead meant that a
+  // device whose idle interval was set to 100 ms -- the fast interval's own
+  // default -- stopped republishing for good, so every later change updated
+  // st.interval and was never handed to the radio. Found on the bench
+  // 2026-10-26: a swept measurement starting at 100 ms advertised at 100 ms
+  // for seventeen minutes while believing it had changed rate eight times.
+  if (st.fastTimer === undefined && st.advInterval !== st.interval) {
     st.advInterval = st.interval;
     republishRate();
   }
@@ -1231,16 +1239,16 @@ var CONNECTION_INTERVAL = null;
 /* A free pad wired to the meter's digital input: D1 on a Puck.js, D1 on a
    nice!nano. Tell the meter the board's logic level, or a 3 V marker read
    against a 5 V threshold never goes high. null disables the marker. */
-var MARK = null;
+var MARK = D1;
 
 /* Advertising intervals the device steps through on its own, in
    milliseconds, or null for a single-interval run. SWEEP_MS is how long each
    step lasts and SWEEP_START_MS how long it waits first -- long enough for the
    Web IDE to let go and for the 30 s fast window that its disconnect opens to
    expire, so disconnect as soon as the sketch is loaded. */
-var SWEEP = null;
-var SWEEP_MS = 180000;
-var SWEEP_START_MS = 60000;
+var SWEEP = [200, 500, 1000, 2000, 3200, 5000, 10000, 100];
+var SWEEP_MS = 120000;
+var SWEEP_START_MS = 120000;
 
 /* Milliseconds between re-reads of the one advertised sensor, or null for a
    device that advertises nothing it has to read -- which holds no timer at
