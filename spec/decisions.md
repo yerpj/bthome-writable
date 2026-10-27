@@ -9363,7 +9363,8 @@ allows.
 since §8 and it has never measured one. Every microamp in `docs/measurements.md`
 is @enaon's PPK2 on his own board, at a 1 s advertising interval, as a difference
 between two versions of the module: ~235 uA before the rebuild fix, ~50 uA after,
-~45 uA with the module not loaded (§8), and P1's whole recoverable cost inside
+~45 uA with the module not loaded but his own lamp script still running (§8),
+and P1's whole recoverable cost inside
 5 uA (§9). Those answered whether a change was worth making. None of them
 answers what a device running this module costs, which is the only power question
 an adopter has, and three sentences on the module page currently read as if they
@@ -9422,3 +9423,104 @@ means one more EspruinoDocs pull request after #767, not an edit to it.
 **What stays the owner's.** The measurement itself, and @enaon's PPK2 figures
 remain his: the page credits both. Nothing here is published before the numbers
 exist.
+
+**2026-10-26, @enaon: the floor we had been quoting was his whole
+application.** He read the published table and corrected the one figure in it
+that was not measured here. **~45 uA was never a floor**: it is his lamp script
+entire, about 15 uA of PIR polled every 400 ms, 8 uA of touch button, 17 uA of
+advertising and some 5 uA of floor, and he puts a bare nice!nano at **2 to
+6 uA**. So this Puck.js at 7.35 uA is the *higher* of the two floors the
+project has, not six times the lower, and the prediction that *"the firmware's
+floor dominates"* failed at its premise rather than at its arithmetic. What
+stings is that the caveat was already here, in his own 2026-10-15 figures
+above: *"a PIR and a touch button included, which he says account for some
+25 uA of each total"*. It was dropped in the copying, which is the one failure
+mode a measurements file has. Corrected in four places in §23 and §8; the
+public reply that used 45 as his floor is the owner's to correct, and it
+understated his autonomy rather than ours.
+
+**And he hands the campaign its first outside cross-check.** 14.19 uC an
+advertising event is 14.2 uA at a 1 s interval; he measures ~17 uA for
+advertising at 1 s, on a different board with a different instrument. Within
+20%, which is exactly the *"within tens of per cent"* the coefficient table
+claims for that row, and it is now cited there. A second figure worth keeping:
+a nice!nano clone wants `D13.reset()` before any measurement, or its VCC
+regulator adds some 50 uA.
+
+**His one open objection stays open, and it is his to settle.** He argues that
+on a coin cell the *peak* matters more than the average, because a pulse costs
+a cell more than its charge. Nothing in §23 contradicts him: the coefficients
+are charge per event, so the pulse is already integrated, and what pulses take
+out of a cell is the capacity it can still deliver -- which is the whole reason
+the days column runs on 154 mAh rather than 220. The measurement he proposes,
+peak and duration for advertising against a connection at 200 ms and at 7.5 ms,
+cannot be made on this bench: 250 us a sample resolves charge over a window,
+not the peak of one advertising event (§23). His PPK2 at 100 kHz can, and the
+question is worth the answer.
+
+## D-143 — A Jolt.js refused both packets, and the module was inheriting the radio's state
+
+**2026-10-26, @gfwilliams in espruino#8024.** He ran the page's own example on
+a **Jolt.js with 2v29** and `setup()` threw
+`Uncaught Error: ERR 0x10 (INVALID ADDR) (:2908)`, with the frame pointing at
+the `refreshAdvertising()` call. His words: *"honestly I'm not sure why, or
+where it's coming from!"*. The same module and the same example work on the
+Puck.js he tested on 2026-10-07.
+
+**Where it comes from.** `(:2908)` is a firmware line, and in RELEASE_2V29
+`targets/nrf5x/bluetooth.c:2908` is the `jsble_check_error` on
+`jsble_advertising_update()` inside `jsble_advertising_start()`, which on
+SoftDevice 6 and up is `sd_ble_gap_adv_set_configure`. 0x10 is
+`NRF_ERROR_INVALID_ADDR`, documented in the S140 headers as **"Invalid pointer
+supplied"** -- a *Bluetooth* address that is malformed is a different code,
+`BLE_ERROR_GAP_INVALID_BLE_ADDR`. So the radio refused to be configured
+because a pointer it needed was missing, and the message names an address for
+a reason that has nothing to do with BLE addressing.
+
+**He reached the same function from the other end.** Later the same day:
+*"Looks like it's from jsble_advertising_update - I'm not sure why though. I
+guess it could be a generic issue rather than BTHome related."* It is generic:
+nothing `sd_ble_gap_adv_set_configure` is handed there belongs to BTHome, and
+all this module contributes is the combination of options that reaches the
+branch below. What it can still be blamed for is how little its own error
+said.
+
+**One defect of that report is ours.** A raw firmware error can only have come
+out of the *fallback* in `publish()`: the first refusal is caught and rethrown
+as `advertising_rejected` naming the packet and the reason, so a raw error
+means the small packet was refused too and its throw escaped alone, taking the
+first error with it. That is why his `onError` printed nothing and why the
+trace points at `setup()` rather than at a packet. Fixed here: the fallback has
+its own net, one `advertising_rejected` names **both** refusals and their
+sizes, and `lastSd` goes null so the next rate change rebuilds rather than
+republishing bytes the radio never took.
+
+**The likely cause of the refusal, which is not proven.** Espruino holds the
+advertising flags in the stack rather than in the call: an option nobody passes
+keeps whatever the last caller left there, and `phy:"coded"` or
+`extended:true` *latches* `BLE_IS_NOT_SCANNABLE` with a warning and never
+unlatches it. With scannable off and connectable on, `jsble_advertising_start`
+picks `BLE_GAP_ADV_TYPE_CONNECTABLE_NONSCANNABLE_DIRECTED` and then sets
+`adv_params.p_peer_addr = NULL` unconditionally: a directed advertising type
+with no peer address, which is exactly a missing pointer. That branch exists
+only on the SoftDevice 6 path, which is why an nRF52832 Puck cannot show it --
+SDK12 sets data and parameters in two separate calls -- and Jolt.js is the
+board whose own config carries
+`NRF_SDH_BLE_GAP_EVENT_LENGTH=6  # Needed to allow coded phy connections`, so
+a coded-phy experiment in that board's past is not a far-fetched history.
+
+**What changed on our side, and what it costs.** `advOptions()` now names
+every option, `scannable:true` included, so none of the module's advertising
+state is inherited from whatever the board was doing before. On a device that
+never turned scannable off this changes nothing at all: scannable is the
+default, so no advertising behaviour and no power coefficient moves. The
+published module is 24 971 bytes against the 25 000 budget, which leaves
+**29 bytes of headroom** -- the next change to this file pays for itself in
+first sentences before it pays for anything else.
+
+**What stays open, and whose it is.** The firmware half is @gfwilliams', and
+confirming the diagnosis needs a Jolt.js, which this bench does not have. Two
+commands on his board discriminate: the module's own options on a hand-written
+packet, which should reproduce `ERR 0x10` without the module involved, and the
+same with `scannable:true` added, which should not. The owner posts; the draft
+is his to send or to rewrite (D-091).

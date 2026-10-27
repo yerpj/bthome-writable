@@ -386,7 +386,7 @@ function encodeOne(e, v) {
 
 /* The advertising options. */
 function advOptions() {
-  return { interval:st.advInterval, connectable:true, discoverable:true, whenConnected:st.whenConnected, showName:st.showName };
+  return { interval:st.advInterval, connectable:true, scannable:true, discoverable:true, whenConnected:st.whenConnected, showName:st.showName };
 }
 
 /* Hand the radio a packet, and keep the bytes it accepted (D-108). */
@@ -400,10 +400,17 @@ function publish(sd) {
     let small = [st.plan.info, PKT_ID, st.packetId & 255];
 
     if (st.key) small = sealAdvertising(small);
-    NRF.setAdvertising({ 0xFCD2:small }, Object.assign({}, opts, { showName:false }));
+    let also = "";
+    try {
+      NRF.setAdvertising({ 0xFCD2:small }, Object.assign({}, opts, { showName:false }));
 
-    st.lastSd = small;
-    throw err("advertising_rejected", `the radio refused ${sd.length} bytes of service data: ${e.message}`);
+      st.lastSd = small;
+    } catch (e2) {
+      /* Both refused, so nothing is on air. */
+      st.lastSd = null;
+      also = ` -- and the ${small.length}-byte fallback too: ${e2.message}`;
+    }
+    throw err("advertising_rejected", `the radio refused ${sd.length} bytes of service data: ${e.message}${also}`);
   }
 }
 

@@ -494,7 +494,9 @@ even that one was needed.
 
 @enaon ran a PPK2 against the fix on his own nice!nano, bindkey and counter
 report, 1 s interval: **~235 uA before, ~50 uA after**, against a baseline of
-~45 uA with the module not loaded at all. His variant that keeps the bytes and
+~45 uA with the module not loaded but his own lamp script still running: a PIR
+and a touch button, which he puts at some 25 uA of that 45. His variant that
+keeps the bytes and
 patches the counter came out at ~85 uA. His conclusion, which agrees with the
 profile above: the cost was the reconstruction of the payload, not the call to
 `NRF.setAdvertising`.
@@ -1765,7 +1767,8 @@ python interval_knob.py --reps 1 --quiet 10  --pin auto   # and put it back
 **Nothing in this file is a current measurement of this module on this bench.**
 Every microamp quoted above is @enaon's PPK2 on his own nice!nano, at a 1 s
 advertising interval, measuring a *difference*: ~235 uA before the rebuild fix
-and ~50 uA after, against ~45 uA with the module not loaded at all (§8); and the
+and ~50 uA after, against ~45 uA with the module not loaded but his own lamp
+script still running (§8); and the
 bound that everything P1 could recover is inside 5 uA (§9). Those are the right
 numbers for the questions they were asked, and they are the wrong numbers for
 the question an adopter asks, which is *what will this do to my battery*. That
@@ -2191,11 +2194,11 @@ Two consequences beyond the corrected cell:
 | coefficient | whose property is it | how far it travels |
 |---|---|---|
 | `fastInterval` 100 ms, `fastTimeout` 30 s | **the module's**, and they are constants in `setup()` | exactly, to every device running it |
-| `Qadv` **14.19 uC** an advertising event | **the radio's**: three channels of a 20-byte packet at 0 dBm | between nRF52 boards at the same TX power, within tens of per cent |
+| `Qadv` **14.19 uC** an advertising event | **the radio's**: three channels of a 20-byte packet at 0 dBm | between nRF52 boards at the same TX power, within tens of per cent -- and that is cross-checked from outside: 14.19 uC an event is 14.2 uA at a 1 s interval, against the ~17 uA @enaon measures for advertising on a nice!nano with a PPK2 (2026-10-26) |
 | `Qcmd` **1810 uC** over **2.34 s** | **the central's**, mostly: it is 600 uA of held-open link and the device does not choose the duration | between boards, better than it travels between centrals. It moved 27% between two cells of one recording |
 | `floor` **7.35 uA** | **the board's and the firmware's** | not at all, and this is the one to say so about |
 
-**The floor is the coefficient that does not travel, and it is the easy one to replace.** 7.35 uA is this Puck.js on 3.0 V with Espruino 2v29, of which 0.90 uA is the SoftDevice calibrating its RC oscillator every 8.000 s because a Puck.js has no 32 kHz crystal. @enaon's board idles at about 45 uA with this module not loaded at all (§8), six times as much. So a second board would have given a second floor and the same other three coefficients, which is a day's work for one number -- and the number is one a reader can measure on their own board with nothing but the meter and no sketch at all.
+**The floor is the coefficient that does not travel, and it is the easy one to replace.** 7.35 uA is this Puck.js on 3.0 V with Espruino 2v29, of which 0.90 uA is the SoftDevice calibrating its RC oscillator every 8.000 s because a Puck.js has no 32 kHz crystal. The only other floor this project has is @enaon's, and he puts his nice!nano at **2 to 6 uA** (2026-10-26, espruino#8024): the ~45 uA of §8 is not a floor at all but his whole lamp script, a PIR polled every 400 ms and a touch button included. So the two floors are the same order of magnitude and this Puck.js is the higher of the two, which is the opposite of what §8 was read as saying. A second board would have given a second floor and the same other three coefficients, which is a day's work for one number -- and the number is one a reader can measure on their own board with nothing but the meter and no sketch at all. One trap on that board, from the same comment: a nice!nano clone wants `D13.reset()` first, or its VCC regulator adds some 50 uA to whatever you measure.
 
 That is what the module page should say, and it is better advice than a
 two-board table: **take your board's idle current, add our three, and the
@@ -2272,11 +2275,14 @@ D-141 comes from.
 That gives three predictions worth stating before the measurement, because each
 of them changes a decision if it is wrong:
 
-1. **The firmware's floor dominates.** @enaon's board idles at ~45 uA with the
-   module not loaded, ten times what advertising at 2 s should cost. If that
-   holds on both boards, then the honest sentence for the module page is that
-   this module is not what empties the battery, and the advertising interval is
-   the only lever in it that matters.
+1. **The firmware's floor dominates.** The ~45 uA of §8, read as a floor, is
+   ten times what advertising at 2 s should cost; if that held on both boards,
+   the honest sentence for the module page would be that this module is not
+   what empties the battery. **It failed, and it failed at the premise.** This
+   Puck.js idles at 7.35 uA, and @enaon put his own board at 2 to 6 uA on
+   2026-10-26: the 45 was his whole lamp script, not a floor. The floor is the
+   small term on both boards, and the advertising interval is the lever for the
+   reason the table above gives rather than the one predicted here.
 2. **A command is cheap and pinning is affordable.** 5 s of connection at 20 uA
    is ~100 uC; 3 s at 530 uA is ~1.6 mC. So pinning costs about **1.5 mC per
    command**, which at 20 commands a day is 8 uAh against the ~110 uAh a day

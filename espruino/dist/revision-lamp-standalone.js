@@ -654,9 +654,22 @@ function encodeOne(e, v) {
 
    Everything in them is fixed by setup() except the interval, which moves
    between idle and fast. whenConnected: without it the device goes silent
-   exactly when a receiver most wants to hear it. */
+   exactly when a receiver most wants to hear it.
+
+   Every one of them is named, `scannable` included, because these are not
+   arguments to a call: Espruino holds them in the stack's own advertising
+   state, so an option nobody passes keeps whatever the last caller left
+   there. A device that has advertised once on the coded phy has scannable off
+   for good -- the firmware latches it and warns that it has -- and
+   connectable advertising with scannable off is a *directed* type, whose peer
+   address Espruino always leaves NULL (the
+   CONNECTABLE_NONSCANNABLE_DIRECTED branch of `jsble_advertising_start`). A
+   SoftDevice 6 board refuses that, and a refusal for a pointer it needed is
+   exactly what `ERR 0x10 (INVALID ADDR)` says. Naming the option costs
+   nothing, and it leaves none of our advertising state to be inherited from
+   whatever the board was doing before (espruino#8024, D-143). */
 function advOptions() {
-  return { interval:st.advInterval, connectable:true, discoverable:true, whenConnected:st.whenConnected, showName:st.showName };
+  return { interval:st.advInterval, connectable:true, scannable:true, discoverable:true, whenConnected:st.whenConnected, showName:st.showName };
 }
 
 /* Hand the radio a packet, and keep the bytes it accepted (D-108).
@@ -685,10 +698,23 @@ function publish(sd) {
     // Eleven bytes sealed, and showName is off below, so it fits wherever the
     // unsealed three did.
     if (st.key) small = sealAdvertising(small);
-    NRF.setAdvertising({ 0xFCD2:small }, Object.assign({}, opts, { showName:false }));
-    // What is on air is what a later rate change has to republish.
-    st.lastSd = small;
-    throw err("advertising_rejected", `the radio refused ${sd.length} bytes of service data: ${e.message}`);
+    let also = "";
+    try {
+      NRF.setAdvertising({ 0xFCD2:small }, Object.assign({}, opts, { showName:false }));
+      // What is on air is what a later rate change has to republish.
+      st.lastSd = small;
+    } catch (e2) {
+      /* Both refused, so nothing is on air. One error then names both
+         refusals, where the second one used to escape raw and alone: that is
+         how a Jolt.js reported `ERR 0x10 (INVALID ADDR)` from a stack frame
+         pointing at setup(), with nothing to say whether the packet, the
+         fallback or the options were at fault (espruino#8024, D-143). And
+         lastSd is null rather than `small`, because the next rate change has
+         to build a packet rather than republish bytes the radio never took. */
+      st.lastSd = null;
+      also = ` -- and the ${small.length}-byte fallback too: ${e2.message}`;
+    }
+    throw err("advertising_rejected", `the radio refused ${sd.length} bytes of service data: ${e.message}${also}`);
   }
 }
 
