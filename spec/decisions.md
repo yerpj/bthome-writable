@@ -9877,3 +9877,120 @@ The Jolt is left running the bench sketch from RAM, so a power cycle leaves it
 bare and silent. It is **not** in `tools/devices.py`: it has no Home Assistant
 entry, and the tools that read that file assume one. It is described in
 `docs/shared-bench.md` instead.
+
+## D-148 -- A write one byte too long does not get refused, it costs the connection
+
+**2026-10-27, measured on the Jolt.js** (`FA:9C:55:A4:6A:0B`, 2v28, D-147's
+board) from this host, over `bleak` on Windows, with the module's default
+`maxWriteLength` of 128:
+
+| Written to `2FAA0001` | Result |
+|---|---|
+| 128 bytes (`MTU - 3`, the MTU having negotiated to 131) | acknowledged, and the module counted it `objectid_mismatch`, so it reached JavaScript |
+| 129 bytes | `BleakError: ... Unreachable`, **and the link is gone**: every later write in that session answered `Not connected` |
+| 200 bytes | nothing to write to any more |
+
+Reproduced immediately afterwards, identically. The device is unharmed: it goes
+on advertising at -58 dBm with its packet id moving, `E.getErrorFlags()` empty,
+and `rejects()` unmoved by the 129-byte attempt, which is the point below.
+
+**So the item D-144 raised and D-145 answered by halves is now measured.** The
+device cannot see an over-long write: Espruino's `maxLen` on the characteristic
+makes the stack refuse it before any JavaScript runs, which is why `rejects()`
+does not move. What D-145 did not know is that the receiver does not get a tidy
+refusal either. Above `MTU - 3` the host stack queues a **long write** of its
+own accord, the device refuses the first fragment, and WinRT answers
+`Unreachable` and drops the connection. §4.4's "A receiver MUST NOT attempt a
+queued (long) write" now has its reason recorded: on this platform a receiver
+does not choose, it is enough to hand `write_gatt_char` one byte too many.
+
+**What was done about it, and what was not.** The integration's `_check_mtu()`
+has written a debug line since D-084 and refused nothing; its docstring claimed
+the stack refuses such a write "rather than split into a long write", which is
+the thing just disproved. It now logs a **warning** naming the payload size and
+the MTU it does not fit, and still writes. It does not refuse, for D-084's
+reason unchanged: `bleak` reports the 23-byte default on BlueZ until
+`_acquire_mtu()` has run, nothing distinguishes a real 23 from an unread one,
+and a refusal would fail writes the link would have carried. The stack's error
+stays the honest one; the line makes it diagnosable, which is §7's argument
+applied to the receiver instead of the device.
+
+**That change is on `fix/a-write-that-cannot-fit-says-so` and is deliberately
+not merged.** It is the only change of the day that touches
+`custom_components/`, which is what HACS installs, and by `CHANGELOG.md`'s own
+rule that means bumping the manifest and opening a release section. Cutting a
+release is the owner's. Two tests come with it, the first this method has ever
+had.
+
+**Still open, and now with a number against it:** the ceiling itself is not
+discoverable. A receiver learns it by being refused, §4.4 says so, and the
+refusal can cost a connection. A device could publish its own
+`maxWriteLength` -- there is no BTHome object for it and no characteristic in
+§4.1 that would carry it -- or the protocol could state a floor again, which
+D-073 dropped because `bleak` cannot ask for an MTU on BlueZ. Neither is this
+agent's to decide: it is a §4.4 question for the owner and Gordon.
+
+## D-149 -- `default_name` is deprecated, and the obvious migration reinstates D-089
+
+**2026-10-27, checked rather than assumed.** The open item said to replace
+`DeviceInfo(default_name=...)` at `entity.py` and `button.py`. The facts:
+
+- Home Assistant **does** deprecate `default_manufacturer`, `default_model` and
+  `default_name` (core PR 179549, announced on the contributors' blog on
+  2026-08-24). Core integrations already raise `RuntimeError`; **custom
+  integrations keep them with a warning until 2027.9**.
+- The advice in that post is "pass the plain `manufacturer`, `model` and `name`
+  fields instead".
+- **That advice reinstates D-089.** `name=` asserts a name on every update, and
+  core `bthome` writes the same device: the card's title flickered between
+  "Puck.js c1c3" and "Puck.js c1c3 C1C3" depending on load order, which is what
+  @gfwilliams reported and what `default_name` was adopted to fix.
+- The pinned test target, Home Assistant 2025.1.4, does not deprecate anything
+  here: `device_registry.py:805` still implements `default_name` and the suite
+  logs no warning. So nothing can be validated against the version that
+  complains.
+
+**Left alone, on purpose.** The migration that keeps D-089 fixed is to pass
+`name` only when the registry holds no device for our connection yet, and the
+lookup that answers that -- `DeviceRegistry.async_get_device()` -- is itself
+deprecated in the same post, with a replacement that does not exist in 2025.1.4.
+Writing this against a blog post and shipping it untested is how a fixed bug
+comes back. The deadline is 2027.9; the right moment is a Home Assistant bump,
+with the suite running against a version that warns.
+
+## D-150 -- The current table and the figure are on the module page, and a test keeps the figure there
+
+**2026-10-27**, executing D-142: the owner wanted the measured current on the
+module's own documentation page and not only in a measurements file, because
+*"ça aidera à convaincre les adopteurs"*. The page now has a section of its own
+before the notes: the three measured coefficients, the days table on 154 mAh,
+`docs/figures/puck-battery-life.png`, the three sentences the table supports,
+and the `power_table` command line for substituting a floor of one's own. The
+numbers were regenerated from `tools.power_table` rather than copied by hand, so
+the page's rows are the tool's rows, byte for byte.
+
+**What was dropped from the table on the way.** Seven advertising intervals
+became five and six command rates became four: 500 ms and 3.2 s say nothing
+that 1 s and 5 s do not, and the 3/min column sits between two that already
+read the same. The table on the page is there to be read by somebody choosing an
+interval, and `docs/measurements.md` §23 keeps the full one for somebody
+checking the model.
+
+**How a figure reaches an EspruinoDocs page.** Upstream keeps an illustrated
+page's images in a folder named exactly as the page, which is what the tutorial
+in this repository already does with its screenshot. `PAGE_IMAGES` in
+`tools/build_espruino_module.py` copies them out of `docs/figures/`, where they
+are generated from the same four coefficients as the table, so there is one PNG
+in the tree and not two. The cost: the page under `espruino/espruinodocs/`
+shows a broken image in a markdown previewer and the published copy under
+`espruino/dist/espruinodocs/` does not.
+
+**And a test, because nothing else would have noticed.** Every image link in a
+published page has to resolve beside it in the pull-request folder. Checked by
+removing the file: the test fails and names it. A figure added to a page and
+forgotten in `PAGE_IMAGES` would otherwise reach a reviewer as a hole in the
+page.
+
+This closes the module-page half of D-142. The second EspruinoDocs pull request
+still has to be opened, and that is the owner's: EspruinoDocs#767 is the module
+and its page, and this is a change to a page already under review there.

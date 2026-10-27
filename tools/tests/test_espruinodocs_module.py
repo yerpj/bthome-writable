@@ -15,10 +15,12 @@ thing.
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from tools.build_espruino_bundle import strip_comments
-from tools.build_espruino_module import BUDGET, MODULES, SOURCE_DIR, directory
+from tools.build_espruino_module import BUDGET, MODULES, PAGES, SOURCE_DIR, directory
 
 
 @pytest.mark.parametrize("name", MODULES)
@@ -71,3 +73,29 @@ def test_the_published_module_says_where_it_came_from(name: str) -> None:
             "object ID; a caveat about one would send a reader looking for a "
             "problem that cannot reach them"
         )
+
+
+@pytest.mark.parametrize("page", PAGES)
+def test_every_figure_a_published_page_shows_is_published_with_it(page: str) -> None:
+    """An image link that resolves here and not in the pull request is a hole.
+
+    The figures live in `docs/figures/`, where they are generated, and the
+    generator copies them next to the page into the folder EspruinoDocs expects
+    (D-142, D-150). Nothing else checks that the copy happened, and a markdown
+    previewer that shows the repository's own copy of the page would show the
+    image missing either way.
+    """
+    published = directory(page) / page
+    body = published.read_text(encoding="utf-8")
+    links = re.findall(r"!\[[^\]]*\]\(([^)]+)\)", body)
+    missing = [
+        link
+        for link in links
+        if not link.startswith(("http://", "https://"))
+        and not (published.parent / link).exists()
+    ]
+    assert not missing, (
+        f"{page} shows {missing}, which is not beside it in "
+        f"{published.parent}. Run `python -m tools.build_espruino_module`, and "
+        "add the figure to PAGE_IMAGES if it is new."
+    )
