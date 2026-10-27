@@ -9789,3 +9789,91 @@ switch off. `docs/measurements.md`'s paste-limit note (D-093) is about flash and
 about examples; this is the same wall from the other side, over the console.
 
 Both lights are off, `lamp2` is dark, and the bench lock was released.
+
+## D-147 -- The advertising latch, reproduced on a Jolt.js, and the fix validated on the board that failed
+
+**2026-10-27.** The owner put a Jolt.js on `COM18` and left the bench open.
+That board is the one thing this project never had: a firmware with the coded
+phy, which is what @gfwilliams' report of 2026-10-26 turned on before the module
+threw at him. `JOLTJS 2v28`, `fa:9c:55:a4:6a:0b`,
+`MODULES=Flash,Storage,heatshrink,neopixel`, so no `AES` and nothing sealed runs
+on it. Everything below is the USB console, nothing written to flash.
+
+### The failure, in two calls
+
+    NRF.setAdvertising({},{interval:1000,connectable:true,discoverable:true,whenConnected:true,showName:true})
+    =undefined
+
+    NRF.setAdvertising({},{phy:'coded'})
+    WARNING: Extended/coded advertisements can only be used with scannable:false. Disabling scan response.
+    =undefined
+
+    NRF.setAdvertising({},{interval:1000,connectable:true,discoverable:true,whenConnected:true,showName:true})
+    Uncaught Error: ERR 0x10 (INVALID ADDR) (:2902)
+
+The same five options, before and after. **The warning is the whole bug**: it
+announces that `scannable` has been turned off and does not say that it stays
+off, so the next perfectly legal connectable call is a directed advertisement
+whose peer address the firmware leaves NULL, and the SoftDevice refuses to be
+configured at all. The frame the error is thrown in belongs to the caller, which
+is why it reads as the caller's fault. Line 2902 here, 2908 in the 2v29 sources
+read on 2026-10-26: the same `jsble_check_error` after
+`sd_ble_gap_adv_set_configure`.
+
+### Four more facts, each one call
+
+1. **Naming `scannable:true` clears it**, and the call after that may leave the
+   option out again and still work: the state is inherited in both directions.
+2. **`scannable:false` with `connectable:true` throws identically**, and latches
+   too: the call after it, without the key, throws as well. So the coded phy is
+   not the cause, it is one of two ways to reach an impossible combination. This
+   is the second writer of the flag that the 2v29 sources named, confirmed from
+   the outside.
+3. **`connectable:false` with `scannable:false` is accepted.** Non-connectable
+   non-scannable is a legal type and needs no peer address, which is what
+   isolates the fault to the connectable branch.
+4. **A reset clears it.** After `poison(); E.reboot()` the five-option call
+   returns `undefined` again, which is exactly the "upon trying now after a
+   power cycle it works" of the report, and it is a RAM flag in `bleStatus`.
+
+### The fix, on the board that failed
+
+`espruino/bench/jolt-scannable.js` is the sketch this needed, bundled with the
+module of this commit and run from RAM. Each line below is **one statement**, so
+no advertising tick can run in between and repair the flag unseen, which is a
+trap this measurement fell into once:
+
+    poison();try{fiveOptions();...}      -> five options THREW ERR 0x10 (INVALID ADDR) (:2902)
+    poison();try{bw.update();...}        -> the module: no error
+    poison();try{bw.setAdvertisingInterval(2000);...} -> rate change: no error
+
+So `c718aed` is validated where it matters, and there is a bonus: because the
+module names the option, **its next publication repairs the board for whatever
+runs after it**. A five-option call made after the module has advertised once
+succeeds, which is how this measurement first fooled itself.
+
+The device advertises a well-formed packet throughout, heard at -54 dBm:
+`40 00 36 09 37 ff 01 1e`, BTHome v2 in clear, packet id, a count that moves
+every packet, and a one-entry declaration of a light.
+
+### What else the board taught
+
+**A Jolt.js refuses 8 bytes of service data with its name on.** `setup()` threw
+`advertising_rejected ... ERR 0x9 (INVALID_LENGTH)` on the first try, because
+"Jolt.js fa0b" costs 14 of the 31 bytes and Espruino always adds its
+manufacturer id. `showName:false` and the same packet goes out. That is the
+module header's own advice, measured on a third board, and the error names the
+size as `e0436d9` intended.
+
+**`rejects()` holds in clear as well as sealed.** Five plain writes to entry 1
+from this host: `1e01` applied, `1e0102` counted `trailing_bytes`, `0901`
+counted `objectid_mismatch`, `1e` counted `truncated`, `1e00` applied and left
+`lamp.on` false. `1/1/1` and no error flags. With D-146's sealed run on the
+lamp, every refusal path in the module has now been counted on hardware.
+
+### The board, and the bench
+
+The Jolt is left running the bench sketch from RAM, so a power cycle leaves it
+bare and silent. It is **not** in `tools/devices.py`: it has no Home Assistant
+entry, and the tools that read that file assume one. It is described in
+`docs/shared-bench.md` instead.

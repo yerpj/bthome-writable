@@ -7,8 +7,27 @@ there is really only one rule, and one list of things that rule does not cover.
 
 One Home Assistant instance at `http://haosjry.local:8123`, one Bluetooth
 adapter that instance owns, two ESPHome Bluetooth proxies, one Puck.js, four
-nice!nanos and one OOTY debug board on `COM8` that switches a 3V3 rail. There is
-exactly one of each.
+nice!nanos, one Jolt.js and one OOTY debug board on `COM8` that switches a 3V3
+rail. There is exactly one of each.
+
+**A Jolt.js arrived 2026-10-27**, `FA:9C:55:A4:6A:0B` on `COM18`, `JOLTJS 2v28`,
+and it is the only board here whose firmware offers the coded phy: it reproduces
+the advertising latch of D-143 on demand and it is how `c718aed` was validated
+(D-147). `MODULES=Flash,Storage,heatshrink,neopixel`, so it has no `AES` and
+nothing sealed runs on it, and its name costs 14 of the 31 advertising bytes, so
+a sketch needs `showName:false` before 8 bytes of service data will go out. It
+runs `espruino/bench/jolt-scannable.js` from RAM, as the bundle:
+
+```
+python -m tools.espruino_upload --port COM18     espruino/dist/jolt-scannable-standalone.min.js
+```
+
+It has no Home Assistant entry and is deliberately absent from
+`tools/devices.py`, whose readers assume one.
+
+**The `COM15` nice!nano, the one with the SSD1306, was unplugged by the owner on
+2026-10-27.** Its Home Assistant entities read `unavailable` or `unknown` and
+that is why; nothing is broken.
 
 **The OLED automation is off since 2026-10-23**, by the owner, who does not
 need it. It wrote the Puck's illuminance to the `COM15` nice!nano every 30 s

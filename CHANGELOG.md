@@ -48,7 +48,15 @@ reads 0.2.0 until something here touches `custom_components/` and bumps it.
   running 2v29 on 2026-10-26 where the same code works on a Puck.js.
   `advOptions()` now names `scannable:true` with the rest, which changes
   nothing on a device that never turned it off and leaves nothing of ours to
-  inherit (espruino#8024, D-143).
+  inherit (espruino#8024, D-143). **Reproduced and fixed on a Jolt.js**, the
+  board that reported it: the coded-phy call and then the five options this
+  module used to pass throws `ERR 0x10 (INVALID ADDR)`, in one statement so
+  nothing can run in between, where the six it passes now do not. Passing
+  `scannable:false` with `connectable:true` throws the same way, so the coded
+  phy is one of two routes to it rather than the cause, and a reset clears it,
+  which is what the report's power cycle did. Because the module names the
+  option, its next publication also repairs the board for whatever runs after
+  it (D-147).
 - **A refused fallback packet threw away the refusal that led to it.** When the
   radio refuses the real packet the module publishes a small one so the device
   can still be found, then reports `advertising_rejected`. If the small packet
