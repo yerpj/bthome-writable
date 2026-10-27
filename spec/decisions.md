@@ -9915,12 +9915,23 @@ and a refusal would fail writes the link would have carried. The stack's error
 stays the honest one; the line makes it diagnosable, which is §7's argument
 applied to the receiver instead of the device.
 
-**That change is on `fix/a-write-that-cannot-fit-says-so` and is deliberately
-not merged.** It is the only change of the day that touches
-`custom_components/`, which is what HACS installs, and by `CHANGELOG.md`'s own
-rule that means bumping the manifest and opening a release section. Cutting a
-release is the owner's. Two tests come with it, the first this method has ever
-had.
+**That change came with two tests, the first this method has ever had**, and it
+was held on `fix/a-write-that-cannot-fit-says-so` for a day because it is the
+only pending change that touches `custom_components/`, which is what HACS
+installs. By `CHANGELOG.md`'s own header that meant bumping the manifest and
+opening a release section, since `test_changelog` requires a section for
+whatever version the manifest states.
+
+**2026-10-27, the owner: merged as it stands, and the header was the thing to
+fix.** The manifest carries the version of the last tag cut and **a tag is what
+moves it**; work lands under `[Unreleased]` whatever it touches. The old wording
+read as if a merge could move the version, which would have made every change to
+the integration cut a release on its way past, and cutting a release is the
+owner's act and not a side effect. Three reasons it is the right reading: a HACS
+user on releases sees nothing until the next tag either way; `[Unreleased]`
+otherwise holds only module fixes, which travel through EspruinoDocs and not
+through HACS, so 0.2.1 would have been a release about a log line; and the
+decision to cut belongs to the person who cuts it. Merged in `c920948`.
 
 **Still open, and now with a number against it:** the ceiling itself is not
 discoverable. A receiver learns it by being refused, §4.4 says so, and the
