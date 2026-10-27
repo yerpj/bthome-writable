@@ -9629,3 +9629,80 @@ ambiguities included: the write counter's initial value, which only a vector
 fixes; the `0xFE`/`0xFF` nonce bytes, likewise; the 250 ms grouping window,
 which is a callout and not a rule; and the counter report before any write ever
 happened.
+
+## D-145 -- 2.0-draft.9: the arithmetic of §2.1, one firmware per sentence in §2.4, and a refusal the device can see
+
+**2026-10-27, on the owner's instruction**, three of the four spec items D-144
+handed back are settled and the fourth is deferred. What drove the split is not
+which file a finding is in, it is whether an implementer behaves differently
+once it is answered.
+
+**§2.1's entry count, which its own arithmetic refuted.** The section said 17 to
+22 bytes of service data give "13 to 17 entries". Take the device-information
+byte, two bytes of packet id, two for the declaration's own id and count, and
+two for the settings revision when any entry is readable, and 17 gives 12 while
+22 gives 17: so **12 to 17, or 10 to 15 with a settings revision**. Sealed, the
+counter and the MIC spend eight more, which leaves **4 to 9**. The section now
+says that, and the theoretical 19 it is measured against still checks out (24
+less the info byte, the packet id and the declaration's two). The wrong figure
+came from D-105, where it replaced "around twenty-five entries", a figure nobody
+had measured at all; D-105's own paragraph in this file keeps the arithmetic it
+published, as the record of what was believed then. **The clean-room reader of
+D-144 reached the same spot from the other side**, and the sealed line is its
+contribution.
+
+**§2.4 read one budget off two firmware builds.** "The low end is a nice!nano
+advertising its name; the same board with `showName:false` takes 22" pairs one
+build's 5 bytes with another's 22; on the build that takes 5, the name off takes
+20, and the build that takes 22 takes 7 with its name. The sentence now gives
+both ends as ranges, 5 to 7 with the name and 20 to 22 without, and **names no
+build**: which build does which belongs to `docs/measurements.md` §5, where it
+is measured and keyed to D-046 and D-049. The owner's call, and it is the right
+one for a normative document: the protocol has no business tracking a patch
+level. The module's own `maxServiceData` note lost the same detail, which paid
+for part of what follows.
+
+**A refusal the device can see (§7, new bullet).** §4.2 already said that a
+platform acknowledging a write before application code runs cannot refuse it
+with an ATT error, and that §3 is why. What it did not say is that the device
+then owes its own user something. `onError` was optional in the module, so a
+device deployed without one had **no trace at all** of a write it did not apply:
+the central had its acknowledgement and nothing else did. §7 now asks for a
+callback or a count, and the module answers with `exports.rejects()`, a count
+per error code reached through one `reject()` helper on all six refusal paths
+(the three in `openWrite`, the undeclared entry, a `set()` that threw, and a
+mis-sized challenge to the counter report). Per code rather than a single total,
+because a receiver holding a stale layout and a bindkey that does not match are
+not the same problem.
+
+**What it does not do, and the honest limit.** A write too long is refused by
+the stack below the module: Espruino's own `maxLen` on the characteristic makes
+the SoftDevice return an ATT error, so no JS handler runs and there is nothing
+for `rejects()` to count. That refusal is the one notice the central gets, and
+taking it into JS to count it would mean raising `maxLen` and acknowledging the
+write first, which is strictly worse for the receiver. So the length case stays
+as §4.4 leaves it: discovered by being refused, and documented rather than
+negotiated. The item D-144 raised is answered for every refusal the device can
+observe, and named as unobservable for the one it cannot.
+
+**Deferred, on the owner's instruction: the framing of the command object
+`0x3B`.** It is in no document, and the clean-room reader named it as the one
+place it would have implemented wrong from the normative text. It is also the
+only one of the four that would make a reader's code differ, which is exactly
+why it is not being written in a hurry: the upper three bits are reserved by
+BTHome and not by us, and the sentence should be checked against the upstream
+format before it is written as a MUST. It stays on the list.
+
+**Not raised with Gordon**, on the owner's instruction: the entry-count figure
+is in his public reply from D-105 and stays there uncorrected. It is a count of
+entries nobody has built a device to approach, and the exchange has better uses.
+
+### What it cost, and the budget that did not move
+
+The module grew 59 bytes of published source and was 83 over the 25 000-byte
+budget at the first build. It was paid rather than raised, by the method D-114
+established: the generator publishes the first sentence of every block comment,
+and `CHANGE_HOLD`'s had grown to two clauses and 149 bytes. Shortened, with its
+rationale moved one line down where it is still read in the source, it gave back
+79. Published size is **24 951 bytes**, 49 under, and `BUDGET` is still 25 000
+for a third release in a row.

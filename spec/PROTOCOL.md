@@ -1,6 +1,6 @@
 # BTHome Writable — protocol specification
 
-**Version:** 2.0-draft.8 · **Status:** DRAFT, nothing frozen · **License:** MIT
+**Version:** 2.0-draft.9 · **Status:** DRAFT, nothing frozen · **License:** MIT
 
 BTHome standardizes a BLE **uplink**: a device broadcasts its state in
 advertising, a receiver parses it. It has no **downlink**. This document
@@ -77,11 +77,14 @@ The declaration is one element of the BTHome service data:
   to declare, because an entry *is* its position. Pairs of `<id><count>` would
   compress it, at the cost of a form to parse and a number to derive; the
   advertising payload runs out first either way, so the packet is the ceiling
-  long before the format's 255 is. **Measured**, a board accepts 17 to 22 bytes
-  of service data (`docs/measurements.md` §5), and three of those go to the
-  info byte and packet id, two to this object's own id and count, two more to
-  the settings revision when any entry is readable — so **13 to 17 entries**,
-  against a theoretical 19. If devices with many
+  long before the format's 255 is. **Measured**, a board accepts 5 to 22 bytes
+  of service data depending on board, firmware and whether it advertises its
+  name (§2.4), and 17 to 22 is the range worth designing against
+  (`docs/measurements.md` §5). Out of it come the device-information byte, two
+  bytes of packet id, two for this object's own id and count, and two for the
+  settings revision when any entry is readable: so **12 to 17 entries**, or 10
+  to 15 with a settings revision, against a theoretical 19. Sealed, the counter
+  and the MIC take eight bytes more, which leaves 4 to 9. If devices with many
   identical controls turn out to exist, a compressed declaration wants its own
   object ID rather than a reinterpretation of this one.
 - A declaration with no entries is legal and means "nothing writable"; a device
@@ -139,8 +142,9 @@ manufacturer ID (4 bytes), and a local name costs `2 +` its length. Measured on
 real devices, between 5 and 22 bytes of service data are accepted at all
 (`decisions.md` D-030, D-046, D-049) -- the device-information byte and the
 packet id come out of that, not out of the arithmetic above. The low end is a
-nice!nano advertising its name; the same board with `showName:false` takes 22. Implementations SHOULD move the local name to the scan response when
-space is short.
+nice!nano advertising its name, which two firmware builds put at 5 and 7 bytes;
+the same board with `showName:false` takes 20 to 22. Implementations SHOULD move
+the local name to the scan response when space is short.
 
 ### 2.5 Container fallback (contingency, not in use)
 
@@ -500,6 +504,9 @@ anyone in radio range, which the advertising is.
 - **Connectable advertising** at all times (§4.1).
 - **Capacity check** at configuration time (§2.4).
 - **Strict write validation**: object ID, length, no trailing bytes (§4.2).
+- **Refusals that leave a trace**: a write the device does not apply SHOULD be
+  observable on the device, through a callback or a count, and not only to the
+  central that sent it (§4.2).
 - **Settings revision and readable characteristics** when writable values can
   change by themselves (§3.2).
 

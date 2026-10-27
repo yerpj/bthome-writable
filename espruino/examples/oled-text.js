@@ -60,9 +60,12 @@ function start() {
       { type: "text", set: show },
     ],
     interval: 1000,
-    // A nice!nano advertising its default "Espruino b216" measured 7 bytes of
-    // service data with the name, 22 without, on 2v29.242 (D-046). This packet
-    // needs 8. The device is still discovered: Home Assistant matches on the
+    // A nice!nano advertising its default "Espruino b216" measured 5 to 7 bytes
+    // of service data with the name and 20 to 22 without, depending on the
+    // firmware build (D-046, D-049). This packet needs 8, so the name goes:
+    // even the smallest of those four figures leaves room without it, and none
+    // of them does with it. The device is still discovered: Home Assistant
+    // matches on the
     // BTHome service data, not on a name.
     showName: false,
     onError: function (error) {

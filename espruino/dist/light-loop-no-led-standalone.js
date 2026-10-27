@@ -73,9 +73,8 @@ Options:
                  your packet is refused, this is the first thing to try.
   maxServiceData what the radio will really accept, in bytes. S2.4's arithmetic
                  says 24 and every measured radio takes less: a Puck.js 17, or
-                 20 with showName false; a nice!nano 7, or 22 with showName
-                 false. On 2v29.396 the nice!nano takes 5 with its name and 20
-                 without, because the 16-bit UUID is emitted again (D-049).
+                 20 with showName false; a nice!nano 5 to 7 with its name and 20
+                 to 22 without, depending on the firmware build (D-046, D-049).
                  Set it and the packet is checked at setup.
   counterReport  offer the counter report of §5.6 at 2FAA1000 (default false,
                  and only with a bindkey). Without it this device resumes its
@@ -84,7 +83,8 @@ Options:
                  with it the receiver asks instead of guessing. Home Assistant
                  asks by default, so a device that does not offer it simply
                  keeps the old behaviour.
-  onError        called with a rejected write's error
+  onError        called with a rejected write's error. Optional, and
+                 `rejects()` counts them whether it is given or not (S7)
 
 Everything above the DIVIDER is pure JS - no NRF, no I/O - and runs under Node,
 which is how the protocol logic is tested without a device.
@@ -390,9 +390,10 @@ const READ_SLACK = 100; /* ms added to every scheduled read (D-109).
 
    @gfwilliams' number. See schedule(): it buys a wake that finds work. */
 
-const CHANGE_HOLD = 250; /* ms that a burst of changed() calls is folded into: four announcements a second at most, a quarter of a second of notice at worst (S3.2, D-124).
+const CHANGE_HOLD = 250; /* ms that a burst of changed() calls is folded into (S3.2, D-124).
 
-   What a burst is: changed() is documented to be called from a button handler,
+   Four announcements a second at most, a quarter of a second of notice at
+   worst. What a burst is: changed() is documented to be called from a button handler,
    which is exactly where one arrives, and it does the most expensive thing in
    the module -- a get() and a seal() per readable entry, then a whole packet
    rebuilt and re-sealed, 26 to 38 ms of the one thread. @enaon got an nRF52
@@ -543,7 +544,7 @@ function counterCharacteristic() {
     value : [],
     onWrite : evt => {
       if (evt.data.length !== CHALLENGE_LEN) {
-        if (st.onError) st.onError(err("challenge_length", `challenge is ${evt.data.length} bytes, expected ${CHALLENGE_LEN}`));
+        reject(err("challenge_length", `challenge is ${evt.data.length} bytes, expected ${CHALLENGE_LEN}`));
         return;
       }
       // Deferred by one turn of the loop: Espruino stores the bytes a central
@@ -610,26 +611,19 @@ function noteAdvCounter(counter) {
 /* Unseal a write, or return null having reported why. The counter is one per
    device, across every characteristic. */
 function openWrite(pl) {
-  if (pl.length <= ENC_OVERHEAD) {
-    if (st.onError) st.onError(err("truncated", `encrypted write is ${pl.length} bytes, shorter than its own framing`));
-    return null;
-  }
+  if (pl.length <= ENC_OVERHEAD)
+    return reject(err("truncated", `encrypted write is ${pl.length} bytes, shorter than its own framing`));
   const n = pl.length - ENC_OVERHEAD;
   const counter = readUint(pl, n, n + 4);
   // Before the cipher: a replay costs nothing to reject, and doing it first
   // means a flood of them cannot make the device spend 75ms each (D-028).
-  if (!counterIsAhead(counter, st.writeCounter)) {
-    if (st.onError) st.onError(err("counter_not_increasing", `write counter ${counter} is not ahead of ${st.writeCounter}`));
-    return null;
-  }
+  if (!counterIsAhead(counter, st.writeCounter))
+    return reject(err("counter_not_increasing", `write counter ${counter} is not ahead of ${st.writeCounter}`));
   const ct = new Uint8Array(n), mic = new Uint8Array(MIC_LEN);
   for (let i = 0; i < n; i++) ct[i] = pl[i];
   for (let i = 0; i < MIC_LEN; i++) mic[i] = pl[n + 4 + i];
   const pt = require("AESCCM").decrypt(ct, st.key, nonceFor(WRITE_INFO, counter), mic);
-  if (pt === null) {
-    if (st.onError) st.onError(err("mic_mismatch", "the write did not authenticate"));
-    return null;
-  }
+  if (pt === null) return reject(err("mic_mismatch", "the write did not authenticate"));
   noteWriteCounter(counter);
   const out = [];
   for (let i = 0; i < pt.length; i++) out.push(pt[i]);
@@ -859,6 +853,21 @@ function guarded(fn) {
   try { fn(); } catch (e) { if (st && st.onError) st.onError(e); }
 }
 
+/* Count a refused write and report it.
+
+   Returning null, for the callers that answer with one. S7 asks a refusal to
+   leave a trace on the device, and `onError` is optional, so
+   without one a write the device did not apply left none at all -- the central
+   has the acknowledgement Espruino already sent it (S4.2) and nothing else
+   does. Counted per error code, which is what tells a stale layout from a
+   bindkey that does not match (D-145). */
+function reject(e) {
+  const c = e.code || "error";
+  st.rejects[c] = (st.rejects[c] || 0) + 1;
+  if (st.onError) st.onError(e);
+  return null;
+}
+
 /* Advertise fast while someone is plainly interacting.
 
    From connect until fastTimeout after disconnect. A central can only begin a
@@ -899,10 +908,7 @@ function handleWrite(k, pl) {
   // captures k. Refusing is all that can be done -- but the error path itself
   // used to throw a TypeError on `w.readable`, inside the stack's own callback,
   // where nothing catches it (D-114).
-  if (!w) {
-    if (st.onError) st.onError(err("entry_not_declared", `entry ${k} is not declared`));
-    return;
-  }
+  if (!w) return reject(err("entry_not_declared", `entry ${k} is not declared`));
   // Parsed and applied as one step, because what follows is the same whichever
   // of the two refuses it: a receiver that wrote the wrong object for this
   // entry and a set() that threw are both a write the device did not take, and
@@ -933,7 +939,7 @@ function handleWrite(k, pl) {
   // own value *after* onWrite returns, so a value published from here is
   // destroyed.
   if (w.readable) setTimeout(() => { guarded(() => publishRead(w)); }, 0);
-  if (refused) { if (st.onError) st.onError(refused); return; }
+  if (refused) return reject(refused);
   // A write means a receiver is plainly here, and its next command should not
   // wait out the idle interval -- even if the connect event was missed. And
   // anything the write changed that *is* advertised goes out now rather than
@@ -1004,6 +1010,8 @@ function setup(opts) {
     revision : Math.floor(Math.random() * 256),
     showName : opts.showName !== false,
     packetId : 0,
+    // Refused writes, per error code, for the trace S7 asks for (D-145).
+    rejects : {},
     interval : iv,
     fastInterval : Math.max(100, checkInterval("fastInterval", opts.fastInterval || 100)),
     fastTimeout : opts.fastTimeout === undefined ? 30000 : opts.fastTimeout,
@@ -1182,6 +1190,7 @@ exports.setFastTimeout = setFastTimeout;
 exports.SERVICE_UUID = SERVICE_UUID;
 exports.characteristicUuid = characteristicUuid;
 exports.plan = () => st && st.plan;
+exports.rejects = () => st && st.rejects;
 
 /* The pure half, exported for the unit tests. */
 exports.DECLARATION_OBJECT_ID = DECL_ID;

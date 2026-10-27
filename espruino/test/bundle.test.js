@@ -1308,6 +1308,37 @@ test("a write to an entry the current setup() does not declare is refused", () =
   assert.deepEqual(seen, ["entry_not_declared"]);
 });
 
+test("a refused write is counted whether or not anyone is listening", () => {
+  /* S7, D-145. `onError` is optional, and without one a write the device did
+   * not apply left no trace at all: Espruino acknowledges before application
+   * code runs, so the central was told the write succeeded and the device's
+   * own code was told nothing. A count per error code is the cheapest trace
+   * that still says which refusal it was -- a receiver holding a stale layout
+   * and a bindkey that does not match are not the same problem. */
+  const result = run(load("single-light-standalone.js"));
+  const uuid = Object.keys(result.characteristics)[0];
+
+  result.context.bw.setup({
+    advertise: [{ type: "light", set: () => {} }],
+    interval: 1000,
+    // No onError, which is the case this exists for.
+  });
+
+  // Copied out of the vm context: an object built in there has that context's
+  // own prototype, which deepEqual compares and refuses.
+  const counts = () => Object.assign({}, result.context.bw.rejects());
+
+  assert.deepEqual(counts(), {}, "nothing refused yet");
+  result.write(uuid, [0x1e, 0x01, 0x02]); // one trailing byte
+  result.write(uuid, [0x53, 0x01, 0x41]); // text written to a light
+  result.write(uuid, [0x1e, 0x01, 0x03]);
+  assert.deepEqual(counts(), { trailing_bytes: 2, objectid_mismatch: 1 });
+
+  // And an accepted write counts nothing.
+  result.write(uuid, [0x1e, 0x01]);
+  assert.deepEqual(counts(), { trailing_bytes: 2, objectid_mismatch: 1 });
+});
+
 test("a bindkey given as an array is checked for length, like the hex form", () => {
   /* D-114. `[1,2,3]` was accepted, and every receiver then reported a key that
    * is not at fault -- the false diagnosis D-088 exists to remove. */
