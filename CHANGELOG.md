@@ -35,6 +35,20 @@ reads 0.2.0 until something here touches `custom_components/` and bumps it.
   that one is refused by the stack below the module, which is also the only
   notice the central gets.
 
+### Changed
+
+- **A write too large for the link now says so in the log.** §4.4's ceiling is
+  `ATT_MTU - 3`, one ATT Write Request, and what happens above it is not a tidy
+  refusal: measured against a Jolt.js on a negotiated MTU of 131, a 128-byte
+  write was acknowledged and a 129-byte one came back `Unreachable` and took
+  the connection with it, twice in a row. The host stack queues a long write of
+  its own accord above the ceiling and the device refuses the first fragment,
+  which is why §4.4 tells receivers not to attempt one. The write still goes
+  out, because `bleak` reports the 23-byte default on BlueZ until it has been
+  asked and a real 23 cannot be told from an unread one (D-084); what is new is
+  a line naming the size and the MTU, so the stack's own error is diagnosable
+  (D-148).
+
 ### Fixed
 
 - **The module stated five advertising options and inherited the sixth.**
