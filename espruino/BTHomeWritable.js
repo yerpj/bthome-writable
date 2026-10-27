@@ -643,7 +643,15 @@ function encodeOne(e, v) {
    SoftDevice 6 board refuses that, and a refusal for a pointer it needed is
    exactly what `ERR 0x10 (INVALID ADDR)` says. Naming the option costs
    nothing, and it leaves none of our advertising state to be inherited from
-   whatever the board was doing before (espruino#8024, D-143). */
+   whatever the board was doing before (espruino#8024, D-143).
+
+   Reproduced on a Jolt.js 2v28 on 2026-10-27, which is the board that reported
+   it: `NRF.setAdvertising({},{phy:"coded"})` and then the five options this
+   function used to pass throws `ERR 0x10 (INVALID ADDR)`, in that order and in
+   one statement so that nothing can run in between, while the six below do not
+   (D-147). Passing `scannable:false` with `connectable:true` throws the same
+   way, and a reset clears it, which is why the report said a power cycle had
+   helped. */
 function advOptions() {
   return { interval:st.advInterval, connectable:true, scannable:true, discoverable:true, whenConnected:st.whenConnected, showName:st.showName };
 }
