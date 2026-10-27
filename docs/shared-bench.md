@@ -20,7 +20,12 @@ it back.
 `espruino/bench/revision-lamp.js`: the bench's only device whose writable
 entries are also readable, so it is the only one that advertises a settings
 revision and owes the receiver a read (D-130). Its sketch lives in RAM, so a reset or a power cut leaves it silent
-until it is uploaded again.
+until it is uploaded again. **Since 2026-10-27 it runs that sketch as
+`espruino/dist/revision-lamp-standalone.min.js`**, the bundle rather than the
+source, so the module it carries is the one in this repository and not the
+older copy in its Storage: that is how `rejects()` and the interval guard were
+validated on a board (D-146). Upload the bundle rather than the file when you
+put it back.
 
 **This host can reach the lamp over the air, and that was news on 2026-10-24.**
 Three tools still say a nice!nano cannot be connected to from here, which holds
@@ -55,6 +60,13 @@ connection slots, which three devices never could. **They are deliberately left
 dark** until a run wants them, and their sketches live in RAM, so an unflashed
 board is a silent one. They stay out of the §17 and §21 campaigns, whose figures
 only compare with §16 and §20 on the bench as it was.
+
+**`lamp2` is not a board to measure from here.** It answered a connection and
+ran a sketch on 2026-10-27, and the host then heard 3 of its advertisements in
+20 s at -78 dBm and found nothing in a 45 s active scan (D-146). Reach it
+through the proxies, which is what it was bought for. Its Storage now holds
+`BTHomeWritable`, `BTHome` and `AESCCM`, and its `.bootcde` is erased, which
+changes nothing for a board that runs from RAM.
 
 **A second proxy was added 2026-10-24**, `esp32-bluetooth-proxy-cff508` at
 `10.191.52.200`, BLE MAC `1C:DB:D4:CF:F5:0A`, an ESP32-C3 with

@@ -9706,3 +9706,86 @@ and `CHANGE_HOLD`'s had grown to two clauses and 149 bytes. Shortened, with its
 rationale moved one line down where it is still read in the source, it gave back
 79. Published size is **24 951 bytes**, 49 under, and `BUDGET` is still 25 000
 for a third release in a row.
+
+## D-146 -- The two module fixes of draft.9, validated on hardware
+
+**2026-10-27, on the owner's instruction**, the three module changes that went
+to `main` with `2.0-draft.9` were run on a board rather than only under Node.
+What was at stake: `rejects()` counts from inside the Bluetooth stack's own
+`onWrite` callback, which is precisely where D-114 found a `TypeError` that
+nothing catches, and `setAdvertisingInterval()`'s guard was fixed from a bug
+found by a measurement and never re-measured.
+
+**The board is the lamp**, `F5:A8:93:67:CB:25` on `COM6`, re-uploaded with
+`espruino/dist/revision-lamp-standalone.min.js`: its own sketch, with the
+module of this commit inlined. So the bench keeps the device
+`docs/shared-bench.md` describes, the same two writable entries, the same
+public bindkey and the same Home Assistant entities, and gains the fixes. RAM
+only, as that board has always been.
+
+### `rejects()`, five codes and two acceptances
+
+Six writes over two connections from this host, to entry 1 (`2FAA0001`), all
+six **acknowledged by the stack** before application code ran, which is §4.2's
+point and the reason the count exists:
+
+| Written | Counted |
+|---|---|
+| `1e01` plain, 2 bytes, shorter than the sealed framing | `truncated` |
+| garbage ciphertext, counter 1000 ahead of the mark | `mic_mismatch` |
+| garbage ciphertext, counter 1000 (behind the mark) | `counter_not_increasing` |
+| garbage ciphertext again, counter ahead | `mic_mismatch`, now 2 |
+| sealed `1e01` | nothing: applied |
+| sealed `1e0102`, one byte too many | `trailing_bytes` |
+| sealed `0901`, a count written to a light entry | `objectid_mismatch` |
+| sealed `1e00` | nothing: applied, and the light is left off |
+
+`bw.rejects()` came back `1/2/1/1/1` for the five codes in that order, with
+`E.getErrorFlags()` empty throughout. The sealed payloads were built with
+`tools/gen_test_vectors.py`'s own `seal()`, from the mark read out of the
+board's `.bwctr` (`w: 1792873045`), four counters above it: Home Assistant's own
+counter is the clock in seconds, so it was past them again within four seconds
+and the device's counter was left where it would have been.
+
+### The interval guard, in both directions, twice
+
+Advertising events heard from this host, grouped into bursts because one packet
+arrives on more than one channel:
+
+| Interval asked for | Bursts |
+|---|---|
+| 1000 ms, as `setup()` left it | 0.15 /s |
+| 100 ms | 1.35 /s |
+| 1000 ms | 0.20 /s |
+| 100 ms | 1.27 /s |
+| 1000 ms | 0.20 /s |
+
+The second and third rows are the bug: before this fix the guard compared the
+rate being asked for against the *fast* interval rather than against the
+interval itself, so once a device had been set to 100 ms every later call
+updated the module's own idea of the rate and handed nothing to the radio. It
+now changes back, repeatedly. The absolute rates are this host's reception and
+not the device's output: it hears roughly one packet in seven from that board,
+and the comparison is what the measurement is for.
+
+### What the bench cost, and what it did not
+
+**`lamp2` was the first attempt and is a poor target from this host.** It was
+loaded with a purpose-built sketch over the radio (`espruino_deploy`, so its
+Storage now holds `BTHomeWritable`, `BTHome` and `AESCCM`, and its `.bootcde`
+was erased, which changes nothing for a board that has always run from RAM).
+It advertised, `setup()` came up, `rejects()` answered `{}` -- and the host
+then heard 3 advertisements in 20 s at -78 dBm, and a 45 s active scan found
+nothing at all. It is a connection-slot board, reached through the proxies, not
+a board to measure from here. It was reset and left dark.
+
+**The Puck will not take a 21 kB bundle in RAM.** `espruino_ble --load` of
+`encrypted-light-standalone.min.js` stopped at block 94 of 95 with
+`Module "BTHome" not found`, which is the inlined module arriving after
+something that wanted it, on a board whose variable memory had run out. The
+Puck was rebooted with `E.reboot()`, came back on its own `.bootcde` at -52 dBm,
+and Home Assistant reads its sealed packet again: battery 81, illuminance 144,
+switch off. `docs/measurements.md`'s paste-limit note (D-093) is about flash and
+about examples; this is the same wall from the other side, over the console.
+
+Both lights are off, `lamp2` is dark, and the bench lock was released.

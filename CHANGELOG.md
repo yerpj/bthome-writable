@@ -28,7 +28,10 @@ reads 0.2.0 until something here touches `custom_components/` and bumps it.
   code, so a stale layout, a bindkey that does not match and a replayed counter
   are told apart from each other rather than merely totalled. The protocol asks
   for it at §7 of `2.0-draft.9`, where two independent readings found the same
-  gap (D-144, D-145). What it cannot count is a write refused for its length:
+  gap (D-144, D-145). Measured on a board, not only under Node: six writes to
+  one entry, all six acknowledged by the stack before application code ran, and
+  the five that could not be applied counted under their own codes (D-146).
+  What it cannot count is a write refused for its length:
   that one is refused by the stack below the module, which is also the only
   notice the central gets.
 
