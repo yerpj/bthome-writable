@@ -151,7 +151,7 @@ duplicate entity disappears without new objects. What the four objects were for:
 |---|---|
 | Sensor/actuator confusion | Writable values are not advertised at all; a control is never also a sensor |
 | Per-instance addressing | One characteristic per entry |
-| No no-op for `0x3B command` | A write touches one entry, so no object is ever sent a filler value |
+| No no-op for `0x3B command` | `0x3B` is not writable at all: §2.1 excludes it, because BTHome gives it to a device announcing a command of its own (D-151) |
 | The 8-object limit and the packet-id shift of the v1 bitmask | The declaration lists object IDs, not positions |
 | Confirming a write | The GATT write response, plus `0x65` and a read where the device can change by itself |
 

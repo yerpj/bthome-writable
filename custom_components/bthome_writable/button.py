@@ -5,10 +5,11 @@ exactly that, so an event entry becomes one button **per value its vocabulary
 defines** — press, long press, on, off, toggle… — read from `bthome-ble` rather
 than listed here, so none is unreachable.
 
-Version 2 makes `0x3B command` safe to offer: a write touches only its own
-entry, so no other control on the device can send it an `off` it did not ask for
-(D-048). Buttons have no state, and their writes are never coalesced — two
-presses are two presses.
+`0x3B command` is **not** among them: §2.1 excludes it, because BTHome gives it
+to a device announcing a command of its own and a writable one would face both
+ways (D-151). It was offered until 2026-10-27, which is what `STEPPED_COMMANDS`
+and a framing of its own used to be here for. Buttons have no state, and their
+writes are never coalesced — two presses are two presses.
 """
 
 from __future__ import annotations
@@ -25,21 +26,15 @@ from .entity import BTHomeWritableEntity
 from .protocol import WritableEntry, event_unique_id, event_values
 from .switch import add_entities_as_declared, instance_label, is_kind
 
-BUTTON, COMMAND, DIMMER = 0x3A, 0x3B, 0x3C
+BUTTON, DIMMER = 0x3A, 0x3C
 
-# One step per press: a dimmer's second byte, and the argument of a command's
-# step up and step down. A device wanting more can be pressed again.
+# One step per press, which is a dimmer's second byte. A device wanting more can
+# be pressed again.
 STEPS = 1
-STEPPED_COMMANDS = frozenset({0x03, 0x04})
 
 
 def event_payload(object_id: int, code: int) -> bytes:
     """The value bytes of one event, in BTHome's encoding for its object."""
-    if object_id == COMMAND:
-        # <argument length, low 5 bits> <opcode> <arguments>
-        if code in STEPPED_COMMANDS:
-            return bytes([1, code, STEPS])
-        return bytes([0, code])
     if object_id == DIMMER:
         return bytes([code, STEPS])
     return bytes([code])

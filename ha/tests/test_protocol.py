@@ -31,8 +31,18 @@ def objects_of(fixture: dict[str, Any]) -> bytes:
 VALID_WITH_DECLARATION = [
     name
     for name, fixture in FIXTURES.items()
-    if fixture["valid"] and "declaration" in fixture
+    if "declaration" in fixture
+    and (fixture["valid"] or fixture.get("violates") == "forbidden_entry")
 ]
+"""Every fixture whose declaration a receiver has to read the same way.
+
+The `forbidden_entry` ones are packets a device must never send, and they are
+in here on purpose: §2.1's rule that a forbidden entry is **counted and not
+offered** is only observable on a packet that carries one, and both fixtures of
+that family -- the packet id, and the command object §2.1 excludes (D-151) --
+state the entry numbers that survive it. The other invalid fixtures are not
+about reading a declaration at all: one hides it behind a sensor, where §2.2
+says a receiver cannot find it, and one overflows the advertising budget."""
 
 
 @pytest.mark.parametrize("name", VALID_WITH_DECLARATION)
@@ -110,7 +120,13 @@ def test_a_value_byte_of_0xff_is_not_mistaken_for_the_declaration() -> None:
 
 
 def test_a_command_object_before_the_declaration_is_walked_correctly() -> None:
-    """0x3B is variable length: argument length, opcode, arguments."""
+    """0x3B is variable length: argument length, opcode, arguments.
+
+    §2.1 excludes the object from a *declaration* (D-151) and this is the other
+    side of that: the device it belongs to is announcing a command of its own,
+    in its advertising, and a receiver that could not measure one would lose
+    the declaration behind it.
+    """
     payload = bytes.fromhex("0001" + "3b010305" + "ff011e")
     objects, offset = split_objects(payload)
     assert objects[1] == (0x3B, bytes.fromhex("010305"))

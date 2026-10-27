@@ -1,6 +1,6 @@
 # BTHome Writable — protocol specification
 
-**Version:** 2.0-draft.9 · **Status:** DRAFT, nothing frozen · **License:** MIT
+**Version:** 2.0-draft.10 · **Status:** DRAFT, nothing frozen · **License:** MIT
 
 BTHome standardizes a BLE **uplink**: a device broadcasts its state in
 advertising, a receiver parses it. It has no **downlink**. This document
@@ -91,10 +91,22 @@ The declaration is one element of the BTHome service data:
   SHOULD then omit it.
 
 Entries MUST NOT be `0x00` (packet id), `0xFF`, the device-information objects
-(`0xF0`–`0xF2`), or the settings revision (`0x65`). These belong to the protocol
-rather than to a user: `0x65` is how a device announces that its own state
-changed (§3.2), and a receiver that could write it would be driving the signal
-meant to inform it. A receiver MUST NOT offer an entry whose object ID it does
+(`0xF0`–`0xF2`), the settings revision (`0x65`), or the command object
+(`0x3B`). These belong to the protocol rather than to a user: `0x65` is how a
+device announces that its own state changed (§3.2), and a receiver that could
+write it would be driving the signal meant to inform it.
+
+**`0x3B` is excluded because it already has a direction.** BTHome gives the
+command object to a *device* announcing a command of its own, in its
+advertising, and advises that such advertisements be encrypted so that nobody
+else can spoof one. That is the uplink, and this extension is the downlink: a
+writable `0x3B` entry would put one object in both directions at once, where a
+receiver writing a command and a device advertising one mean opposite things by
+the same bytes. A device MUST NOT declare it, a receiver MUST NOT offer it, and
+neither is a reason to reject the rest of a declaration: it is counted and
+skipped like any other entry a receiver will not serve. Writes of a value a
+device acts on immediately have `0x3A` and `0x3C`, which carry no such
+ambiguity. A receiver MUST NOT offer an entry whose object ID it does
 not know, but MUST still count it, so that later entries keep their
 characteristic numbers.
 
@@ -264,7 +276,8 @@ A write to writable characteristic *k* carries **one BTHome object**:
 ```
 
 encoded exactly as BTHome encodes it in advertising, including the length byte of
-variable-length objects (text `0x53`, raw `0x54`, command `0x3B`).
+variable-length objects: the byte after the object ID is the length, so text
+(`0x53`) and raw (`0x54`) carry `1 + length` value bytes.
 
 - **Write with response.** Receivers MUST write with response, and devices MUST
   support it. The response is the receiver's evidence that the write was
@@ -275,9 +288,11 @@ variable-length objects (text `0x53`, raw `0x54`, command `0x3B`).
   runs.
 - **No trailing bytes.** A write carries exactly one object; anything after it is
   an error.
-- **Events are writable.** A button (`0x3A`), dimmer (`0x3C`) or command (`0x3B`)
-  write means "perform this now". Because only the entry written is touched, a
-  write never triggers an event on another entry.
+- **Events are writable.** A button (`0x3A`) or dimmer (`0x3C`) write means
+  "perform this now". Because only the entry written is touched, a write never
+  triggers an event on another entry. The command object (`0x3B`) is not one of
+  them: §2.1 excludes it, and it is the one BTHome object this extension refuses
+  outright.
 - **No automatic resend.** A receiver MUST NOT resend a write that was
   acknowledged. Values such as toggle or step are not idempotent.
 

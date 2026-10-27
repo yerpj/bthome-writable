@@ -22,7 +22,7 @@ bindkey prompt an encrypted BTHome device already asks for:
 | a binary object — 28 of them | a `switch` |
 | a numeric object — 59 | a `number`, with that object's own unit, range and step |
 | the string object `0x53` | a `text` |
-| an event object — `0x3A`, `0x3B`, `0x3C` | one `button` per value |
+| an event object — `0x3A`, `0x3C` | one `button` per value |
 
 **The device decides what is writable, not a table in this repository.** The
 classification is read from `bthome-ble` at runtime, so an object BTHome assigns
@@ -54,7 +54,7 @@ Your device should then be discovered without being asked for.
 [`docs/home-assistant-install.md`](docs/home-assistant-install.md) is the longer
 version: installing without HACS, and what to do when a control misbehaves.
 
-> **Status: draft / pre-release** — protocol 2.0-draft.9. It works, and every
+> **Status: draft / pre-release** — protocol 2.0-draft.10. It works, and every
 > claim here is measured on three benches, two of them not mine. But the wire
 > format is not frozen: the GATT UUIDs freeze at the first public release, and
 > the declaration's object id `0xFF` is

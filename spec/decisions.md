@@ -10005,3 +10005,86 @@ page.
 This closes the module-page half of D-142. The second EspruinoDocs pull request
 still has to be opened, and that is the owner's: EspruinoDocs#767 is the module
 and its page, and this is a change to a page already under review there.
+
+## D-151 — `0x3B` is BTHome's uplink command, so this protocol excludes it
+
+**2026-10-27, the owner**, asked what the missing §4.2 sentence about the
+command object's framing should say: *"0x3B doit servir exclusivement à une
+commande montante, on l'exclut de notre spec bthome-writable."* Decided rather
+than drafted, and it closes the last open item of the two audits by removing the
+thing they found missing instead of writing it down.
+
+**The reason, in the specification's own words.** BTHome gives the command
+object to a *device* announcing a command of its own, in its advertising, and
+advises on bthome.io/format that such advertisements be encrypted so nobody can
+spoof one. That direction is the uplink; this extension is the downlink. A
+writable `0x3B` entry would make one object face both ways, and a receiver
+writing `3B 00 00` and a device advertising the same three bytes would mean
+opposite things by them.
+
+**It also answers a question that had been open since 2026-10-01.** §4 of
+`spec/for-gordon.md` put three ways out of `0x3B` having no no-op value:
+forbid declaring it writable, give it a no-op outside the vocabulary, or let
+§4.3 admit that some objects have none. The owner took the first, for a reason
+the question had not reached: by the time it was answered, version 2's
+one-entry write had already removed the harm the question described, and the
+case against the object turned out to be direction rather than the missing
+no-op. The section is marked answered and kept as the record.
+
+### What this removes
+
+**The framing rule, which is the point.** `2 + (length & 0x1F)`, with the upper
+three bits reserved by BTHome, lived in `espruino/BTHomeWritable.js:171` and
+`custom_components/bthome_writable/protocol.py:314` and in no document, which
+is what the read-only audit and the clean-room implementer each found within a
+day of the other (D-144, D-145) and what the clean-room reader named as the one
+place it would have implemented wrong. It is BTHome's rule, it is published on
+bthome.io/format, and it is no longer this specification's business.
+
+Verified before deciding, because the owner's earlier instruction was to check
+it rather than assume it: bthome.io/format says, verbatim, that "the high 3 bits
+are reserved for future use (set to `0`), and the low 5 bits give the argument
+length in bytes (0–31)", and its own examples agree with the arithmetic —
+`3B0000` is `off` in three bytes, `3B010305` is "step up 5 steps" in four. The
+upstream Espruino `BTHome` module does not implement `0x3B` at all, which is why
+nobody had ever had cause to copy the rule into a document here.
+
+**What changed, file by file.** `PROTOCOL.md` §2.1 lists `0x3B` beside `0x00`,
+`0xFF`, `0xF0`–`0xF2` and `0x65`, with the direction argument; §4.2's "events
+are writable" is button and dimmer only, and the sentence that introduced the
+command object's exception now states the convention it was introducing, that
+text and raw carry `1 + length` value bytes. `PLATFORMS.md` turns "`0x3B
+command` is offered" into "is not offered", keeping what it cost as history.
+The module drops `COMMAND_IDS`, the `command` codec, the `parseWrite` branch and
+the `writableSpec` special case, adds `0x3B` to `FORBIDDEN`, and refuses a
+declared `0x3B` at `setup()` with `forbidden_entry`: **124 bytes of published
+source came back**, which leaves 173 under the budget. The integration adds
+`COMMAND_OBJECT_ID` to `FORBIDDEN_ENTRIES`, so the entry is counted and never
+offered, and `button.py` loses `STEPPED_COMMANDS` and the command branch of
+`event_payload`.
+
+**The fixture changed sides.** `writable-command` pinned the two write shapes a
+command entry accepted; it is replaced by `command-entry-is-forbidden`, which
+declares `[0x1E, 0x3B, 0x1E]` and is **invalid**, `violates: forbidden_entry`,
+with `offered_entries: [1, 3]`. So the contract now pins the rule that matters:
+a packet a device must never send is still read correctly, the excluded entry is
+counted, and the light behind it keeps characteristic 3. The receiver suite was
+reading only *valid* fixtures' declarations, which meant the existing
+`forbidden-entry` fixture asserted nothing; it now reads that family too, and
+both of them are checked.
+
+### What this deliberately does **not** remove
+
+**A receiver still has to walk past a command object.** `_value_length()` keeps
+`2 + (payload[offset + 1] & 0x1F)`, and `tools/tests/test_library_floor.py`
+still requires `bthome-ble` to know `0x3B`: a device may advertise a command of
+its own — that is the whole point of the exclusion — and a receiver that could
+not measure one would lose the declaration behind it. The exclusion is about
+offering an entry, not about parsing a packet.
+
+**Which leaves one question for the owner.** Nothing in `PROTOCOL.md` says that
+a receiver walks the service data to find the declaration, so nothing says it
+needs every object's length, `0x3B` included. The rule we just took out of §4.2
+is not needed there any more; a sentence in §6 pointing at BTHome's format for
+the walk might be. It is one sentence, it is his, and it is now the only thing
+the audits' fourth item leaves open.

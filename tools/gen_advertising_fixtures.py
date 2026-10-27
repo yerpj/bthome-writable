@@ -21,7 +21,7 @@ from typing import Any
 
 OUTPUT = Path(__file__).resolve().parent.parent / "spec" / "advertising-fixtures.json"
 
-SPEC_VERSION = "2.0-draft.9"
+SPEC_VERSION = "2.0-draft.10"
 
 DECLARATION_OBJECT_ID = 0xFF
 DEVICE_INFO_PLAIN = 0x40  # BTHome v2, unencrypted
@@ -155,13 +155,6 @@ MOISTURE = lambda pct: obj(  # noqa: E731
     0x14, round(pct * 100).to_bytes(2, "little"), "moisture"
 )
 BUTTON = lambda event: obj(0x3A, bytes([event]), "button")  # noqa: E731
-# 0x3B command: <argument length, low 5 bits><opcode><arguments>. Neither a
-# fixed width nor BTHome's ordinary length byte, which is the whole reason it
-# needs pinning here -- the reference device refused every one of these
-# writes while the receiver happily sent them (D-081).
-COMMAND = lambda opcode, *args: obj(  # noqa: E731
-    0x3B, bytes([len(args), opcode, *args]), "command"
-)
 TEXT = lambda s: obj(0x53, bytes([len(s)]) + s, "text")  # noqa: E731
 
 LIGHT_ID, POWER_ID, TEMP8_ID, MOISTURE_ID, BUTTON_ID, TEXT_ID = (
@@ -173,6 +166,12 @@ LIGHT_ID, POWER_ID, TEMP8_ID, MOISTURE_ID, BUTTON_ID, TEXT_ID = (
     0x53,
 )
 COMMAND_ID = 0x3B
+"""BTHome's command object, which §2.1 excludes from a declaration.
+
+It is here to be refused: the fixture below declares it among entries that are
+served, because the rule is that a receiver counts it and skips it rather than
+rejecting the device (D-151)."""
+
 UNKNOWN_ID = 0x99  # unassigned in BTHome: a type a receiver does not know yet
 
 
@@ -275,28 +274,20 @@ def build_fixtures() -> list[dict[str, Any]]:
 
     fixtures.append(
         fixture(
-            "writable-command",
-            "A writable 0x3B command. Its framing is <argument length><opcode>"
-            "<arguments>, so one entry accepts writes of two different lengths "
-            "-- which is what the device side has to agree to.",
+            "command-entry-is-forbidden",
+            "Entry 2 declares 0x3B, which §2.1 excludes: BTHome gives the "
+            "command object to a device announcing a command of its own, so a "
+            "writable one would face both ways. A device MUST NOT send this, "
+            "and a receiver MUST NOT offer entry 2 and MUST still count it, so "
+            "the light behind it stays on characteristic 3. It replaces "
+            "`writable-command`, which pinned the framing of a write this "
+            "protocol no longer accepts (D-151).",
             [PACKET_ID(11)],
-            entries=[COMMAND_ID],
+            entries=[LIGHT_ID, COMMAND_ID, LIGHT_ID],
+            offered_entries=[1, 3],
+            valid=False,
+            violates="forbidden_entry",
             expected_sensors={"packet_id": 11},
-            writes=[
-                access(
-                    "turn-on",
-                    "Opcode 0x01 with no arguments: the length byte is zero.",
-                    1,
-                    COMMAND(0x01),
-                ),
-                access(
-                    "step-up",
-                    "Opcode 0x03 takes one argument, so the same entry accepts "
-                    "three value bytes where the last write had two.",
-                    1,
-                    COMMAND(0x03, 1),
-                ),
-            ],
         )
     )
 
