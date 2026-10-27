@@ -29,6 +29,7 @@ from .const import (
     ALLOW_COUNTER_SYNC,
     ALLOW_PLAINTEXT_DOWNGRADE,
     AN_UNCHANGED_ENTRY_FAILS_THE_WRITE,
+    ATT_WRITE_OVERHEAD,
     AUTHENTICATION_FAILURES_BEFORE_REAUTH,
     BTHOME_SERVICE_UUID,
     CHALLENGE_LENGTH,
@@ -1635,15 +1636,26 @@ class BTHomeWritableCoordinator:
     async def _check_mtu(self, client: Any, payload: bytes) -> None:
         """Note when this write may be too large for the link (§4.4).
 
-        A write larger than `MTU - 3` is refused by the stack rather than split
-        into a long write, so the MTU is a ceiling and not a performance hint
-        (decisions.md D-017). BlueZ reports the 23-byte default until asked,
-        hence `_acquire_mtu()`.
+        A write larger than `MTU - 3` does not fit in one ATT Write Request,
+        which is the ceiling §4.4 states, so the MTU is a limit and not a
+        performance hint (decisions.md D-017). BlueZ reports the 23-byte
+        default until asked, hence `_acquire_mtu()`.
 
-        **This only writes a line in the log.** It does not refuse anything --
-        the docstring said it did, for as long as there was a floor to refuse
-        against (D-084). Refusing here would need a size the protocol no longer
-        states, and the stack's own error is the honest one.
+        **What happens above that ceiling is not a tidy refusal.** Measured on
+        2026-10-27 against a Jolt.js on a negotiated MTU of 131: a 128-byte
+        write was acknowledged, and a 129-byte one came back `Unreachable` and
+        took the connection with it, twice in a row, leaving the rest of that
+        session with nothing to write to. The host stack queues a long write of
+        its own accord above the ceiling and the device refuses the first
+        fragment, which is why §4.4 tells receivers not to attempt one (D-148).
+
+        **This only writes in the log.** It does not refuse anything, and the
+        reason is BlueZ: `bleak` reports 23 until `_acquire_mtu()` has run and
+        nothing distinguishes a real 23 from an unread one, so a refusal here
+        would fail writes the link would have carried. That is also why D-084
+        took the old refusal out. The stack's own error stays the honest one;
+        this line is what makes it diagnosable, which is the same reason the
+        module counts what it refuses (§7, D-145).
         """
         if len(payload) <= DEFAULT_MTU_PAYLOAD:
             return
@@ -1656,7 +1668,20 @@ class BTHomeWritableCoordinator:
                 _LOGGER.debug("%s: could not read the MTU: %s", self.address, error)
 
         mtu = getattr(client, "mtu_size", None)
-        if mtu is not None and mtu < COMFORTABLE_MTU:
+        if mtu is None:
+            return
+        if len(payload) > mtu - ATT_WRITE_OVERHEAD:
+            _LOGGER.warning(
+                "%s: this write is %d bytes and the MTU reads %d, so it does "
+                "not fit in one ATT Write Request (PROTOCOL.md 4.4). Expect it "
+                "to be refused, and on some hosts to take the connection with "
+                "it. Neither side can ask for a larger MTU from here",
+                self.address,
+                len(payload),
+                mtu,
+            )
+            return
+        if mtu < COMFORTABLE_MTU:
             _LOGGER.debug(
                 "%s: MTU is %s and this write is %d bytes, so it may not fit. "
                 "The protocol states no floor (§4.4); %s is simply the size "

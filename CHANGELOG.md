@@ -15,8 +15,14 @@ its first non-draft release. Every entry names the decision behind it:
 
 ## [Unreleased]
 
-The integration's `manifest.json` carries the version of the last tag cut, so it
-reads 0.2.0 until something here touches `custom_components/` and bumps it.
+The integration's `manifest.json` carries the version of the last tag cut, and
+**a tag is what moves it**: work lands here under `[Unreleased]`, whatever it
+touches, and the version is bumped when a release is cut rather than by the
+commit that earns one. The sentence here used to say that touching
+`custom_components/` bumps it, which read as if a merge could, and
+`tools/tests/test_changelog.py` requires a release section for whatever version
+the manifest states -- so that reading made every change to the integration cut
+a release on its way past (D-148).
 
 ### Added
 
@@ -34,6 +40,20 @@ reads 0.2.0 until something here touches `custom_components/` and bumps it.
   What it cannot count is a write refused for its length:
   that one is refused by the stack below the module, which is also the only
   notice the central gets.
+
+### Changed
+
+- **A write too large for the link now says so in the log.** §4.4's ceiling is
+  `ATT_MTU - 3`, one ATT Write Request, and what happens above it is not a tidy
+  refusal: measured against a Jolt.js on a negotiated MTU of 131, a 128-byte
+  write was acknowledged and a 129-byte one came back `Unreachable` and took
+  the connection with it, twice in a row. The host stack queues a long write of
+  its own accord above the ceiling and the device refuses the first fragment,
+  which is why §4.4 tells receivers not to attempt one. The write still goes
+  out, because `bleak` reports the 23-byte default on BlueZ until it has been
+  asked and a real 23 cannot be told from an unread one (D-084); what is new is
+  a line naming the size and the MTU, so the stack's own error is diagnosable
+  (D-148).
 
 ### Fixed
 

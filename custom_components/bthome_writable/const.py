@@ -148,6 +148,14 @@ number survives only as the threshold below which a large write is worth a
 line in the log, and it was called `MIN_MTU` -- and logged as "the protocol
 asks for 64" -- for twelve days after the protocol stopped asking (D-084)."""
 
+ATT_WRITE_OVERHEAD: Final = 3
+"""The opcode and the attribute handle, which a write spends before its bytes.
+
+So one ATT Write Request carries `ATT_MTU - 3`, which is the ceiling §4.4
+states. Above it the host stack queues a long write of its own accord, the
+device refuses the first fragment, and on Windows the connection goes with it
+(D-148)."""
+
 DEFAULT_MTU_PAYLOAD: Final = 20
 """What fits in a write at BLE's default 23-byte MTU. Most writes are a couple
 of bytes, so the MTU is only worth asking about above this."""
