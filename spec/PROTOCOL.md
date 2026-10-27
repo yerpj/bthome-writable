@@ -206,7 +206,7 @@ sends it to read every writable characteristic.
 > connection its receiver had let go, and its own code had to rate-limit the
 > call to stay usable. It now groups over **250 ms**, which bounds a receiver's
 > notice at a quarter of a second against a read cycle measured at 832 ms
-> (`decisions.md` D-124, `docs/measurements.md` §14).
+> (`decisions.md` D-124, `docs/measurements.md` §13).
 
 ---
 

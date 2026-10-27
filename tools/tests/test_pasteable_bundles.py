@@ -10,8 +10,9 @@ T4.2 found the documented path broken on this project's own reference board
   getAdvertisement`` and then ``New interpreter error: LOW_MEMORY,MEMORY``,
   leaving `setup()` half-built.
 
-Both measured on a Puck.js v2 running 2v27. The minified bundles, 18-19 kB,
-work either way. Nobody had hit it in a year of hardware work because the bench
+Both measured on a Puck.js v2 running 2v27. The minified bundles, 18-19 kB on
+the day and 21-26 kB now, work either way. Nobody had hit it in a year of
+hardware work because the bench
 sends `.min.js` or goes through `espruino_deploy`, which puts the modules in
 Storage and uploads a small application -- so every path this project exercises
 avoids the one it documents.

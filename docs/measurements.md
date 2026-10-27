@@ -23,6 +23,13 @@ and what it is worth.
 | **Receiver** | Home Assistant 2026.7.4 (HAOS) on a Raspberry Pi 3, built-in `bcm43438` adapter, plus an ESP32 Bluetooth proxy (`esp32-bluetooth-proxy-1f1020`) |
 | **Bench host** | Windows workstation with its own adapter, for the `tools/` measurements |
 
+**That is the bench of sections 1 to 16.** Sections 17 and after use boards that
+arrived later: three more nice!nanos (`revision-lamp` on `COM6`, then `lamp2`
+and `lamp3` from 2026-10-24) and a second proxy,
+`esp32-bluetooth-proxy-cff508`. `docs/shared-bench.md` holds the live inventory
+and is the one to trust, because it is maintained for whoever else is using the
+bench.
+
 Two properties of the bench host are in every number it produces: WinRT takes
 about 0.5 s longer to establish a link than BlueZ does, and it stops delivering
 advertisements for several seconds after a disconnect (D-047). Where that
@@ -418,15 +425,21 @@ no AES at 2v29.105 (D-035) and has it at 2v29.396 (D-045).
 
 ## 7. Availability
 
-**2026-09-14, power under program control** (D-040).
+Measured twice, and the two disagree by a factor of two and a half.
 
-| Event | Delay |
-|---|---|
-| Device powered off → entity `unavailable` | 3 min 34 s |
-| Device powered on → entity back | first advertisement, ~1 s |
+| Event | Delay | Run |
+|---|---|---|
+| Device powered off → entity `unavailable` | 3 min 34 s | 2026-09-14, rail under program control (D-040) |
+| Device powered off → entity `unavailable` | 8 min 35 s | 2026-10-09, Puck.js 2v27, from the recorder, with core `bthome`'s own sensor for the same board flipping in the same second (D-093) |
+| Device powered on → entity back | first advertisement, ~1 s | both |
 
-The delay belongs to Home Assistant's Bluetooth tracker, not to this
-integration: nothing here can make a device grey out faster.
+What differs between the two runs is not established: a month apart, and a bench
+that had gained two ESPHome proxies reporting the same address in between.
+Either way the delay belongs to Home Assistant's Bluetooth tracker and not to
+this integration, which only listens to `async_track_unavailable`, so nothing
+here can make a device grey out faster. **The figure to expect is the longer
+one**, and that is the one `docs/home-assistant-install.md` publishes: an entity
+that still looks fine five minutes after you unplugged something is not a fault.
 
 ---
 
@@ -505,8 +518,11 @@ profile above: the cost was the reconstruction of the payload, not the call to
 
 2000 iterations on the Puck, with the interpreter's own 209 us of loop overhead
 subtracted: **`Date.now()` costs 240 us a call, `getTime()` 162 us.** Raised by
-@enaon. At one call per tick it is 0.008% of the thread, which is why the module
-still calls `Date.now()`.
+@enaon. At one call per tick it is 0.008% of the thread, so the thread was never
+the argument. The change was deferred when it was measured and has since been
+applied: the module reads `getTime() * 1000` at the three places that need a
+clock (`espruino/BTHomeWritable.js:707`, `:766`, `:809`). A call that is cheaper
+for nothing costs nothing to prefer.
 
 ### The same thing on a nice!nano, over the cable
 
@@ -591,8 +607,12 @@ An empty wake is under ~10 us of CPU, and the 1 s run came out *faster* than no
 timer at all, which says the same thing twice.
 
 The other end of the bound is @enaon's PPK2: the fixed module idles at ~50 uA
-against ~45 with it not loaded at all. **Everything P1 could possibly recover is
-inside that 5 uA**, wakes, timer bookkeeping and all.
+against ~45 with the module not loaded **but his own lamp script still running**,
+a PIR polled every 400 ms and a touch button that he puts at some 25 uA of that
+45. Both readings carry that script, so the difference is the module and nothing
+else: **everything P1 could possibly recover is inside that 5 uA**, wakes, timer
+bookkeeping and all. The 45 is not a floor, and section 8 says what is: he
+measures a bare nRF52 nano at 2 to 6 uA.
 
 A by-product worth keeping: the interpreter costs **297 us per iteration** of a
 one-statement loop on this board. That is why `Date.now()` at 240 us looked
@@ -1753,7 +1773,8 @@ Samples in `docs/data/connection-interval-auto.json`,
 `connection-interval-pinned.json` and the hundred-sample pair,
 `connection-interval-100-auto.json` and `connection-interval-100-pinned.json`; the script is `interval_knob.py` in the
 session scratchpad, a measurement technique rather than something to ship, like
-the three of §8.
+the three of §8. **This section is not replayable from the repository**: the
+lines below are the record of what was run, not a command to run.
 
 ```
 python -m tools.bench_lock acquire --note "D-141: pin the connection interval"

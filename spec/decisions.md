@@ -9524,3 +9524,108 @@ commands on his board discriminate: the module's own options on a hand-written
 packet, which should reproduce `ERR 0x10` without the module involved, and the
 same with `scannable:true` added, which should not. The owner posts; the draft
 is his to send or to rewrite (D-091).
+
+## D-144 — Two audits that could not see each other, and the prose held while the figures did not
+
+**2026-10-27, on the owner's instruction.** Two agents were run with no
+knowledge of each other. The first compared every document in the repository to
+`spec/PROTOCOL.md`, the test vectors and the code, read-only, and was told which
+defects were already known so it could not claim them. The second was given
+`PROTOCOL.md`, the vectors, the fixtures, `PLATFORMS.md` and the three still
+valid sections of the working document, and nothing else: `espruino/`,
+`custom_components/`, `tools/`, `docs/` and `decisions.md` were closed to it,
+and it implemented the device side in a scratchpad from the specification alone.
+It passed the 22 vectors on both crypto paths and reproduced nine of the ten
+fixtures byte for byte.
+
+**The shape of the result is the finding.** The prose was sound: no stale
+narrative outside its own banner, no invented option or error code, no broken
+relative link, one protocol version across the six files that state it,
+`hacs.json` and the manifest agreeing with the install guide. Everything wrong
+was a number. Twenty-four findings, and the ones acted on are in `CHANGELOG.md`
+under Unreleased.
+
+**The worst of them was a correction that had not been swept.** On 2026-10-26
+the claim that @enaon's board idles at ~45 uA was corrected in sections 8 and 23
+of `docs/measurements.md`, because the 45 is his whole lamp script and not a
+floor. It stayed wrong in section 9, in a paragraph that leans on it to bound
+what P1 could recover. The bound itself survives, since both of @enaon's
+readings carry that script and the difference between them is the module and
+nothing else -- but the sentence published the thing we had just agreed was
+false. **The habit this produces: a correction to a two thousand line document
+is not done when the passage is fixed, it is done when the file has been
+greped.**
+
+### Two claims refused, and why
+
+**The module page's "within about 5 uA" is right.** The first audit filed it as
+a consequence of the section 9 error. It is not: the 5 uA is the fixed module
+against the same board with the module not loaded, with the lamp script running
+in both arms, which is exactly what the page says. Only the page's companion
+figure was vague, "over 100 uA of idle current", and that was sharpened to the
+measured delta rather than corrected: ~185 uA, 235 against 50.
+
+**`PLATFORMS.md` does not contain the length rule the second agent found there.**
+It reports the framing of the command object as living only in receiver
+guidance, which would be bad enough. `PLATFORMS.md` carries no such formula and
+declares that ids, lengths and formats are deliberately not repeated in it. The
+gap is therefore wider than reported, and it is recorded below as the owner's.
+
+### What the clean-room implementation says about ours
+
+**It converged, and that is the result.** Both implementations reuse the
+upstream BTHome module by encoding a one-object advertisement and taking the
+bytes back out, both undo its `packetId` side effect for the same reason, and
+both write AES-CCM in JavaScript because `boards/PUCKJS.py` enables `AES` and
+not `AES_CCM`. Both keep a single counter advanced at resealing rather than per
+packet, for the flash. Two independent readings of rule 3 produced the same
+gestures, which is as close to a validation of the design as this project can
+get without a third implementer.
+
+**Two things worth taking.** It holds its per-entry state as four parallel
+`Uint8Array`s plus a bitfield instead of an object per entry, and measures ~34
+JsVars for one entry and ~89 for twelve; our published constraint is source size
+and not RAM, so this is a gain on an axis nobody here is watching yet, and it
+wants a measurement before a refactor. And it exposes a count of silent refusals
+(`exports.rejects`), which answers a complaint ours shares: a write too long for
+the MTU is refused and the loss leaves no trace an application can see.
+
+**One place ours is right and it is not.** It leaves the ordering of
+section 2.2 to the upstream module's own sort by object id, which is free
+because `0xFF` is the largest byte. Our stable insertion sort exists for what
+that cannot serve: several entries of the same type must keep declaration order,
+because declaration order is characteristic order.
+
+### What is the owner's, and goes to Gordon
+
+Four spec items, none of them touched here beyond one cross-reference:
+
+1. **Section 2.4 confuses two firmwares**: "the same board with `showName:false`
+   takes 22" (line 142). Section 5 of the measurements says 20 for the 2v29.396,
+   which takes 5 with its name, and 22 for the 2v29.242, which takes 7. The
+   module's own header states it correctly.
+2. **Section 2.1's entry count does not follow from its own arithmetic** (line
+   84): "17 to 22 bytes ... so 13 to 17 entries". The measured range is 5 to 22,
+   as section 2.4 of the same document writes; and 17 less 3 less 2 is 12, while
+   22 less 3 less 2 less 2 is 15. Only the theoretical 19 checks out. The second
+   agent reached the same spot from the other side and added what was missing:
+   sealed, the packet loses eight more bytes, so about 13 entries.
+3. **The framing of the command object `0x3B` is in no document.** The module
+   reads `2 + (pl[1] & 0x1F)`, with the upper three bits reserved by BTHome and
+   a separate `1 + pl[1]` for text and raw. Section 4.3 says only that "two of
+   those bytes are its own framing". The second agent named this as the one
+   place it would have implemented wrong from the normative text, and it is a
+   sentence missing from section 4.2.
+4. A write too long is refused with nothing to see, and the MTU is not
+   negotiable from either side. Both agents arrived at it independently.
+
+Corrected here because it is a cross-reference and not a claim: section 3.2 cited
+`docs/measurements.md` section 14 for the 832 ms read cycle, which is section 13.
+
+**Both reports are archived**, the audit at
+`scratchpad/doc-audit-2026-10-27.md` and the clean-room module with its design
+journal at `scratchpad/cleanroom/`, the journal's own list of fourteen spec
+ambiguities included: the write counter's initial value, which only a vector
+fixes; the `0xFE`/`0xFF` nonce bytes, likewise; the 250 ms grouping window,
+which is a callout and not a rule; and the counter report before any write ever
+happened.

@@ -15,8 +15,8 @@ board, and paste the whole of
 into the right-hand pane. Send it.
 
 **The minified one, and it matters.** Each example ships twice: a readable
-`-standalone.js` of about 40 kB, which is there to be read, and a
-`-standalone.min.js` of about 18 kB, which is the one to send. A Puck.js has
+`-standalone.js` of about 60 kB, which is there to be read, and a
+`-standalone.min.js` of about 21 kB, which is the one to send. A Puck.js has
 40 960 bytes of Storage and rather less usable variable memory, so the readable
 bundle fails both ways -- `Unable to find or create file` if your IDE saves to
 flash, `OUT OF MEMORY` and `LOW_MEMORY` if it sends to RAM. Neither message

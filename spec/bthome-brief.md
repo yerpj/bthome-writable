@@ -70,7 +70,8 @@ argument for reviewing this rather than for trusting it.
 
 Two reference implementations, and **the device side ships in Espruino's own
 module library** (merged 2026-10-12). A shared test-vector contract, whose
-AES-CCM vectors three implementations agree on, and 716 automated tests. The
+AES-CCM vectors three implementations agree on, and 882 automated tests (360 in
+`tools/`, 234 in `ha/`, 288 in `espruino/`, all green on 2026-10-27). The
 installation guides have been walked end to end using nothing else: three
 documentation defects, no protocol or code defect (D-093).
 

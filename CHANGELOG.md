@@ -15,8 +15,8 @@ its first non-draft release. Every entry names the decision behind it:
 
 ## [Unreleased]
 
-The integration's `manifest.json` carries the version a tag will take, so it
-reads 0.2.0 until the next one is cut.
+The integration's `manifest.json` carries the version of the last tag cut, so it
+reads 0.2.0 until something here touches `custom_components/` and bumps it.
 
 ### Fixed
 
@@ -52,6 +52,30 @@ reads 0.2.0 until the next one is cut.
   seventeen minutes while walking through eight intervals, which the current
   trace showed step by step. The guard now compares against the interval being
   set, which is what it was for.
+
+### Documentation
+
+- **Two neutral audits, and it was the numbers that were wrong.** One read-only
+  agent compared every document to the protocol, the vectors and the code; a
+  second implemented the device side from the specification alone, without
+  reading this repository. The prose held: no stale narrative outside its own
+  banner, no invented API name, no broken link, one protocol version across the
+  six files that state it. The figures did not. Corrected here: the ~45 uA
+  quoted as @enaon's floor when it is his whole lamp script, still wrong in
+  section 9 of `docs/measurements.md` after sections 8 and 23 were put right; a
+  conclusion that the module "still calls `Date.now()`", which it has not since
+  the deferred change landed; bundle sizes given as 40 kB and 18 kB in three
+  documents against 60 to 74 kB and 21 to 26 kB today, which also halves the
+  margin under the 32 768-byte paste limit; 716 automated tests against 882; a
+  submission dossier still calling battery cost out of scope after D-142
+  measured it; two documents disagreeing by a factor of two and a half on how
+  long a device takes to go unavailable; a `README.md` sending a new reader
+  first to a protocol version 1 report; a tutorial packet counted at 13 bytes
+  that is 12. The published module page gains the second refusal code, the
+  measured service data budgets beside the arithmetic one, the hexadecimal form
+  of the entry UUIDs, the per-entry `signed` option and two exported helpers.
+  The install guide gains the connection cap and the `bthome_writable_write`
+  event, neither of which was documented anywhere but this file (D-144).
 
 ## [0.2.0] - 2026-10-24
 
