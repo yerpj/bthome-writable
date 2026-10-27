@@ -80,6 +80,15 @@ reads 0.2.0 until something here touches `custom_components/` and bumps it.
 
 ### Documentation
 
+- **The module page carries the current table and the battery figure.** The
+  owner's call in espruino#8024: the measured current belongs on the module's
+  own page and not only in a measurements file. Three coefficients, the days
+  table on 154 mAh, `docs/figures/puck-battery-life.png` and the `power_table`
+  line for substituting your own floor. The rows come from the tool rather than
+  from a hand copy, the figure is published into the folder EspruinoDocs wants
+  it in, and a test fails if a page shows an image the pull request does not
+  carry (D-142, D-150).
+
 - **Two neutral audits, and it was the numbers that were wrong.** One read-only
   agent compared every document to the protocol, the vectors and the code; a
   second implemented the device side from the specification alone, without

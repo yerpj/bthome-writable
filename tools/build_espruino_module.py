@@ -53,6 +53,20 @@ budget, what a rejected write looks like -- because that is where EspruinoDocs
 keeps it.
 """
 
+PAGE_IMAGES: dict[str, tuple[Path, ...]] = {
+    "BTHomeWritable.md": (ROOT / "docs" / "figures" / "puck-battery-life.png",),
+}
+"""Figures a module page carries, by the page that references them.
+
+EspruinoDocs puts an illustrated page's images in a folder named exactly as the
+page, which is what the tutorial below does with its screenshot. These are
+copied out of `docs/figures/`, where they are generated from a model fed by the
+same four coefficients as the table beside them (D-142), rather than kept twice
+in the tree. The cost of that choice: the page under `espruino/espruinodocs/`
+shows a broken image in a markdown previewer and the published copy in
+`espruino/dist/espruinodocs/` does not.
+"""
+
 TUTORIALS: dict[str, str] = {}
 # Empty while "BTHome Light Switch.md" is set aside (D-113). The page and its
 # test stay in espruino/espruinodocs/tutorials/, out of the pull request, until
@@ -253,7 +267,14 @@ def main() -> int:
     for page in PAGES:
         text = (PAGE_DIR / page).read_text(encoding="utf-8")
         (directory(page) / page).write_text(text, encoding="utf-8", newline="\n")
-        print(f"{page:20} {len(text):6} bytes (copied)")
+        images = PAGE_IMAGES.get(page, ())
+        if images:
+            into = directory(page) / page[: -len(".md")]
+            into.mkdir(exist_ok=True)
+            for image in images:
+                (into / image.name).write_bytes(image.read_bytes())
+        extra = f", {len(images)} image(s)" if images else ""
+        print(f"{page:20} {len(text):6} bytes (copied{extra})")
 
     for page, pr in TUTORIALS.items():
         source = PAGE_DIR / "tutorials" / page

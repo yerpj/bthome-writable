@@ -189,6 +189,55 @@ Reference
 | `bw.characteristicUuid(k)` | the characteristic UUID of entry *k*, counted from 1 |
 | `bw.SERVICE_UUID` | the GATT service the entries live under |
 
+What it costs on a coin cell
+----------------------------
+
+Measured on a **Puck.js running 2v29 at a flat 3.000 V**, with an Otii Arc Pro
+supplying the board: an idle floor of **7.35 uA**, **14.19 uC** for one
+advertising event, and **1810 uC** over **2.34 s** for one command, which is
+Home Assistant connecting, writing and leaving. Everything below is those three
+numbers and `fastTimeout`, nothing else.
+
+Days of a CR2032, read as **154 mAh**: 70% of the nominal 220, because the
+rating runs down to 2.0 V and Espruino browns out above that, a cell loses about
+1% a year sitting still, and its internal resistance climbs as it empties
+against the 5.6 mA peak of a transmit. None of the three is modelled. **The
+microamps are measured and only the days carry that allowance.**
+
+| advertising interval | never written | 1/min | 2/min | 4/min | 6/min |
+|---|---|---|---|---|---|
+| 200 ms | 82 | 45 | 32 | 26 | 22 |
+| 1 s | 298 | 56 | 32 | 26 | 22 |
+| **2 s** (the default) | **444** | **57** | **32** | 26 | 22 |
+| 5 s | 630 | 58 | 32 | 26 | 22 |
+| 10 s | 732 | 59 | 32 | 26 | 22 |
+
+![Days on a CR2032 against the advertising interval, at 1 to 200 commands a day](BTHomeWritable/puck-battery-life.png)
+
+Three things to take from it, and none of them is that a write is expensive.
+
+* **A device nobody writes to lives on its advertising interval alone**, and the
+  range is wide: 82 days at 200 ms against 732 at 10 s.
+* **One command a minute costs eight times what advertising does**, and two
+  thirds of that is not the write: it is the thirty seconds of fast advertising
+  the write leaves behind. `fastTimeout` is the lever.
+* **From two commands a minute the advertising interval stops mattering**, because
+  the fast window never closes. Every row reads the same.
+
+The figure stops at 10 s because the module does: `setup()` refuses an
+`interval` or a `fastInterval` outside 20 ms to 10 s. So **726 days, one command
+a day at 10 s, is the ceiling of everything this module can be set to do** -- a
+shade under two years, which the plot draws a line at to show that nothing
+reaches it.
+
+Your board is not this board, and the only coefficient that travels poorly is
+the floor. Measure yours with a meter and no sketch at all, then substitute it:
+
+```
+python -m tools.power_table --floor <yours> --adv-charge 14.194 \
+    --command-charge 1810 --command-seconds 2.34 --life --capacity-mah 154
+```
+
 Notes
 -----
 
