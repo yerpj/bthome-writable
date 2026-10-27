@@ -10212,3 +10212,56 @@ request, still owed.
 The commands, the file-by-file reasoning and a 147-word body draft are in the
 scratchpad at `espruinodocs-pr2.md`. **Opening it is the owner's** (D-091): the
 account is his, and the sentences a maintainer reads should be too.
+
+## D-154 -- The firmware patch exists, it is somebody else's, and it agrees with our one line
+
+**2026-10-27 evening**, espruino/Espruino#2772 moved three times in six hours
+and the bug this bench reported now has a patch written by @fanoush.
+
+**20:19 UTC, in espruino#8024**, he answered @enaon's claim that
+`NRF.sleep()` is needed to recover. Built upstream `2v29.494` for a nice!nano
+with no patch, console over USB: `setAdvertising({},{phy:"coded"})` warns,
+`reset()` prints `ERR 0x10 (INVALID ADDR) (:2806)` and advertising is dead,
+*"I could not see it from my phone"* -- and then the next
+`setAdvertising({},{phy:"coded"})` brings it back, a second call with
+`{phy:"1mbps",scannable:"true"}` returns it to 1 Mbps and the Web IDE can
+connect. *"no NRF.sleep()/wake() needed. Now let's make the fix."*
+
+**That is our workaround, confirmed from outside.** Naming the options again is
+the whole recovery, which is exactly what `advOptions()` does with
+`scannable:true` since `c718aed`: a latched device recovers on the module's next
+advertising call without anyone sleeping the radio. @enaon's `NRF.sleep()` was a
+coincidence of ordering, and the detour it sent the thread on is closed.
+
+**20:50 UTC, the patch**, in `jsble_advertising_start`: before the legacy
+ternary, warn *"Connectable legacy advertisements can only be used with
+scannable:true. Enabling scan response."*, clear `BLE_IS_NOT_SCANNABLE`, and
+collapse the ternary so a connectable legacy advertisement is always
+`CONNECTABLE_SCANNABLE_UNDIRECTED`. It mirrors the warning that already existed
+for the opposite case, which is what he proposed at 13:54.
+
+**Checked here before forming an opinion, because the patch deletes a branch.**
+`BLE_GAP_ADV_TYPE_CONNECTABLE_NONSCANNABLE_DIRECTED` leaves the firmware with
+it, and nothing reachable goes with it: `adv_params.p_peer_addr = NULL` is
+unconditional twenty lines below, and no code in `bluetooth.c` ever sets a peer
+address for advertising, so that branch could not have worked for any caller.
+The extended path keeps `EXTENDED_CONNECTABLE_NONSCANNABLE_UNDIRECTED`, legal in
+BLE 5, so the asymmetry the two warnings now describe is a real one rather than
+a convention. @fanoush had also answered the power question at 15:31: a
+connectable device listens after every advertisement anyway, so non-scannable
+saves no listening, only the wasted scan request and empty response.
+
+**@gfwilliams, 14:07 UTC**: *"I'm a bit busy the next week or so but I'll try
+and get a fix in for this when I return."* So the firmware fix lands in about a
+week, and `scannable:true` in `advOptions()` stays necessary for every build in
+the field meanwhile, then becomes redundant rather than wrong. It stays.
+
+**What this changes in the second pull request**: one half-sentence. The body
+draft said the error *"is espruino/Espruino#2772"* and now adds that @fanoush
+has a patch there, so a maintainer who has just read his own issue is not being
+told about an open bug. 149 words, still the owner's to post.
+
+A one-line comment for #2772 is drafted in the scratchpad
+(`issue2772-comment.md`) and is **optional**: it says only what this bench can
+add, which is the `p_peer_addr` check and that the patch and the module's
+workaround agree. Nothing in either thread asks this project for anything.
