@@ -33,19 +33,27 @@
   },
   "ci": {
     "comments": 0,
-    "state": "success",
-    "title": "0a8effb main",
-    "updated": "2026-10-24T21:01:02Z",
-    "url": "https://github.com/yerpj/bthome-writable/actions/runs/40132348366",
+    "state": "queued",
+    "title": "3a9f84a main",
+    "updated": "2026-10-27T14:00:16Z",
+    "url": "https://github.com/yerpj/bthome-writable/actions/runs/40517058149",
     "why": "our own CI, last run"
   },
   "espruino#8024": {
-    "comments": 80,
+    "comments": 116,
     "state": "open",
     "title": "bthome-writable, the design thread",
     "updated": "",
     "url": "https://github.com/orgs/espruino/discussions/8024",
-    "why": "the design discussion (45 replies collapsed on the page)"
+    "why": "the design discussion (70 replies collapsed on the page)"
+  },
+  "espruino/Espruino#2772": {
+    "comments": 1,
+    "state": "open",
+    "title": "nRF52840: `ERR 0x10 (INVALID ADDR)` in NRF.setAdvertising",
+    "updated": "2026-10-27T13:58:57Z",
+    "url": "https://github.com/espruino/Espruino/issues/2772",
+    "why": "the firmware's INVALID ADDR (D-143, D-147)"
   },
   "espruino/EspruinoDocs#761": {
     "comments": 3,
@@ -96,10 +104,10 @@
     "why": "the schedule and six fixes (D-114)"
   },
   "espruino/EspruinoDocs#767": {
-    "comments": 0,
-    "state": "open",
+    "comments": 1,
+    "state": "merged",
     "title": "BTHomeWritable: fold a burst of changed() calls, and three fixes",
-    "updated": "2026-10-25T11:45:04Z",
+    "updated": "2026-10-26T07:46:18Z",
     "url": "https://github.com/espruino/EspruinoDocs/pull/767",
     "why": "the changed() fold (D-123, D-124)"
   },

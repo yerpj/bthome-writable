@@ -9,7 +9,7 @@ mechanism rather than describe it.
 | `round-trip.png` | The four steps, with real bench bytes: advertising carrying the `0xFF` declaration, discovery, the write to one entry's characteristic, the acknowledgement. |
 | `latency.png` | Click → action → confirmation, measured on one Raspberry Pi with no ESPHome proxy: 10.7 s baseline down to 1.7 s. |
 | `try-it.png` | What the ten-minute replication needs, and the exchange it produces, as a sequence diagram. Narrow on purpose: it is meant to be read in a discussion thread. `docs/try-it.md` is the long form. |
-| `puck-battery-life.png` | Days on a coin cell against the advertising interval, at five command rates, from the four coefficients of `docs/measurements.md` section 23. Destined for the module page, which does not carry it yet: D-142 holds that task. |
+| `puck-battery-life.png` | Days on a coin cell against the advertising interval, at five command rates, from the four coefficients of `docs/measurements.md` section 23. On the module page since D-150, copied there by `PAGE_IMAGES` in `tools/build_espruino_module.py` rather than kept twice. |
 
 Each `.png` is rendered from the `.html` beside it, so the numbers stay
 editable and the figure stays reproducible:
