@@ -45,13 +45,19 @@ bw.setup({
   },
 });
 
-/* Arm the firmware's sticky flag, with the warning that comes with it. */
-var poison = function () {
+/* Arm the firmware's sticky flag, with the warning that comes with it.
+ *
+ * Both of these are the console's handles rather than this sketch's: it drives
+ * nothing by itself, and a `var` the file never calls is an unused one to
+ * `eslint` (which is what turned the Espruino job red from `e2c19d0` to
+ * `d076546`). On `global` they are what D-147 ran, `poison()` then the five
+ * options, and they lint. */
+global.poison = function () {
   NRF.setAdvertising({}, { phy: "coded" });
 };
 
 /* The call the module used to make: five options, `scannable` not among them. */
-var fiveOptions = function () {
+global.fiveOptions = function () {
   NRF.setAdvertising(
     {},
     { interval: 1000, connectable: true, discoverable: true, whenConnected: true, showName: true }
