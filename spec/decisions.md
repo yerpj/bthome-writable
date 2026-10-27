@@ -10141,3 +10141,74 @@ is §6's requirement rather than a local precaution. No behaviour changed, so
 `CHANGELOG.md` gains nothing: the integration and the module already did this.
 
 **This closes the fourth and last item of the two audits of 2026-10-27.**
+
+## D-153 -- #767 is merged, the firmware bug has an issue of its own, and the second pull request is ready
+
+**2026-10-27**, a reading of `tools.watch_github` taken before preparing the
+second EspruinoDocs pull request, which moved three things at once and one of
+them was ours.
+
+**EspruinoDocs#767 merged on 2026-10-26**, one maintainer comment. So
+`espruino:master` carries the module and its page as of D-124's fold and
+D-123's three fixes, nothing of ours is pending there, and the second pull
+request goes onto master rather than onto a branch waiting for review. D-140's
+record of it as open was true when written and stays as it is.
+
+**espruino/Espruino#2772, opened by @gfwilliams on 2026-10-27**: *"nRF52840:
+`ERR 0x10 (INVALID ADDR)` in NRF.setAdvertising"*, linking espruino#8024 and
+carrying the two-call repro from D-147 verbatim, a `phy:"coded"` call followed
+by an ordinary connectable one. He says in the thread that he reproduced it on a
+Jolt.js on 2v29 running the documentation example and that he is *"not sure why,
+or where it's coming from"*. @fanoush then put the cause and a candidate patch
+in the issue: the connectable non-scannable path builds a *directed*
+advertisement, which needs a peer address, and `targets/nrf5x/bluetooth.c`
+around line 2867 already handles the opposite case, so the fix is to mirror it
+and clear `BLE_IS_NOT_SCANNABLE` with a warning.
+
+**That is the chain closing.** This bench found the latch on 2026-10-26
+(D-143), reproduced it on the only board here that has the coded phy
+(D-147), and the report has become an upstream issue with a diagnosis and a
+patch proposal by somebody else, which is what a good bug report is for.
+Nothing is asked of this project in either thread. `#2772` is on the watchlist
+now, because the day it closes is the day `scannable:true` in `advOptions()`
+stops being a workaround.
+
+**espruino#8024 moved 36 comments**, and the parts that matter here: @MaBecker
+asked which board to test with and was answered; @enaon reports sub-500 ms
+responses after moving his solar lights to 300 ms advertising and calls the
+automations usable; the owner has corrected the 45 uA figure after all
+(D-142's *"message inutile"* applied to a separate correction, not to this one);
+and @gfwilliams has asked for the advertising discussion to continue in #2772,
+which the owner proposed to the two others in the thread.
+
+### The second pull request, prepared and handed over
+
+The folder `espruino/dist/espruinodocs/bthome-writable/` is the pull request:
+`BTHomeWritable.js` (24 827 bytes, 173 under budget), `BTHomeWritable.md`, and
+`BTHomeWritable/puck-battery-life.png`. Diffed against master rather than
+assumed: **+24/-37 in the module and +70/-7 on the page**, and nothing upstream
+has touched either file since #767, so there is nothing of Gordon's to preserve.
+
+The module carries six changes: `scannable:true` named in `advOptions()`, the
+double refusal reported instead of thrown raw (both `c718aed`), `rejects()`
+(`7a53479`), the `setAdvertisingInterval` guard that compared the fast interval
+(`d40e620`), `0x3B` forbidden (`1302e38`), and one comment shortened to pay for
+them. The page carries the coin-cell section with its table and figure, the
+exclusion of `0x3B`, the real advertising budget beside the arithmetic one, the
+hexadecimal characteristic numbering, four new table rows and the corrected
+185 uA rebuild figure.
+
+**The figure's size was checked rather than assumed**, since the whole point of
+the published module's byte budget is that a conspicuously unprecedented file is
+what a reviewer refuses. `modules/` upstream holds three PNGs, none above
+10 kB, which reads badly for a 200 kB plot; the repository as a whole holds 596
+images with a median of 78 kB and 131 of them above 190 kB, and `tutorials/`
+alone has 150 PNGs with a median of 63 kB and a 954 kB maximum. So the figure is
+ordinary for the repository it is joining, and it stays as rendered.
+
+`AESCCM.md`'s 18 lines stay out, as in #767: a different subject, its own pull
+request, still owed.
+
+The commands, the file-by-file reasoning and a 147-word body draft are in the
+scratchpad at `espruinodocs-pr2.md`. **Opening it is the owner's** (D-091): the
+account is his, and the sentences a maintainer reads should be too.
