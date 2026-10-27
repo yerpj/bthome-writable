@@ -18,6 +18,20 @@ its first non-draft release. Every entry names the decision behind it:
 The integration's `manifest.json` carries the version of the last tag cut, so it
 reads 0.2.0 until something here touches `custom_components/` and bumps it.
 
+### Added
+
+- **A refused write is counted on the device, with or without a handler.**
+  Espruino acknowledges a write before application code runs, so a device that
+  refuses one cannot say so over the air: `onError` was the only place it
+  showed, and `onError` is optional. A device deployed without one had no trace
+  of a write it did not apply. `bw.rejects()` now returns a count per error
+  code, so a stale layout, a bindkey that does not match and a replayed counter
+  are told apart from each other rather than merely totalled. The protocol asks
+  for it at §7 of `2.0-draft.9`, where two independent readings found the same
+  gap (D-144, D-145). What it cannot count is a write refused for its length:
+  that one is refused by the stack below the module, which is also the only
+  notice the central gets.
+
 ### Fixed
 
 - **The module stated five advertising options and inherited the sixth.**

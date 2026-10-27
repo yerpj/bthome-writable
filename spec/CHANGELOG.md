@@ -10,6 +10,32 @@ A draft number is not a semantic version: nothing is frozen until the first
 release, and `decisions.md` carries the reasoning and the measurement behind
 each line below.
 
+## 2.0-draft.9 - 2026-10-27
+
+### Added
+
+- **§7**: a write the device does not apply SHOULD leave a trace on the device
+  itself, a callback or a count, and not only on the central that sent it. §4.2
+  already said a refusal is silent where the platform acknowledges before
+  application code runs; what it did not say is that the device then owes its
+  own user something. Two independent readings of the specification arrived at
+  the same gap, one of them from the specification alone (D-144, D-145). The
+  reference module answers it with `rejects()`.
+
+### Fixed
+
+- **§2.1**'s entry count did not follow from its own arithmetic: 17 to 22 bytes
+  of service data cannot give "13 to 17 entries". It is 12 to 17, or 10 to 15
+  once a settings revision is in the packet, and 4 to 9 sealed, which the
+  section now says and which leaves the theoretical 19 where it was. The old
+  figure dates from D-105, where it replaced a figure nobody had measured at
+  all (D-145).
+- **§2.4** read the advertising budget off two different firmware builds of the
+  same board, pairing one build's 5 bytes with the other's 22. The sentence now
+  gives both ends as the ranges they are, 5 to 7 with the name and 20 to 22
+  without, and names no build: which build does which is `docs/measurements.md`
+  §5's business, not the protocol's (D-145).
+
 ## 2.0-draft.8 - 2026-10-22
 
 ### Added

@@ -173,7 +173,7 @@ Reference
 | `showName` | put the device name in the advertising packet (default `true`) |
 | `maxServiceData` | what your radio will really accept, in bytes. Set it and the packet is checked at `setup()` rather than at the first transmission |
 | `counterReport` | offer the counter report at `2FAA1000` (default `false`, and only with a `bindkey`) |
-| `onError` | called with a rejected write's error, which is the only place one shows |
+| `onError` | called with a rejected write's error. Optional, and `rejects()` counts refusals whether you give one or not |
 | `signed`, per entry | force a numeric entry's signedness. The module knows which BTHome object ids are signed; if BTHome assigns a new signed id before this module learns it, `signed:true` on that entry is the way through without waiting for a release |
 
 ### Methods
@@ -185,6 +185,7 @@ Reference
 | `bw.setAdvertisingInterval(ms)` | change the advertising interval, in milliseconds, without re-running `setup()` |
 | `bw.setFastTimeout(ms)` | change how long the fast window lasts, in milliseconds |
 | `bw.plan()` | what `setup()` worked out: `entryIds`, the writable entries and their UUIDs |
+| `bw.rejects()` | how many writes have been refused, counted per error code: `{objectid_mismatch:2}` |
 | `bw.characteristicUuid(k)` | the characteristic UUID of entry *k*, counted from 1 |
 | `bw.SERVICE_UUID` | the GATT service the entries live under |
 
@@ -243,6 +244,9 @@ publishes four times a second.
 **A rejected write still looks delivered.** Espruino acknowledges a write
 before your handler runs, so a device that refuses one cannot say so over the
 air. `onError` is where it shows, and it is worth printing during development.
+`bw.rejects()` counts them per error code whether or not you pass a handler, so
+a device already in the field still has something to show when a receiver
+starts writing nonsense to it.
 
 **One central at a time.** These boards serve a single connection, so a
 receiver's write will fail while the Web IDE is connected — including, quietly,
