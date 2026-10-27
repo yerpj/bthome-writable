@@ -17,6 +17,16 @@ DECLARATION_OBJECT_ID: Final = 0xFF
 
 PACKET_ID_OBJECT_ID: Final = 0x00
 
+COMMAND_OBJECT_ID: Final = 0x3B
+"""BTHome's command object, which §2.1 excludes from a declaration.
+
+BTHome gives it to a *device* announcing a command of its own, in its
+advertising, and advises encrypting such advertisements so nobody can spoof one.
+That is the uplink; this extension is the downlink, and a writable `0x3B` would
+make one object face both ways (D-151). A receiver still has to walk past one in
+service data, which is why `_value_length` keeps its framing: the exclusion is
+about offering an entry, not about parsing a packet."""
+
 SETTINGS_REVISION_OBJECT_ID: Final = 0x65
 """BTHome's settings revision. A device advertising it has writable values that
 can change by themselves, and readable characteristics to fetch them (§3.2)."""

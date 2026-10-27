@@ -10,6 +10,40 @@ A draft number is not a semantic version: nothing is frozen until the first
 release, and `decisions.md` carries the reasoning and the measurement behind
 each line below.
 
+## 2.0-draft.10 - 2026-10-27
+
+### Removed
+
+- **The command object `0x3B` is no longer a writable entry type.** §2.1 now
+  excludes it beside `0x00`, `0xFF`, `0xF0`-`0xF2` and `0x65`, and §4.2's
+  "events are writable" is button and dimmer only. BTHome gives `0x3B` to a
+  *device* announcing a command of its own, in its advertising, and advises
+  that such advertisements be encrypted so nobody can spoof one: that is the
+  uplink, and this extension is the downlink. A writable `0x3B` entry would
+  make one object face both ways, where a receiver writing a command and a
+  device advertising one mean opposite things by the same bytes. The owner's
+  decision (D-151).
+
+  A device MUST NOT declare it and a receiver MUST NOT offer it, and neither is
+  a reason to reject the rest of a declaration: it is counted and skipped like
+  any entry a receiver will not serve, so the entries after it keep their
+  characteristic numbers. The fixture `writable-command` is replaced by
+  `command-entry-is-skipped`, which pins exactly that.
+
+  What goes with it: the framing `2 + (length & 0x1F)`, which was the one rule
+  this protocol carried in code and in no document, and which two audits found
+  missing within a day of each other (D-144, D-145). It is BTHome's rule, it is
+  on bthome.io/format, and it is no longer this specification's business.
+  Writes a device acts on immediately keep `0x3A` and `0x3C`.
+
+### Changed
+
+- **§4.2 states the length-byte convention it used to imply.** The byte after
+  the object ID is the length, so text (`0x53`) and raw (`0x54`) carry
+  `1 + length` value bytes. That sentence existed to introduce the command
+  object's exception; the exception is gone and the convention is worth saying
+  on its own.
+
 ## 2.0-draft.9 - 2026-10-27
 
 ### Added

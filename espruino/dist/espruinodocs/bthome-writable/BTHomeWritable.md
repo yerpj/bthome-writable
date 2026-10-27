@@ -91,8 +91,12 @@ Events and raw objects are declared by ID instead of by name:
 { id:0x3A, length:1, set:v=>print("button", v) }  // fixed length
 { id:0x3C, length:1, set:v=>print("dimmer", v) }  // an event code, not a value
 { id:0x54, variable:true, set:b=>print(b) }       // length-prefixed
-{ id:0x3B, set:op=>print("command", op) }         // command: framing is fixed
 ```
+
+BTHome's command object `0x3B` is **not** writable: the protocol excludes it,
+because BTHome gives it to a device announcing a command of its own and a
+writable one would face both ways. `setup()` refuses it with
+`forbidden_entry`, as it does the packet id and the settings revision.
 
 Declaring one of these by name is refused with `writable_needs_id`: the module
 works out an unnamed type's encoding by probing the BTHome module with 1 and 2,

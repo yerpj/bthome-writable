@@ -41,6 +41,23 @@ a release on its way past (D-148).
   that one is refused by the stack below the module, which is also the only
   notice the central gets.
 
+### Removed
+
+- **`0x3B command` is no longer writable, on either side.** BTHome gives the
+  command object to a *device* announcing a command of its own, in its
+  advertising, and advises encrypting such advertisements so nobody can spoof
+  one: that direction is the uplink, and this extension is the downlink, so a
+  writable `0x3B` entry would make one object face both ways. The owner's
+  decision (`PROTOCOL.md` §2.1, `2.0-draft.10`, D-151). The integration no
+  longer offers the five command buttons it has offered since 2026-10-03, and
+  the module refuses a declared `0x3B` at `setup()` with `forbidden_entry`; the
+  entry is still counted on both sides, so the entries behind it keep their
+  characteristic numbers. What goes with it is the framing
+  `2 + (length & 0x1F)`, the one rule this protocol carried in code and in no
+  document, which two independent audits found missing within a day of each
+  other (D-144, D-145). A receiver still measures a command object when walking
+  service data, because a device may advertise one.
+
 ### Changed
 
 - **A write too large for the link now says so in the log.** §4.4's ceiling is

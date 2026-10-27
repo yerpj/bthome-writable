@@ -32,5 +32,9 @@ def test_the_library_knows_the_settings_revision() -> None:
 @pytest.mark.parametrize("object_id", [0x00, 0x53, 0x3A, 0x3B, 0x3C, 0x54])
 def test_the_library_knows_every_object_this_protocol_names(object_id: int) -> None:
     """Each of these is named in PROTOCOL.md and reached through the library's
-    table: the packet id, text, the three event objects, raw."""
+    table: the packet id, text, the event objects, raw.
+
+    `0x3B` is here although §2.1 excludes it from a declaration (D-151): a
+    device may still advertise a command of its own, and a receiver that cannot
+    walk past one would lose the declaration behind it."""
     assert object_id in MEAS_TYPES, f"0x{object_id:02X} missing from bthome-ble"

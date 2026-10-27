@@ -23,7 +23,8 @@ assigns an id; these are **92 objects, counted against `bthome-ble` 3.22.1** wit
 | binary sensor | 28 | `switch` |
 | numeric sensor | 59 | `number` |
 | string (`0x53`) | 1 | `text` |
-| event (`0x3A` button, `0x3C` dimmer, `0x3B` command) | 3 | `button`, one per value |
+| event (`0x3A` button, `0x3C` dimmer) | 3 | `button`, one per value |
+| command (`0x3B`) | — | — not offered, §2.1 excludes it |
 | raw (`0x54`) | 1 | — not exposed |
 
 **Recounted 2026-10-03, and the previous correction was wrong twice over.**
@@ -147,20 +148,27 @@ the rest unreachable, which is the mistake the switch platform used to make.
 
 A dimmer's second byte is a step count; a press sends one step.
 
-**`0x3B command` is offered**, which version 1 could not do. Its `0x00` is
-`off`, a real command with no no-op, and a write-all payload would have sent it
-one every time anything else on the device was written. Version 2 writes one
-entry and nothing else, so the difficulty disappears (D-048). Its vocabulary is
-five buttons — off, on, toggle, step up, step down — and the step commands carry
-a one-step argument.
+**`0x3B command` is not offered**, and that is a decision rather than a gap
+(D-151). BTHome gives the command object to a *device* announcing a command of
+its own, in its advertising, and advises encrypting such advertisements so that
+nobody can spoof one. That direction is the uplink; this extension is the
+downlink. A writable `0x3B` would make one object face both ways, and a
+receiver writing `3B 00 00` and a device advertising it would mean opposite
+things by the same three bytes. §2.1 excludes it, so a receiver counts a
+declared `0x3B` and skips it, and the entries after it keep their numbers.
 
-Its framing is `<argument length, low 5 bits><opcode><arguments>`, so **one
-entry accepts writes of two different lengths**. That is unlike every other
-object: a fixed-width object has one length and a length-prefixed one announces
-its own. Until 2026-10-03 this sentence was true of the receiver and false of
-the reference device — the Espruino module had no way to describe the framing,
-so every command write it received was refused as `trailing_bytes` (D-081).
-Both sides now agree, and the `writable-command` fixture pins the two shapes.
+**What was offered until 2026-10-27, and what it cost.** Version 1 could not
+offer it at all: its `0x00` is `off`, a real command with no no-op, and a
+write-all payload would have sent one every time anything else on the device
+was written. Version 2 writes one entry and nothing else, so that difficulty
+disappeared (D-048) and the receiver offered five buttons — off, on, toggle,
+step up, step down. Its framing, `<argument length, low 5 bits><opcode>
+<arguments>`, made it the one object where **one entry accepts writes of two
+different lengths**; the Espruino module had no way to describe that, so every
+command write was refused as `trailing_bytes` until 2026-10-03 (D-081), and the
+rule itself lived in two implementations and in no document, which is what two
+independent audits found within a day of each other (D-144, D-145). Excluding
+the object removes the rule rather than writing it down.
 
 ## How a brightness finds its light  [DECISION — ruled out of scope]
 

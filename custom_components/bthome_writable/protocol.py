@@ -19,6 +19,7 @@ import hmac
 from typing import Final
 
 from .const import (
+    COMMAND_OBJECT_ID,
     DECLARATION_OBJECT_ID,
     DEVICE_INFO_BYTE_READ,
     DEVICE_INFO_BYTE_WRITE,
@@ -44,6 +45,7 @@ COMMAND_FORMAT: Final = "command"  # <arg length, low 5 bits> <opcode> <args>
 FORBIDDEN_ENTRIES: Final = frozenset(
     {
         PACKET_ID_OBJECT_ID,
+        COMMAND_OBJECT_ID,
         DECLARATION_OBJECT_ID,
         SETTINGS_REVISION_OBJECT_ID,
         0xF0,
@@ -193,11 +195,12 @@ def describe(object_id: int) -> ObjectKind | None:
 
 def event_values(object_id: int) -> dict[int, str] | None:
     """The event vocabulary for an object id, from `bthome-ble`'s own table."""
-    from bthome_ble.event import BUTTON_EVENTS, COMMAND_EVENTS, DIMMER_EVENTS
+    from bthome_ble.event import BUTTON_EVENTS, DIMMER_EVENTS
 
-    table = {0x3A: BUTTON_EVENTS, 0x3B: COMMAND_EVENTS, 0x3C: DIMMER_EVENTS}.get(
-        object_id
-    )
+    # 0x3B is deliberately absent: §2.1 excludes the command object from a
+    # declaration, so no entry of it is ever offered and no button is built
+    # from its vocabulary (D-151).
+    table = {0x3A: BUTTON_EVENTS, 0x3C: DIMMER_EVENTS}.get(object_id)
     if table is None:
         return None
     return {code: name for code, name in table.items() if name is not None}
