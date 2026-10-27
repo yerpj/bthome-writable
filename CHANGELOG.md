@@ -15,8 +15,14 @@ its first non-draft release. Every entry names the decision behind it:
 
 ## [Unreleased]
 
-The integration's `manifest.json` carries the version of the last tag cut, so it
-reads 0.2.0 until something here touches `custom_components/` and bumps it.
+The integration's `manifest.json` carries the version of the last tag cut, and
+**a tag is what moves it**: work lands here under `[Unreleased]`, whatever it
+touches, and the version is bumped when a release is cut rather than by the
+commit that earns one. The sentence here used to say that touching
+`custom_components/` bumps it, which read as if a merge could, and
+`tools/tests/test_changelog.py` requires a release section for whatever version
+the manifest states -- so that reading made every change to the integration cut
+a release on its way past (D-148).
 
 ### Added
 
