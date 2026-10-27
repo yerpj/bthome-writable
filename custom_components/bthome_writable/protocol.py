@@ -326,6 +326,11 @@ def split_objects(payload: bytes) -> tuple[list[tuple[int, bytes]], int | None]:
     own object loop. The walk stops at the declaration, or at the first ID
     `bthome-ble` does not know, as upstream does: anything after an unknown ID is
     unreachable for every BTHome receiver.
+
+    §6 is the walk this implements, and it is also why the widths come from
+    `_object_table()` rather than from a table here: measuring a BTHome object is
+    BTHome's business, and this protocol only requires that the parser be able to
+    (D-152).
     """
     table = _object_table()
     objects: list[tuple[int, bytes]] = []
