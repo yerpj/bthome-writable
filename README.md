@@ -65,9 +65,13 @@ version: installing without HACS, and what to do when a control misbehaves.
 
 ![What it needs, and what then happens on the air](https://raw.githubusercontent.com/yerpj/bthome-writable/main/docs/figures/try-it.png)
 
+- [`docs/try-it.md`](docs/try-it.md) — **start here for what this actually
+  does**: ten minutes, one board, one Home Assistant, and the exchange on the
+  air at the end of it.
 - [`docs/first-use-case.md`](docs/first-use-case.md) — the first working
-  end-to-end demonstration, with diagrams, timings and what broke. Start here
-  for what this actually does; also as a [PDF](docs/first-use-case.pdf).
+  end-to-end demonstration, with diagrams, timings and what broke. It describes
+  **protocol version 1**, and it is what produced the move to version 2, so read
+  it as history; also as a [PDF](docs/first-use-case.pdf).
 - [`docs/measurements.md`](docs/measurements.md) — every number this project has
   measured, with the command that produces it again: response time against
   advertising interval, write and rejection timings, advertising budgets per

@@ -166,7 +166,7 @@ review. Still deliberately out of scope: pairing a level with its light
 | Objection | Answer | Source |
 |---|---|---|
 | A connection is too slow for a good experience (#146) | 1.7 s click to action at a one-second interval, of which 36 ms is the write itself; measured again on version 2 through an ESP32 proxy | `decisions.md` D-013, D-024, D-049; `docs/figures/latency.png` |
-| It costs battery: the device must advertise fast | **The idle interval is the device's choice, and this extension does not change it.** A BTHome sensor already picks an advertising interval, and a writable one picks the same way: `interval` is the application's, and the downlink neither raises it nor needs it raised, because the idle interval does not set command latency (D-024). What the module adds is bounded and visible: 100 ms for 30 s after a disconnect, both configurable, and only after someone has actually connected. The absolute figure for a given coin cell is a property of that device's advertising budget, not of this mechanism — **out of scope by the owner's ruling of 2026-10-03** (D-081). What this project does owe is the latency evidence showing the fast window is not needed at idle, and that exists | D-014, D-024, D-055, D-060, D-061 |
+| It costs battery: the device must advertise fast | **The idle interval is the device's choice, and this extension does not change it.** A BTHome sensor already picks an advertising interval, and a writable one picks the same way: `interval` is the application's, and the downlink neither raises it nor needs it raised, because the idle interval does not set command latency (D-024). What the module adds is bounded and visible: 100 ms for 30 s after a disconnect, both configurable, and only after someone has actually connected. The absolute figure for a given coin cell is a property of that device's advertising budget, not of this mechanism. That was ruled out of scope on 2026-10-03 (D-081) and is no longer: **the figure is now measured**, four coefficients on an Otii Arc Pro giving microamps and days on a CR2032 against the advertising interval, with the fast window priced on its own (`docs/measurements.md` §23, D-142). The latency evidence showing the fast window is not needed at idle still stands beside it | D-014, D-024, D-055, D-060, D-061, D-142 |
 | Unknown objects break existing receivers | bthome-ble skips an unknown ID and stops parsing; placing new objects last loses nothing for existing installs. Tested in CI | D-005 |
 | It will not look like our code | The secure mode is core `bthome`'s, deliberately: same nonce, same framing, same device-info-byte-as-transmitted rule, the same replay check with the same thresholds, the same `sleepy_device` key and rule, and the same flow vocabulary (`get_encryption_key`, `expected_32_characters`, `decryption_failed`, reauthentication after two failures). Read out of their source, not from memory of it | D-068, D-082 |
 | Two integrations means two copies of the bindkey | True, and it is the strongest argument for merging rather than against the design. A device reflashed encrypted left core `bthome`'s sensor frozen on its last plaintext reading while our entry held the key: one key, two places, nothing linking them. A merge removes the seam; nothing we can do from outside does | D-082 |
@@ -246,10 +246,12 @@ Claims to avoid, because they were wrong once in public:
   the guard caught it within the hour** (D-100), which is the evidence that this
   arrangement works rather than the hope that it would
   remembering (D-085).
-- ~~Measure what the mechanism costs a coin cell~~ — **out of scope** (D-081,
-  2026-10-03). The advertising interval belongs to the device's application, as
-  it does for any BTHome sensor; the only thing this extension adds to it is a
-  bounded fast window after a connection, and the latency campaign already shows
-  that window is not needed at idle. A number for one coin cell would describe
-  that board's advertising budget rather than this mechanism. The objection is
-  answered in §3 by argument, not by measurement, and says so.
+- ~~Measure what the mechanism costs a coin cell~~ — **done** (D-142,
+  2026-10-25, reversing D-081 of 2026-10-03). The reasoning for leaving it out
+  still holds, and it stopped being a reason not to measure: the advertising
+  interval belongs to the device's application, as it does for any BTHome
+  sensor, and the only thing this extension adds is a bounded fast window after
+  a connection. §23 of `docs/measurements.md` now carries the four measured
+  coefficients, the table in microamps and in days on a 154 mAh allowance, and
+  the figure destined for the module page. **The objection in §3 is answered by
+  measurement, not by argument.**

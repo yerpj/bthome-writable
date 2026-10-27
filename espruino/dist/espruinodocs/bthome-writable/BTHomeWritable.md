@@ -97,6 +97,8 @@ Events and raw objects are declared by ID instead of by name:
 Declaring one of these by name is refused with `writable_needs_id`: the module
 works out an unnamed type's encoding by probing the BTHome module with 1 and 2,
 which reads an event code or a raw object's first byte as something it is not.
+A name the BTHome module cannot encode at all is a different refusal,
+`unsupported_writable_type`, so code that branches on `error.code` wants both.
 
 Their `set` receives the value bytes, the event code, or a command's opcode.
 
@@ -131,8 +133,13 @@ where it is instead of guessing.
 How much fits in one packet
 ---------------------------
 
-The BTHome service data has about **24 bytes** to spend, and **16** once
-encrypted. Against that:
+The BTHome service data has **24 bytes** of arithmetic room, and **16** once
+encrypted: 31 less the flags and the service data's own framing. **Real radios
+take less, and much less.** A Puck.js accepted 17 bytes; a nice!nano accepted 5
+to 7 with its name in the packet and 20 to 22 without, depending on its
+firmware. Plan against your own board rather than against the 24, and set
+`maxServiceData` so the packet is checked at `setup()` instead of at the first
+transmission. Against the budget:
 
 | | |
 |---|---|
@@ -156,7 +163,7 @@ Reference
 
 | Option | |
 |---|---|
-| `advertise` | the entry list, in order. Entry *k* is characteristic `2FAA000k` |
+| `advertise` | the entry list, in order. Entry *k* is characteristic `2FAA000k`, with *k* in hexadecimal on four digits: entry 10 is `2FAA000A`, entry 16 is `2FAA0010` |
 | `interval` | advertising interval in **milliseconds**, 20–10000 (default 2000). A per-entry `interval`, also in milliseconds, is how long that sensor's value may be reused before `get()` is called again; `0` reads on every packet |
 | `fastInterval` | advertising interval in milliseconds while a receiver is around, floored at 100 (the default) |
 | `fastTimeout` | milliseconds to keep advertising fast after a disconnect (default 30000) |
@@ -167,6 +174,7 @@ Reference
 | `maxServiceData` | what your radio will really accept, in bytes. Set it and the packet is checked at `setup()` rather than at the first transmission |
 | `counterReport` | offer the counter report at `2FAA1000` (default `false`, and only with a `bindkey`) |
 | `onError` | called with a rejected write's error, which is the only place one shows |
+| `signed`, per entry | force a numeric entry's signedness. The module knows which BTHome object ids are signed; if BTHome assigns a new signed id before this module learns it, `signed:true` on that entry is the way through without waiting for a release |
 
 ### Methods
 
@@ -177,6 +185,8 @@ Reference
 | `bw.setAdvertisingInterval(ms)` | change the advertising interval, in milliseconds, without re-running `setup()` |
 | `bw.setFastTimeout(ms)` | change how long the fast window lasts, in milliseconds |
 | `bw.plan()` | what `setup()` worked out: `entryIds`, the writable entries and their UUIDs |
+| `bw.characteristicUuid(k)` | the characteristic UUID of entry *k*, counted from 1 |
+| `bw.SERVICE_UUID` | the GATT service the entries live under |
 
 Notes
 -----
@@ -190,7 +200,8 @@ advertisement if the packet id is different compared to the previous one"*, and
 *"this allows you to send multiple advertisements that are exactly the same"*.
 It is also much cheaper. A rebuild is 26-38 ms of the one thread on an nRF52,
 and on a device with a `bindkey` it is re-sealed with AES-CCM: rebuilding an
-identical packet every second measured at over 100 uA of idle current for
+identical packet every second measured at about 185 uA of extra idle draw on a
+nice!nano, 235 against 50 with everything else on the board unchanged, for
 nothing. `bw.update()` forces a rebuild, and `bw.changed()` is how a value that
 moved on its own announces itself.
 

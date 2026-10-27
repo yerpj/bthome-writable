@@ -198,10 +198,36 @@ time, and a desktop Bluetooth stack holds the link long after it has
 disconnected. Power-cycling the device clears it in seconds; restarting Home
 Assistant does not (D-043).
 
+**How many links Home Assistant opens at once is a setting.** On the device's
+entry under *Settings → Devices & services*, **Configure** offers *Simultaneous
+connections*, between 1 and a ceiling the host reports. The default is **2**,
+which suits a single adapter or a single proxy and leaves room for an Espruino
+Web IDE session on the side (D-003). Lower it if writes start failing while
+another device is being written; raise it only if the host really has the slots.
+
 **Everything is slow and flaky.** If Home Assistant runs on a Raspberry Pi,
 check for an under-voltage warning in Settings → Repairs before blaming
 Bluetooth. A Pi at the edge of its power budget drops its radio and its network
 in ways that look like anything but a power problem.
+
+## Measuring it yourself
+
+Every acknowledged write fires a **`bthome_writable_write`** event on the Home
+Assistant bus, with where its time went. Subscribe to it under *Developer tools
+→ Events* and you can measure your own installation rather than trusting the
+figures here.
+
+| Field | |
+|---|---|
+| `queued_ms` | everything before the command was allowed to open a link: the grouping window, this device's turn, and one of the host's connection slots |
+| `connect_ms` | the connection itself, mostly the wait to catch the device advertising, which is what its advertising interval buys or costs |
+| `counter_ms` | reading the device's write counter, on an encrypted device |
+| `write_ms` | the write and its acknowledgement |
+| `confirm_ms` | the read back afterwards, and 0 when there was nothing to read |
+| `total_ms` | up to the acknowledgement, so it **excludes** `confirm_ms`. What someone pressing a button waits for is the two together |
+
+Most of the write timings in `docs/measurements.md` are collected from this
+event.
 
 ## Removing it
 

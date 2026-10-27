@@ -90,7 +90,7 @@ Storage — Espruino's own documentation warns that it may. Two ways past it: dr
 `BTHomeWritable.js` into your project's `modules/` folder, where the IDE will
 inline it at upload; or paste `espruino/dist/light-loop-standalone.min.js`
 instead, which is the same example with the module already inlined and needs no
-step 1 at all. The minified one: its readable twin is 40 kB and a Puck.js has
+step 1 at all. The minified one: its readable twin is 61 kB and a Puck.js has
 neither the Storage nor the memory for it (`decisions.md` D-093).
 
 ### 3. In Home Assistant

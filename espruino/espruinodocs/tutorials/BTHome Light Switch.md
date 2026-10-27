@@ -102,7 +102,10 @@ happens, so receivers read it again:
                        set: function (v) { state.text = v; } }
 ```
 
-Those four objects and the declaration come to 13 bytes of service data. If the
+Those four entries come to 12 bytes of service data: the device-information
+byte, the packet id, the battery reading, the settings revision that a readable
+entry adds, and a five-byte declaration. The three writable states are not in
+there, because a writable value is never advertised. If the
 radio refuses the packet, `showName: false` is the cheapest thing to drop: a
 receiver finds the device by its BTHome service data anyway.
 
