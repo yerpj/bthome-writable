@@ -10,6 +10,10 @@ declaration placement rests on). BTHome's settings revision `0x65` appears
 that does not know `0x65` stops there and the declaration behind it disappears
 -- the device is discovered and offers nothing.
 
+Since `2.0-draft.11` the floor is what §6 asks for rather than a local
+precaution: a receiver MUST take the object table from a BTHome parser, and that
+parser MUST be able to measure every object a device may advertise (D-152).
+
 This test fails if the installed library has lost that object, which is the only
 circumstance in which the floor would need to move.
 """
@@ -36,5 +40,6 @@ def test_the_library_knows_every_object_this_protocol_names(object_id: int) -> N
 
     `0x3B` is here although §2.1 excludes it from a declaration (D-151): a
     device may still advertise a command of its own, and a receiver that cannot
-    walk past one would lose the declaration behind it."""
+    walk past one would lose the declaration behind it, which is the case §6
+    names."""
     assert object_id in MEAS_TYPES, f"0x{object_id:02X} missing from bthome-ble"

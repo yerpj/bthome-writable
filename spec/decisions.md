@@ -10088,3 +10088,56 @@ needs every object's length, `0x3B` included. The rule we just took out of §4.2
 is not needed there any more; a sentence in §6 pointing at BTHome's format for
 the walk might be. It is one sentence, it is his, and it is now the only thing
 the audits' fourth item leaves open.
+
+## D-152 -- The walk is in the specification, the measuring stays with BTHome
+
+**2026-10-27, the owner**, asked what the sentence D-151 left open should say:
+*"laisse à l'intégration bthome ce qu'elle est censée faire et complète
+PROTOCOL.md pour ce que notre module doit faire."* Which is the division the
+whole extension rests on, applied to the one place that had never stated it.
+
+**What was missing, exactly.** §2.2 makes the declaration the last object of the
+service data, and that rule only means something if the objects in front of it
+can be walked. Nothing said a receiver walks them. So nothing said it has to be
+able to measure each one, and the arithmetic that measures the variable-length
+ones lived in two files of code and in no document -- which is what the
+read-only audit and the clean-room implementer each found within a day of the
+other (D-144, D-145), and what the clean-room reader named as the one place it
+would have implemented wrong. Draft.10 then removed that arithmetic along with
+the command object. The hole it left was not the rule, it was the reason: why a
+receiver needs any such rule, and whose rule it is.
+
+**The answer, in two halves.** §6 gains a *Finding the declaration* bullet: a
+receiver walks the objects in front of the declaration rather than scanning for
+`0xFF`, because a value byte can be `0xFF` too and a battery at 255 is not a
+declaration; the widths, the length-prefixed formats and the variable length of
+the command object are BTHome's to define and are published on bthome.io/format;
+and a receiver **MUST take them from a BTHome parser rather than keep a table of
+its own**, which would drift the first time BTHome assigns an object ID. What
+this protocol adds is only the consequence: the parser MUST be able to measure
+**every** object the device may advertise, `0x3B` included, because the first
+object it cannot measure ends the walk and the declaration behind it is lost --
+the device is discovered as an ordinary BTHome sensor and offers nothing, with
+nothing logged anywhere to say why. A receiver SHOULD therefore state the parser
+version it needs rather than accept any, which is what `manifest.json`'s floor
+has been doing since D-083 without a section to point at.
+
+§7 gains the device's half: every object in front of the declaration MUST be a
+BTHome object in BTHome's own framing. A device that invents one makes its own
+declaration unreachable, and no receiver can tell it so.
+
+**What this deliberately does not do.** It does not restate `2 + (length &
+0x1F)`, or any other width. That is the point: the rule two audits found missing
+from this document does not belong in it. It is on bthome.io/format, it reaches
+the reference receiver through `bthome_ble.const.MEAS_TYPES`, and what this
+specification owes a reader is the sentence that sends them there.
+
+**Where it landed.** `PROTOCOL.md` §6 and §7 (`2.0-draft.11`), with the entry in
+`spec/CHANGELOG.md`; the version bumped in the six files that state it and the
+fixtures and vectors regenerated. The code that implements the walk now cites
+the section: `protocol.py`'s `split_objects` says why its widths come from
+`_object_table()`, and `tools/tests/test_library_floor.py` says that its floor
+is §6's requirement rather than a local precaution. No behaviour changed, so
+`CHANGELOG.md` gains nothing: the integration and the module already did this.
+
+**This closes the fourth and last item of the two audits of 2026-10-27.**

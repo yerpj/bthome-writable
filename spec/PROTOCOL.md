@@ -1,6 +1,6 @@
 # BTHome Writable — protocol specification
 
-**Version:** 2.0-draft.10 · **Status:** DRAFT, nothing frozen · **License:** MIT
+**Version:** 2.0-draft.11 · **Status:** DRAFT, nothing frozen · **License:** MIT
 
 BTHome standardizes a BLE **uplink**: a device broadcasts its state in
 advertising, a receiver parses it. It has no **downlink**. This document
@@ -498,6 +498,26 @@ anyone in radio range, which the advertising is.
   service by connecting; it MUST NOT rely on a cached GATT table across a change
   of declaration, since a changed layout usually means new firmware and a rebuilt
   table.
+- **Finding the declaration.** The declaration is the last object of the service
+  data (§2.2), so a receiver reaches it by walking the objects in front of it. It
+  MUST walk them rather than scan for `0xFF`, because a value byte can be `0xFF`
+  as well: a battery level of 255 is not a declaration.
+
+  Measuring those objects is **not this specification's business**. BTHome
+  defines every object's width, which formats carry a length byte, and the
+  variable length of the command object, and it publishes all of it on
+  `bthome.io/format`; a receiver MUST take them from a BTHome parser rather than
+  keep a table of its own, which would drift the first time BTHome assigns an
+  object ID. The reference receiver reads the table of `bthome-ble` for exactly
+  that reason.
+
+  What this protocol requires is the consequence. The parser MUST be able to
+  measure **every** object the device may advertise, the command object `0x3B`
+  included, because the first object it cannot measure ends the walk and the
+  declaration behind it is lost: the device is discovered as an ordinary BTHome
+  sensor and offers nothing, with nothing logged anywhere to say why. A receiver
+  SHOULD therefore state the parser version it needs, rather than accept any
+  (`decisions.md` D-005, D-083).
 - **Writing.** Connect, write with response to the entry's characteristic,
   disconnect. **One command per connection**: a receiver MUST NOT hold the link
   open waiting for a second command, and MUST NOT bundle commands that happen to
@@ -518,6 +538,9 @@ anyone in radio range, which the advertising is.
   identity and merging with the core BTHome device.
 - **Connectable advertising** at all times (§4.1).
 - **Capacity check** at configuration time (§2.4).
+- **Nothing in front of the declaration that a parser cannot measure**: the
+  declaration is last (§2.2) and is reached by walking the objects before it, so
+  every one of them MUST be a BTHome object in BTHome's own framing (§6).
 - **Strict write validation**: object ID, length, no trailing bytes (§4.2).
 - **Refusals that leave a trace**: a write the device does not apply SHOULD be
   observable on the device, through a callback or a count, and not only to the

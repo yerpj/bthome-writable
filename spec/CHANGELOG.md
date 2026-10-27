@@ -10,6 +10,31 @@ A draft number is not a semantic version: nothing is frozen until the first
 release, and `decisions.md` carries the reasoning and the measurement behind
 each line below.
 
+## 2.0-draft.11 - 2026-10-27
+
+### Added
+
+- **§6 says how a receiver finds the declaration, and leaves the measuring to
+  BTHome.** The declaration is the last object of the service data (§2.2), which
+  only means something if the objects in front of it can be walked: §6 now says
+  that a receiver walks them rather than scans for `0xFF`, that the widths and
+  the variable-length formats are BTHome's to define and published on
+  bthome.io/format, and that a receiver MUST take them from a BTHome parser
+  instead of keeping its own table. The requirement this protocol adds is the
+  consequence: the parser must measure **every** object a device may advertise,
+  `0x3B` included, because the first one it cannot measure ends the walk and the
+  declaration behind it disappears with no trace (D-005, D-083, D-152).
+
+- **§7 states the device's half of it**: every object in front of the
+  declaration is a BTHome object in BTHome's own framing. A device that invents
+  one makes its own declaration unreachable.
+
+  This closes the fourth item of the two audits of 2026-10-27 (D-144, D-145),
+  which found the framing rule `2 + (length & 0x1F)` living in code and in no
+  document. Draft.10 removed the rule with the command object; what was still
+  missing was the sentence saying why a receiver needs it at all, and whose rule
+  it is.
+
 ## 2.0-draft.10 - 2026-10-27
 
 ### Removed
@@ -28,7 +53,7 @@ each line below.
   a reason to reject the rest of a declaration: it is counted and skipped like
   any entry a receiver will not serve, so the entries after it keep their
   characteristic numbers. The fixture `writable-command` is replaced by
-  `command-entry-is-skipped`, which pins exactly that.
+  `command-entry-is-forbidden`, which pins exactly that.
 
   What goes with it: the framing `2 + (length & 0x1F)`, which was the one rule
   this protocol carried in code and in no document, and which two audits found
