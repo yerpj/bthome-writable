@@ -1,0 +1,179 @@
+{
+ "label": "arm D: cap 6, four devices, a single three-slot proxy",
+ "cap": 6,
+ "without_pi": true,
+ "silenced": [
+  "Bluetooth Proxy 2ed00c",
+  "esp32-bluetooth-proxy-2ed00c (94:54:C5:2E:D0:0E)"
+ ],
+ "devices": [
+  "lamp",
+  "lamp2",
+  "lamp3",
+  "jolt"
+ ],
+ "wall_seconds": 17.55,
+ "commands": [
+  {
+   "entity": "switch.espruino_cb25_light",
+   "ok": true,
+   "seconds": 3.36,
+   "error": null
+  },
+  {
+   "entity": "switch.espruino_b6ba_light",
+   "ok": true,
+   "seconds": 12.28,
+   "error": null
+  },
+  {
+   "entity": "switch.espruino_5489_light",
+   "ok": true,
+   "seconds": 17.55,
+   "error": null
+  },
+  {
+   "entity": "switch.jolt_js_6a0b_light",
+   "ok": true,
+   "seconds": 15.22,
+   "error": null
+  }
+ ],
+ "events": [
+  {
+   "address": "F5:A8:93:67:CB:25",
+   "entry": 1,
+   "queued_ms": 10.7,
+   "connect_ms": 2519.4,
+   "counter_ms": 0.0,
+   "write_ms": 407.8,
+   "confirm_ms": 417.5,
+   "total_ms": 2938.2
+  },
+  {
+   "address": "C2:38:F5:70:B6:BA",
+   "entry": 1,
+   "queued_ms": 12.6,
+   "connect_ms": 11936.5,
+   "counter_ms": 0.0,
+   "write_ms": 202.4,
+   "confirm_ms": 104.6,
+   "total_ms": 12152.0
+  },
+  {
+   "address": "FA:9C:55:A4:6A:0B",
+   "entry": 1,
+   "queued_ms": 7.2,
+   "connect_ms": 15109.4,
+   "counter_ms": 0.0,
+   "write_ms": 99.9,
+   "confirm_ms": 0.3,
+   "total_ms": 15216.6
+  },
+  {
+   "address": "E0:A4:BA:16:54:89",
+   "entry": 1,
+   "queued_ms": 12.2,
+   "connect_ms": 16439.8,
+   "counter_ms": 0.0,
+   "write_ms": 510.9,
+   "confirm_ms": 567.1,
+   "total_ms": 16963.2
+  }
+ ],
+ "allocations": [
+  [
+   {
+    "source": "A4:F0:0F:1F:10:22",
+    "slots": 3,
+    "free": 3,
+    "allocated": []
+   }
+  ],
+  [
+   {
+    "source": "A4:F0:0F:1F:10:22",
+    "slots": 3,
+    "free": 2,
+    "allocated": [
+     "F5:A8:93:67:CB:25"
+    ]
+   }
+  ],
+  [
+   {
+    "source": "A4:F0:0F:1F:10:22",
+    "slots": 3,
+    "free": 1,
+    "allocated": [
+     "F5:A8:93:67:CB:25",
+     "C2:38:F5:70:B6:BA"
+    ]
+   }
+  ],
+  [
+   {
+    "source": "A4:F0:0F:1F:10:22",
+    "slots": 3,
+    "free": 0,
+    "allocated": [
+     "F5:A8:93:67:CB:25",
+     "C2:38:F5:70:B6:BA",
+     "E0:A4:BA:16:54:89"
+    ]
+   }
+  ],
+  [
+   {
+    "source": "A4:F0:0F:1F:10:22",
+    "slots": 3,
+    "free": 1,
+    "allocated": [
+     "C2:38:F5:70:B6:BA",
+     "E0:A4:BA:16:54:89"
+    ]
+   }
+  ],
+  [
+   {
+    "source": "A4:F0:0F:1F:10:22",
+    "slots": 3,
+    "free": 0,
+    "allocated": [
+     "FA:9C:55:A4:6A:0B",
+     "C2:38:F5:70:B6:BA",
+     "E0:A4:BA:16:54:89"
+    ]
+   }
+  ],
+  [
+   {
+    "source": "A4:F0:0F:1F:10:22",
+    "slots": 3,
+    "free": 1,
+    "allocated": [
+     "FA:9C:55:A4:6A:0B",
+     "E0:A4:BA:16:54:89"
+    ]
+   }
+  ],
+  [
+   {
+    "source": "A4:F0:0F:1F:10:22",
+    "slots": 3,
+    "free": 2,
+    "allocated": [
+     "E0:A4:BA:16:54:89"
+    ]
+   }
+  ],
+  [
+   {
+    "source": "A4:F0:0F:1F:10:22",
+    "slots": 3,
+    "free": 3,
+    "allocated": []
+   }
+  ]
+ ]
+}

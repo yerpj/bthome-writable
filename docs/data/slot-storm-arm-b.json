@@ -1,0 +1,168 @@
+{
+ "label": "arm B: cap 1, four devices, our own gate",
+ "cap": 1,
+ "without_pi": true,
+ "devices": [
+  "lamp",
+  "lamp2",
+  "lamp3",
+  "jolt"
+ ],
+ "wall_seconds": 42.89,
+ "commands": [
+  {
+   "entity": "switch.espruino_cb25_light",
+   "ok": true,
+   "seconds": 16.14,
+   "error": null
+  },
+  {
+   "entity": "switch.espruino_b6ba_light",
+   "ok": true,
+   "seconds": 33.56,
+   "error": null
+  },
+  {
+   "entity": "switch.espruino_5489_light",
+   "ok": true,
+   "seconds": 38.02,
+   "error": null
+  },
+  {
+   "entity": "switch.jolt_js_6a0b_light",
+   "ok": true,
+   "seconds": 42.89,
+   "error": null
+  }
+ ],
+ "events": [
+  {
+   "address": "F5:A8:93:67:CB:25",
+   "entry": 1,
+   "queued_ms": 12.4,
+   "connect_ms": 15088.0,
+   "counter_ms": 0.0,
+   "write_ms": 610.2,
+   "confirm_ms": 410.2,
+   "total_ms": 15710.9
+  },
+  {
+   "address": "C2:38:F5:70:B6:BA",
+   "entry": 1,
+   "queued_ms": 16144.1,
+   "connect_ms": 1204.8,
+   "counter_ms": 0.0,
+   "write_ms": 16180.2,
+   "confirm_ms": 0.2,
+   "total_ms": 33529.4
+  },
+  {
+   "address": "E0:A4:BA:16:54:89",
+   "entry": 1,
+   "queued_ms": 33551.4,
+   "connect_ms": 2573.9,
+   "counter_ms": 0.0,
+   "write_ms": 465.9,
+   "confirm_ms": 1385.1,
+   "total_ms": 36591.6
+  },
+  {
+   "address": "FA:9C:55:A4:6A:0B",
+   "entry": 1,
+   "queued_ms": 38050.1,
+   "connect_ms": 4684.0,
+   "counter_ms": 0.0,
+   "write_ms": 114.8,
+   "confirm_ms": 0.2,
+   "total_ms": 42849.0
+  }
+ ],
+ "allocations": [
+  [
+   {
+    "source": "A4:F0:0F:1F:10:22",
+    "slots": 3,
+    "free": 3,
+    "allocated": []
+   },
+   {
+    "source": "94:54:C5:2E:D0:0E",
+    "slots": 3,
+    "free": 3,
+    "allocated": []
+   }
+  ],
+  [
+   {
+    "source": "A4:F0:0F:1F:10:22",
+    "slots": 3,
+    "free": 2,
+    "allocated": [
+     "F5:A8:93:67:CB:25"
+    ]
+   }
+  ],
+  [
+   {
+    "source": "A4:F0:0F:1F:10:22",
+    "slots": 3,
+    "free": 3,
+    "allocated": []
+   }
+  ],
+  [
+   {
+    "source": "A4:F0:0F:1F:10:22",
+    "slots": 3,
+    "free": 2,
+    "allocated": [
+     "C2:38:F5:70:B6:BA"
+    ]
+   }
+  ],
+  [
+   {
+    "source": "A4:F0:0F:1F:10:22",
+    "slots": 3,
+    "free": 3,
+    "allocated": []
+   }
+  ],
+  [
+   {
+    "source": "A4:F0:0F:1F:10:22",
+    "slots": 3,
+    "free": 2,
+    "allocated": [
+     "E0:A4:BA:16:54:89"
+    ]
+   }
+  ],
+  [
+   {
+    "source": "A4:F0:0F:1F:10:22",
+    "slots": 3,
+    "free": 3,
+    "allocated": []
+   }
+  ],
+  [
+   {
+    "source": "A4:F0:0F:1F:10:22",
+    "slots": 3,
+    "free": 2,
+    "allocated": [
+     "FA:9C:55:A4:6A:0B"
+    ]
+   }
+  ],
+  [
+   {
+    "source": "A4:F0:0F:1F:10:22",
+    "slots": 3,
+    "free": 3,
+    "allocated": []
+   }
+  ]
+ ]
+}

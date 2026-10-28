@@ -1,0 +1,245 @@
+{
+ "label": "arm C: cap 6, five devices across two proxies",
+ "cap": 6,
+ "without_pi": true,
+ "devices": [
+  "lamp",
+  "lamp2",
+  "lamp3",
+  "jolt",
+  "puck"
+ ],
+ "wall_seconds": 26.09,
+ "commands": [
+  {
+   "entity": "switch.espruino_cb25_light",
+   "ok": true,
+   "seconds": 5.28,
+   "error": null
+  },
+  {
+   "entity": "switch.espruino_b6ba_light",
+   "ok": true,
+   "seconds": 6.42,
+   "error": null
+  },
+  {
+   "entity": "switch.espruino_5489_light",
+   "ok": true,
+   "seconds": 12.31,
+   "error": null
+  },
+  {
+   "entity": "switch.jolt_js_6a0b_light",
+   "ok": true,
+   "seconds": 24.66,
+   "error": null
+  },
+  {
+   "entity": "switch.bureau_mobilesensf7b9_light",
+   "ok": true,
+   "seconds": 26.09,
+   "error": null
+  }
+ ],
+ "events": [
+  {
+   "address": "F5:A8:93:67:CB:25",
+   "entry": 1,
+   "queued_ms": 14.5,
+   "connect_ms": 4427.9,
+   "counter_ms": 0.0,
+   "write_ms": 408.2,
+   "confirm_ms": 410.7,
+   "total_ms": 4850.9
+  },
+  {
+   "address": "C2:38:F5:70:B6:BA",
+   "entry": 1,
+   "queued_ms": 18.0,
+   "connect_ms": 6100.7,
+   "counter_ms": 0.0,
+   "write_ms": 164.1,
+   "confirm_ms": 103.8,
+   "total_ms": 6283.1
+  },
+  {
+   "address": "E0:A4:BA:16:54:89",
+   "entry": 1,
+   "queued_ms": 18.0,
+   "connect_ms": 9849.6,
+   "counter_ms": 0.0,
+   "write_ms": 406.5,
+   "confirm_ms": 1991.8,
+   "total_ms": 10274.3
+  },
+  {
+   "address": "FA:9C:55:A4:6A:0B",
+   "entry": 1,
+   "queued_ms": 12.0,
+   "connect_ms": 24490.7,
+   "counter_ms": 0.0,
+   "write_ms": 100.5,
+   "confirm_ms": 0.2,
+   "total_ms": 24603.3
+  },
+  {
+   "address": "C8:80:32:AD:F7:B9",
+   "entry": 1,
+   "queued_ms": 12.3,
+   "connect_ms": 25851.5,
+   "counter_ms": 0.0,
+   "write_ms": 114.4,
+   "confirm_ms": 72.6,
+   "total_ms": 25978.4
+  }
+ ],
+ "allocations": [
+  [
+   {
+    "source": "A4:F0:0F:1F:10:22",
+    "slots": 3,
+    "free": 3,
+    "allocated": []
+   },
+   {
+    "source": "94:54:C5:2E:D0:0E",
+    "slots": 3,
+    "free": 3,
+    "allocated": []
+   }
+  ],
+  [
+   {
+    "source": "A4:F0:0F:1F:10:22",
+    "slots": 3,
+    "free": 2,
+    "allocated": [
+     "F5:A8:93:67:CB:25"
+    ]
+   }
+  ],
+  [
+   {
+    "source": "94:54:C5:2E:D0:0E",
+    "slots": 3,
+    "free": 2,
+    "allocated": [
+     "FA:9C:55:A4:6A:0B"
+    ]
+   }
+  ],
+  [
+   {
+    "source": "A4:F0:0F:1F:10:22",
+    "slots": 3,
+    "free": 1,
+    "allocated": [
+     "F5:A8:93:67:CB:25",
+     "C2:38:F5:70:B6:BA"
+    ]
+   }
+  ],
+  [
+   {
+    "source": "94:54:C5:2E:D0:0E",
+    "slots": 3,
+    "free": 1,
+    "allocated": [
+     "FA:9C:55:A4:6A:0B",
+     "C8:80:32:AD:F7:B9"
+    ]
+   }
+  ],
+  [
+   {
+    "source": "A4:F0:0F:1F:10:22",
+    "slots": 3,
+    "free": 0,
+    "allocated": [
+     "F5:A8:93:67:CB:25",
+     "C2:38:F5:70:B6:BA",
+     "E0:A4:BA:16:54:89"
+    ]
+   }
+  ],
+  [
+   {
+    "source": "A4:F0:0F:1F:10:22",
+    "slots": 3,
+    "free": 1,
+    "allocated": [
+     "C2:38:F5:70:B6:BA",
+     "E0:A4:BA:16:54:89"
+    ]
+   }
+  ],
+  [
+   {
+    "source": "A4:F0:0F:1F:10:22",
+    "slots": 3,
+    "free": 2,
+    "allocated": [
+     "E0:A4:BA:16:54:89"
+    ]
+   }
+  ],
+  [
+   {
+    "source": "A4:F0:0F:1F:10:22",
+    "slots": 3,
+    "free": 3,
+    "allocated": []
+   }
+  ],
+  [
+   {
+    "source": "94:54:C5:2E:D0:0E",
+    "slots": 3,
+    "free": 2,
+    "allocated": [
+     "C8:80:32:AD:F7:B9"
+    ]
+   }
+  ],
+  [
+   {
+    "source": "A4:F0:0F:1F:10:22",
+    "slots": 3,
+    "free": 2,
+    "allocated": [
+     "FA:9C:55:A4:6A:0B"
+    ]
+   }
+  ],
+  [
+   {
+    "source": "A4:F0:0F:1F:10:22",
+    "slots": 3,
+    "free": 3,
+    "allocated": []
+   }
+  ],
+  [
+   {
+    "source": "94:54:C5:2E:D0:0E",
+    "slots": 3,
+    "free": 1,
+    "allocated": [
+     "C8:80:32:AD:F7:B9",
+     "C8:80:32:AD:F7:B9"
+    ]
+   }
+  ],
+  [
+   {
+    "source": "94:54:C5:2E:D0:0E",
+    "slots": 3,
+    "free": 2,
+    "allocated": [
+     "C8:80:32:AD:F7:B9"
+    ]
+   }
+  ]
+ ]
+}
