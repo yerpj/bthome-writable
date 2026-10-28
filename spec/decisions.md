@@ -10407,3 +10407,73 @@ the options form of D-132, or the integration throttles before the host does;
 wall where it is wanted; and the third arm, the one asking whether D-133's
 host-wide hold-off makes a device wait although its own scanner has free slots,
 needs the second room to have a receiver.
+
+## D-158 -- The campaign ran, and an ESPHome proxy refuses by disconnecting  [DECISION, owner]
+
+**Status:** measured 2026-10-28, `docs/measurements.md` §24, runs in
+`docs/data/slot-storm-arm-*.json`, tool in `tools/slot_storm.py`. One decision
+is the owner's and is named at the end.
+
+D-133 and D-134 shipped with their own admission: the exhaustion had never been
+provoked, because three devices and a three-slot proxy cannot fill a host. With
+`lamp`, `lamp2`, `lamp3` and the Jolt.js in one island, and one command per
+device issued from a single `gather`, it has now been provoked three ways.
+
+**1. The pool is every scanner.** Four devices against a three-slot proxy never
+meet a wall while another proxy is up: Home Assistant fills the near proxy with
+three and routes the fourth through the far one, which hears it at -87 dB and
+charges 9.4 s of connecting for the privilege. Any future slot experiment has
+to silence every other scanner, which `tools/slot_storm.py --without` does.
+
+**2. A full pool is a wait, and `queued_ms` does not see it.** One three-slot
+proxy, four devices, cap 6: all four succeed, `queued_ms` stays between 7 and
+13 ms, and the cost sits in `connect_ms` at 2.5, 11.9, 15.1 and 16.4 s. D-133's
+premise is confirmed -- a host out of slots is a wait -- but its instrument
+reports only the wait *our own gate* imposes. A wait imposed by the host's slot
+manager is still indistinguishable from a slow radio, which is the confusion
+D-133 removed for our cap.
+
+**3. A proxy with no free connection refuses by disconnecting, so D-133's
+refusal path never opens.** One slot, four devices: two commands succeed and two
+fail with `Failed to connect after 5 attempt(s): Disconnected`. **No
+`BleakOutOfConnectionSlotsError` occurred in any run of the campaign.** That
+error is what `bleak_retry_connector` raises after nine transient attempts and
+what `_connect()` watches for; a disconnect is counted as a connect error under
+`max_attempts` instead. So on a bench whose receivers are ESPHome proxies:
+`SLOT_COOLDOWN`'s host-wide hold-off never fires, no device ever says so on
+behalf of the others, and the error the user reads names no slot and offers no
+remedy. The three changes of D-133 are correct for an adapter that reports
+exhaustion the way BlueZ does, and inert for a proxy.
+
+**4. Our own cap behaves exactly as claimed.** Cap 1, four simultaneous
+commands: `queued_ms` of 12 ms, 16.1 s, 33.6 s and 38.1 s, each equal to the
+previous command's completion, arrival order preserved, and never more than one
+slot held. D-134's first in first out and D-133's moved boundary, measured with
+four devices where §20 had two.
+
+**5. The third arm cannot be answered here.** Whether the host-wide hold-off
+makes a device wait although its own scanner has slots needs the hold-off to
+fire, and it never does. It stays a property of `ha/tests/test_connection_cap.py`
+until this bench has a receiver that reports exhaustion as such.
+
+**Two by-products.** `F6:B2:06:B8:90:9C`, which has held one of the Pi's five
+slots through every reading of this bench, is a `led_ble` device of this Home
+Assistant and nothing to do with this project: the Pi offers four slots, not
+five. And under the storm the sealed devices logged *"an advertisement did not
+authenticate"* and *"entry 1: a read did not authenticate"*, and the Puck's
+entry had to be reloaded before it came back: the counter state of §5.6 under
+contention is worth its own session.
+
+**[DECISION, owner]** Finding 3 is a behaviour question, not a bug to patch on
+my own initiative (rule 1). Three options, with a recommendation:
+
+* **a.** Leave it. The hold-off is for hosts that report exhaustion, and a proxy
+  storm is already reported as an undelivered command.
+* **b.** Treat a repeated `Disconnected` at connect time, on a device the host
+  has just connected to successfully, as slot pressure: same hold-off, same
+  message naming the slot. It is a heuristic, and it would misfire on a device
+  that genuinely drops links.
+* **c.** Say it in the message only: when several connections are in flight,
+  add *"the host may be out of connection slots"* to `WriteFailed` without
+  changing any timing. **Recommended**: it costs nothing, it is true, and it
+  sends the user to the right place, which is what D-133's third change was for.

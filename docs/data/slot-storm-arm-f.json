@@ -1,0 +1,148 @@
+{
+ "label": "arm F: one slot on the desk, the Puck on its own proxy",
+ "cap": 6,
+ "without_pi": true,
+ "silenced": [],
+ "devices": [
+  "lamp",
+  "lamp2",
+  "lamp3",
+  "jolt",
+  "puck"
+ ],
+ "wall_seconds": 12.16,
+ "commands": [
+  {
+   "entity": "switch.espruino_cb25_light",
+   "ok": true,
+   "seconds": 5.22,
+   "error": null
+  },
+  {
+   "entity": "switch.espruino_b6ba_light",
+   "ok": true,
+   "seconds": 12.16,
+   "error": null
+  },
+  {
+   "entity": "switch.espruino_5489_light",
+   "ok": false,
+   "seconds": 8.12,
+   "error": "Light could not be reached: the command was not delivered. E0:A4:BA:16:54:89 - E0:A4:BA:16:54:89: Failed to connect after 4 attempt(s): Disconnected"
+  },
+  {
+   "entity": "switch.jolt_js_6a0b_light",
+   "ok": true,
+   "seconds": 1.84,
+   "error": null
+  },
+  {
+   "entity": "switch.bureau_mobilesensf7b9_light",
+   "ok": true,
+   "seconds": 0.02,
+   "error": null
+  }
+ ],
+ "events": [
+  {
+   "address": "FA:9C:55:A4:6A:0B",
+   "entry": 1,
+   "queued_ms": 13.6,
+   "connect_ms": 1614.5,
+   "counter_ms": 0.0,
+   "write_ms": 171.4,
+   "confirm_ms": 0.3,
+   "total_ms": 1799.5
+  },
+  {
+   "address": "F5:A8:93:67:CB:25",
+   "entry": 1,
+   "queued_ms": 15.1,
+   "connect_ms": 4355.3,
+   "counter_ms": 0.0,
+   "write_ms": 407.8,
+   "confirm_ms": 410.5,
+   "total_ms": 4778.5
+  },
+  {
+   "address": "C2:38:F5:70:B6:BA",
+   "entry": 1,
+   "queued_ms": 19.9,
+   "connect_ms": 11822.8,
+   "counter_ms": 0.0,
+   "write_ms": 141.9,
+   "confirm_ms": 167.8,
+   "total_ms": 11984.9
+  }
+ ],
+ "allocations": [
+  [
+   {
+    "source": "A4:F0:0F:1F:10:22",
+    "slots": 1,
+    "free": 1,
+    "allocated": []
+   },
+   {
+    "source": "94:54:C5:2E:D0:0E",
+    "slots": 3,
+    "free": 3,
+    "allocated": []
+   }
+  ],
+  [
+   {
+    "source": "94:54:C5:2E:D0:0E",
+    "slots": 3,
+    "free": 2,
+    "allocated": [
+     "FA:9C:55:A4:6A:0B"
+    ]
+   }
+  ],
+  [
+   {
+    "source": "A4:F0:0F:1F:10:22",
+    "slots": 1,
+    "free": 0,
+    "allocated": [
+     "F5:A8:93:67:CB:25"
+    ]
+   }
+  ],
+  [
+   {
+    "source": "94:54:C5:2E:D0:0E",
+    "slots": 3,
+    "free": 3,
+    "allocated": []
+   }
+  ],
+  [
+   {
+    "source": "A4:F0:0F:1F:10:22",
+    "slots": 1,
+    "free": 1,
+    "allocated": []
+   }
+  ],
+  [
+   {
+    "source": "A4:F0:0F:1F:10:22",
+    "slots": 1,
+    "free": 0,
+    "allocated": [
+     "C2:38:F5:70:B6:BA"
+    ]
+   }
+  ],
+  [
+   {
+    "source": "A4:F0:0F:1F:10:22",
+    "slots": 1,
+    "free": 1,
+    "allocated": []
+   }
+  ]
+ ]
+}

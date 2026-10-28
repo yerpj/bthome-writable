@@ -1,0 +1,110 @@
+{
+ "label": "arm E: cap 6, four devices, one slot",
+ "cap": 6,
+ "without_pi": true,
+ "silenced": [
+  "Bluetooth Proxy 2ed00c",
+  "esp32-bluetooth-proxy-2ed00c (94:54:C5:2E:D0:0E)"
+ ],
+ "devices": [
+  "lamp",
+  "lamp2",
+  "lamp3",
+  "jolt"
+ ],
+ "wall_seconds": 12.62,
+ "commands": [
+  {
+   "entity": "switch.espruino_cb25_light",
+   "ok": true,
+   "seconds": 8.06,
+   "error": null
+  },
+  {
+   "entity": "switch.espruino_b6ba_light",
+   "ok": true,
+   "seconds": 12.62,
+   "error": null
+  },
+  {
+   "entity": "switch.espruino_5489_light",
+   "ok": false,
+   "seconds": 12.12,
+   "error": "Light could not be reached: the command was not delivered. E0:A4:BA:16:54:89 - E0:A4:BA:16:54:89: Failed to connect after 5 attempt(s): Disconnected"
+  },
+  {
+   "entity": "switch.jolt_js_6a0b_light",
+   "ok": false,
+   "seconds": 12.14,
+   "error": "Light could not be reached: the command was not delivered. FA:9C:55:A4:6A:0B - FA:9C:55:A4:6A:0B: Failed to connect after 5 attempt(s): Disconnected"
+  }
+ ],
+ "events": [
+  {
+   "address": "F5:A8:93:67:CB:25",
+   "entry": 1,
+   "queued_ms": 13.1,
+   "connect_ms": 7097.2,
+   "counter_ms": 0.0,
+   "write_ms": 592.7,
+   "confirm_ms": 358.2,
+   "total_ms": 7703.3
+  },
+  {
+   "address": "C2:38:F5:70:B6:BA",
+   "entry": 1,
+   "queued_ms": 15.3,
+   "connect_ms": 12427.0,
+   "counter_ms": 0.0,
+   "write_ms": 104.8,
+   "confirm_ms": 70.9,
+   "total_ms": 12547.4
+  }
+ ],
+ "allocations": [
+  [
+   {
+    "source": "A4:F0:0F:1F:10:22",
+    "slots": 1,
+    "free": 1,
+    "allocated": []
+   }
+  ],
+  [
+   {
+    "source": "A4:F0:0F:1F:10:22",
+    "slots": 1,
+    "free": 0,
+    "allocated": [
+     "F5:A8:93:67:CB:25"
+    ]
+   }
+  ],
+  [
+   {
+    "source": "A4:F0:0F:1F:10:22",
+    "slots": 1,
+    "free": 1,
+    "allocated": []
+   }
+  ],
+  [
+   {
+    "source": "A4:F0:0F:1F:10:22",
+    "slots": 1,
+    "free": 0,
+    "allocated": [
+     "C2:38:F5:70:B6:BA"
+    ]
+   }
+  ],
+  [
+   {
+    "source": "A4:F0:0F:1F:10:22",
+    "slots": 1,
+    "free": 1,
+    "allocated": []
+   }
+  ]
+ ]
+}

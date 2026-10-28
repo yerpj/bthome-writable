@@ -2361,3 +2361,110 @@ Two sentences have to go with it, because they are what an adopter actually
 decides on: that a write costs a microamp or two at any plausible rate, and that
 what costs is the fast window the write opens -- so the lever for a device that
 is commanded often is `fastTimeout`, not `interval`.
+
+## 24. Four devices at once, and what an exhausted host actually does
+
+**2026-10-28, five devices, two ESPHome proxies and the Raspberry Pi's own
+adapter, through `tools/slot_storm.py`.** D-133 and D-134 were argued from unit
+tests and from reading `bleak_retry_connector`, because three devices and one
+three-slot proxy cannot fill a host. The bench now has four devices in one
+island -- `lamp` (`cb25`), `lamp2` (`b6ba`), `lamp3` (`5489`) sealed, and the
+Jolt.js (`6a0b`) in clear -- and the Puck alone in a second room with a proxy of
+its own. Every run issues one command per device from a single `gather`,
+subscribes to `bthome_writable_write` for the timings and to
+`bluetooth/subscribe_connection_allocations` for Home Assistant's own view of
+who holds a slot, and puts the switches, the cap and the adapters back
+afterwards.
+
+**The pool is every scanner, not the island's proxy.** This is the first thing
+the bench said, and it invalidates the obvious experiment. With both proxies up,
+four devices against a three-slot proxy never meet a wall: Home Assistant fills
+that proxy with three of them and routes the fourth through the proxy in the
+other room, however badly it hears it.
+
+| Arm A, cap 6, both proxies up | result | queued_ms | connect_ms |
+| --- | --- | --- | --- |
+| `cb25` | ok 2.34 s | 12.6 | 765 |
+| `b6ba` | **failed** 10.72 s | -- | -- |
+| `5489` | ok 16.3 s | 13.9 | 15 322 |
+| `6a0b` (served by the far proxy) | ok 9.47 s | 8.5 | 9 395 |
+
+`b6ba` failed with *"changed connection status while waiting for
+BluetoothGATTReadResponse, BluetoothGATTErrorResponse: Insufficient
+authorization (8)"*, which appeared again during the restores and only ever
+under contention through one proxy. It is the proxy's, not ours.
+
+**One three-slot proxy and four devices is a wait, and the wait is invisible to
+our instrument.** Arm D silences every other scanner, so three slots are the
+whole pool. All four commands succeed, and every one of them reports a
+`queued_ms` of a few milliseconds while the cost sits in `connect_ms`.
+
+| Arm D, cap 6, one three-slot proxy | result | queued_ms | connect_ms |
+| --- | --- | --- | --- |
+| `cb25` | ok 3.36 s | 10.7 | 2 519 |
+| `b6ba` | ok 12.28 s | 12.6 | 11 937 |
+| `6a0b` | ok 15.22 s | 7.2 | 15 109 |
+| `5489` | ok 17.55 s | 12.2 | 16 440 |
+
+So D-133's premise holds -- an exhausted host is a wait and not a broken device
+-- but `queued_ms` reports only what *our* gate imposed. A wait imposed by the
+host's own slot manager lands in `connect_ms`, among the radio's own wait, which
+is exactly the confusion D-133 removed for our cap and leaves standing for the
+host's.
+
+**One slot and four devices is a refusal, and not the refusal D-133 watches
+for.** Arm E reflashes the island's proxy with `bluetooth_proxy:
+connection_slots: 1`, which ESPHome accepts between 1 and 9.
+
+| Arm E, cap 6, one slot | result |
+| --- | --- |
+| `cb25` | ok 8.06 s (queued 13.1 ms, connect 7 097 ms) |
+| `b6ba` | ok 12.62 s (queued 15.3 ms, connect 12 427 ms) |
+| `5489` | **failed** 12.12 s, `Failed to connect after 5 attempt(s): Disconnected` |
+| `6a0b` | **failed** 12.14 s, `Failed to connect after 5 attempt(s): Disconnected` |
+
+**No `BleakOutOfConnectionSlotsError` appeared in any run.** An ESPHome proxy
+with no free connection refuses by *disconnecting*, which
+`bleak_retry_connector` counts as a connect error bounded by `max_attempts`,
+not as the transient out-of-slots error bounded at nine attempts with four
+seconds between them. So on this bench D-133's three changes are inert: the
+host-wide hold-off never fires, and the message never names the slot or the
+remedy. They remain correct for an adapter that reports exhaustion the way BlueZ
+does; a proxy does not.
+
+**Our own cap, on the other hand, behaves exactly as D-133 says.** Arm B sets
+the cap to 1 and fires the same four commands:
+
+| Arm B, cap 1, one three-slot proxy | total | queued_ms | connect_ms |
+| --- | --- | --- | --- |
+| `cb25` | 16.14 s | 12.4 | 15 088 |
+| `b6ba` | 33.56 s | **16 144** | 1 205 |
+| `5489` | 38.02 s | **33 551** | 2 574 |
+| `6a0b` | 42.89 s | **38 050** | 4 684 |
+
+Each device's `queued_ms` is the previous command's completion, the arrival
+order is preserved, and Home Assistant never held more than one slot. That is
+D-134's first in first out and D-133's moved boundary, measured with four
+devices where §20 could only show it with two.
+
+**The third arm cannot be run here.** The question it asks -- whether the
+host-wide hold-off of D-133 makes a device wait although its own scanner has
+free slots -- needs the hold-off to fire, and the hold-off needs the
+out-of-slots error that an ESPHome proxy never produces. Arm F tried it with
+the Puck on its own proxy and is void for a second reason: the Puck had gone
+`unavailable` during arms D and E, where its only scanner was silenced and the
+Pi disabled, so its command returned in 0.02 s with no write at all. A device
+left with no scanner for a few minutes leaves the integration with nothing to
+read, and the entry had to be reloaded to come back.
+
+**Two by-products.** The slot that is never free on the Pi belongs to
+`F6:B2:06:B8:90:9C`, a `led_ble` device of this Home Assistant and not of this
+project: one of the Pi's five slots is permanently somebody else's. And under
+the storm the sealed devices logged *"an advertisement did not authenticate"*
+and *"entry 1: a read did not authenticate"*, which is the counter state of
+§5.6 under contention and deserves its own look.
+
+Every figure above is one run, not a median: these are the first four-device
+runs this bench has ever done, and the point of the section is which mechanism
+answers, not how fast it is. `docs/data/slot-storm-arm-*.json` holds each run
+whole, including the slot timeline.
