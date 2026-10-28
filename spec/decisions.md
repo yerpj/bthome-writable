@@ -10300,3 +10300,40 @@ fix of `02b8977` closed the five failures that began at `e2c19d0`.
 
 #768 joins the watchlist. The comment for #2772 stays optional and stays the
 owner's.
+
+## D-156 -- The AESCCM page fix is open as #769, and the module is not going away
+
+2026-10-28 08:40 UTC, [EspruinoDocs#769](https://github.com/espruino/EspruinoDocs/pull/769),
+opened by @yerpj, title *"AESCCM: what a sealed frame actually costs"*. One
+file, `modules/AESCCM.md` +11/-7, and `modules/AESCCM.js` is byte-identical to
+upstream, so no code is in it. It carries what `987d720` and `f4011fe` measured
+on a Puck.js 2v27 on 2026-10-12, after @gfwilliams asked on #763 which parts are
+expensive: a short packet seals in about 50 ms and a 30-byte one in about 90,
+where the page had published 75 ms taken from a frame of another size, and the
+cipher is under a tenth of that (`AES.encrypt` of 32 bytes, 2.1 ms in ECB and
+2.4 in CBC, one call of each for a short frame). The paragraph is also split in
+three, since it carried the frame cost, the reason for the 32-byte pieces and
+the native path in one block. This was the pull request owed since #767.
+
+**The owner asked first whether the module could be dropped instead**, on the
+grounds that adapting the Espruino builds would make it disappear and that
+EspruinoDocs should not be polluted with something temporary. It cannot, and the
+answer is worth keeping because the question will come back:
+
+1. `BTHomeWritable.js` has `require("AESCCM")` in `encrypt` and `decrypt`, so a
+   device with a `bindkey` does not work without it. The page says so twice.
+2. The module is not a substitute for the firmware, it is the adapter between
+   two firmwares: `AES.ccmEncrypt` / `AES.ccmDecrypt` where the build has
+   `AES_CCM`, CCM over `AES.encrypt` where it has only `AES`, and
+   `usingNative()` to say which. Puck.js builds `AES` alone; Bangle.js 2 built
+   `AES_CCM` alone from 2024 to October 2026, with no `AES.encrypt` at all.
+   Erasing that asymmetry is the module's whole job.
+3. Even when every build carries `AES_CCM`, what remains is the shape of the
+   API: nonce and MIC lengths, `null` rather than a throw on a MIC that does not
+   authenticate, and the choice of path made without configuration. It becomes
+   thin, not useless. Nothing in espruino#8013 or #8024 announces such a
+   uniformisation anyway.
+
+And the module was already upstream, merged as #761 and live at
+espruino.com/AESCCM, so the pollution at stake was never a new module: it was a
+published measurement wrong by half, which is what #769 removes.
