@@ -47,6 +47,7 @@ WATCHLIST: tuple[tuple[str, str, int, str], ...] = (
     ("espruino/EspruinoDocs", "pulls", 765, "the rebuild-on-change fix (D-106)"),
     ("espruino/EspruinoDocs", "pulls", 766, "the schedule and six fixes (D-114)"),
     ("espruino/EspruinoDocs", "pulls", 767, "the changed() fold (D-123, D-124)"),
+    ("espruino/EspruinoDocs", "pulls", 768, "scannable and the coin cell (D-155)"),
     ("espruino/Espruino", "issues", 2772, "the firmware's INVALID ADDR (D-143, D-147)"),
     ("yerpj/bthome-writable", "issues", 1, "@enaon, AES-CCM on a board without AES"),
     ("yerpj/bthome-writable", "issues", 2, "@enaon, ON-OFF-ON"),
