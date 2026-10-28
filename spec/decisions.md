@@ -10337,3 +10337,73 @@ answer is worth keeping because the question will come back:
 And the module was already upstream, merged as #761 and live at
 espruino.com/AESCCM, so the pollution at stake was never a new module: it was a
 published measurement wrong by half, which is what #769 removes.
+
+## D-157 -- The saturation arm has its four devices, and a deduplicated stream nearly sent the campaign the wrong way
+
+2026-10-28. The campaign of D-133 and D-134 has never been run because three
+devices and one three-slot proxy cannot fill a host. The bench now has what it
+needs, and the preparation produced one measurement worth more than the setup
+itself.
+
+**The bench as it stands.** One island holds the Raspberry Pi's own adapter, one
+ESP32 proxy (`A4:F0:0F:1F:10:22`, three connection slots) and four devices
+within about 30 cm: `lamp` (`cb25`), `lamp2` (`b6ba`), `lamp3` (`5489`), all
+three nice!nanos sealed with `revision-lamp.js`'s own bindkey, and the
+**Jolt.js** (`6a0b`), which advertises in clear and offers one writable `light`
+entry. `revision-lamp.js` was pushed into the RAM of `lamp2` and `lamp3`, each
+reporting `writable entries: [30, 9]` and 12 service-data bytes of a 12-byte
+budget. The Puck is alone in a second room with no receiver near it until a
+second proxy exists; the bench's other proxy is not usable and the owner is
+sourcing another ESP32. `b216` has left the bench, answering neither over USB
+nor over the air.
+
+**All four were added through the integration's own flow**, which asked for an
+address picked from a list and, for the sealed three, a bindkey. Nothing was
+typed that rule 4 forbids. Entities exist and were exercised once each:
+`b6ba` 8.1 s then 4.8 s, `5489` 15.0 s then 2.9 s, `jolt` 3.3 s then 20.6 s,
+and every switch was left off.
+
+**The slot arithmetic that makes the campaign possible.** The Pi offers 5 slots
+with one already held by `F6:B2:06:B8:90:9C`, a device belonging to nothing in
+this project; the proxy offers 3. Disable the Pi's own entry, as every campaign
+here does, and four devices face three slots, which is D-133's wall for the
+first time on hardware.
+
+**A command through the proxy costs more than through the Pi, which is the
+opposite of what was assumed.** Three commands with the Pi's adapter disabled,
+so the proxy was the only path: all three succeeded, in **12.1, 12.9 and
+18.5 s**. The same command through the Pi an hour earlier: **2.5 and 6.5 s**.
+D-054 credited the proxy with *faster* first commands because it reuses a recent
+link, and that remains true of a warm link; a cold one pays the proxy's own
+connect procedure. It also means the figures of §16 and §20, all taken with the
+proxy disabled, are the Pi's numbers and do not compare with a proxy run. The
+campaign must say which receiver served each arm.
+
+**And the finding that nearly sent two diagnoses the wrong way.** Home
+Assistant's advertisement stream, and the per-scanner RSSI in its Bluetooth
+diagnostics, **drop an advertisement whose bytes have not changed**. Measured:
+in 45 s, Home Assistant processed **38** advertisements from the Jolt, whose
+packet id moves on every publish, and **exactly one** from each of `lamp`,
+`lamp2`, `lamp3` and the Puck. So for a device that re-advertises identical
+bytes -- which is what this module deliberately does while nothing moves
+(D-106, D-109) -- the RSSI a scanner shows is one stale sample, and comparing
+scanners on it is meaningless. Two conclusions were drawn from exactly that
+before the mistake was caught.
+
+**The instrument that does not lie** is the proxy's own log, with
+`logger: level: VERBOSE` and `esp32_ble_tracker: VERBOSE` in its ESPHome
+configuration: it prints `Queuing raw packet from <address>, length N. RSSI:
+-NN dB` for every packet the radio actually received, with no deduplication
+anywhere. On the island's proxy that is 1080 packets from 21 addresses in 80 s,
+with `lamp` at -68 dB, `lamp2` at -61, `lamp3` at -67 and the Jolt at -62. Any
+future question about what a proxy hears is answered there and not in the
+diagnostics. The ESPHome configuration of the bench proxies is the owner's and
+stays out of this repository (it carries a Wi-Fi password), so the two lines
+above are the record of how to turn the instrument on.
+
+**Still to settle before the run**: the host cap must be set above three through
+the options form of D-132, or the integration throttles before the host does;
+`connection_slots` on the proxy, between 1 and 9 with 3 by default, moves the
+wall where it is wanted; and the third arm, the one asking whether D-133's
+host-wide hold-off makes a device wait although its own scanner has free slots,
+needs the second room to have a receiver.

@@ -37,6 +37,10 @@ DEVICES: dict[str, dict[str, Any]] = {
         "label": "nice!nano text (OLED), command to write acknowledged",
         "entity": "text.espruino_b216_text",
         "kind": "text",
+        # Off the bench since 2026-10-27: it answers neither over USB nor over
+        # the air, and its Home Assistant entities are unavailable. Kept here
+        # because the §16 and §20 numbers were taken on it.
+        #
         # Reachable over USB as well as over the air, which is how its
         # advertising interval is set without holding its single connection.
         "port": "COM15",
@@ -47,10 +51,11 @@ DEVICES: dict[str, dict[str, Any]] = {
     # writable entries that are also readable, so each one owes the receiver a
     # read and the read path carries three times the work it did.
     #
-    # **They stay out of the §17 campaign**, whose numbers are only comparable
-    # with §16 and §20 on the bench as it was. Their sketches live in RAM, so
-    # they are silent until uploaded, which is how they are kept out: upload
-    # them after the campaign, not before.
+    # §17 is behind us, so they are in service: `revision-lamp.js` was pushed
+    # into the RAM of both on 2026-10-28 and each was added to Home Assistant
+    # with the sketch's own bindkey, which gives the saturation arm four
+    # commandable devices in one island. The sketches still live in RAM, so a
+    # power cut empties them and they have to be pushed again.
     "lamp2": {
         "address": "C2:38:F5:70:B6:BA",
         "label": "nice!nano lamp B (light + count), saturation arm only",
@@ -64,5 +69,15 @@ DEVICES: dict[str, dict[str, Any]] = {
         "entity": "switch.espruino_5489_light",
         "kind": "switch",
         "port": "COM11",
+    },
+    # The fourth device of the saturation arm, added 2026-10-28. It advertises
+    # in clear, where the three nice!nanos are sealed, so it is also the one
+    # whose packet a receiver can read without a key.
+    "jolt": {
+        "address": "FA:9C:55:A4:6A:0B",
+        "label": "Jolt.js (light), in clear, fourth device of the saturation arm",
+        "entity": "switch.jolt_js_6a0b_light",
+        "kind": "switch",
+        "port": "COM18",
     },
 }
