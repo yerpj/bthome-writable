@@ -10265,3 +10265,38 @@ A one-line comment for #2772 is drafted in the scratchpad
 (`issue2772-comment.md`) and is **optional**: it says only what this bench can
 add, which is the `p_peer_addr` check and that the patch and the module's
 workaround agree. Nothing in either thread asks this project for anything.
+
+## D-155 -- The second pull request is open as #768
+
+2026-10-28 08:14 UTC, [EspruinoDocs#768](https://github.com/espruino/EspruinoDocs/pull/768),
+opened by @yerpj onto `espruino:master`, title *"BTHomeWritable: name scannable,
+count refusals, and price a coin cell"*. Three files, as prepared in D-153:
+`modules/BTHomeWritable.js` +39/-42, `modules/BTHomeWritable.md` +74/-6,
+`modules/BTHomeWritable/puck-battery-life.png` added. Fork commit `91c8593`.
+
+**The three checks that gated the opening were re-run that morning, not taken
+from the day before.**
+
+1. `python -m tools.build_espruino_module` rebuilt the three files: 24 827 bytes
+   of module (173 under the 25 000 budget), 16 764 of page, 199 939 of figure.
+2. Diffed again against `raw.githubusercontent.com/espruino/EspruinoDocs/master`:
+   upstream's last commit to either file is 2026-10-24, which is #767's own, so
+   nothing of Gordon's was overwritten.
+3. espruino/Espruino#2772 was still **open**, five comments, nothing after
+   @fanoush's patch of 2026-10-27 20:50 UTC. That matters because the body
+   presents `scannable:true` as the workaround for an open bug (D-154); the day
+   the patch lands, the sentence becomes history rather than a warning.
+
+**The fork had no clone on this machine.** #767 was opened from elsewhere, and
+`C:\Users\JP\Documents\perso\` held no `EspruinoDocs`, so the first step was a
+clone with `upstream` added as a second remote and the branch taken from
+`upstream/master` rather than from the fork's own `master`, which still sat at
+the #767 branch of 2026-10-24. Any third pull request starts the same way, from
+`upstream/master`, since this fork is not kept in step.
+
+**And the red CI is over.** Runs 197 (`3a9f84a`), 198 (`139f758`) and 199
+(`d7f8189`, `main`) all succeeded, so the `global.poison` / `global.fiveOptions`
+fix of `02b8977` closed the five failures that began at `e2c19d0`.
+
+#768 joins the watchlist. The comment for #2772 stays optional and stays the
+owner's.
