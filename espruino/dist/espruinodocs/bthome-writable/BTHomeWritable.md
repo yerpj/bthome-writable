@@ -311,6 +311,17 @@ stays stopped, and a device that does not advertise cannot be connected to, so
 it cannot be fixed over the air. A power cycle undoes a sketch in RAM; one
 saved to flash repeats the problem at every boot.
 
+**A scan response of your own breaks `setup()`.** `setup()` calls
+`NRF.setServices()` once, and that call throws `ERR 0x10 (INVALID ADDR)`
+whenever a scan response is already stored -- an empty
+`NRF.setScanResponse([])` as surely as a valid one, on 2v28 and on 2v29. The
+stored bytes show up as `BLE_RESP` in `global['\xff']`, and
+`NRF.setScanResponse()` with no argument clears them, so set your scan response
+*after* `setup()` or clear it before: the same call that refuses to run second
+runs first. `NRF.updateServices()`, which is what the module uses for every
+value it publishes afterwards, is unaffected, so a device that got through
+`setup()` is in no danger.
+
 References
 ----------
 
