@@ -10477,3 +10477,55 @@ my own initiative (rule 1). Three options, with a recommendation:
   add *"the host may be out of connection slots"* to `WriteFailed` without
   changing any timing. **Recommended**: it costs nothing, it is true, and it
   sends the user to the right place, which is what D-133's third change was for.
+
+## D-159 -- A scan response of the sketch's own makes setup() throw, and it is a second ERR 0x10
+
+**Status:** reproduced 2026-10-29 on two firmware lines, the page note is
+written, the pull request is the owner's to open (D-091).
+
+espruino/Espruino#2772 picked up a second fault on 2026-10-28. @enaon reported
+`ERR 0x10 (INVALID ADDR)` from a sketch that has nothing to do with the coded
+phy, and @fanoush diagnosed it at 16:25 UTC as a leftover
+`NRF.setScanResponse([])`: its bytes stay visible as `BLE_RESP` in
+`global['\xff']` and keep `NRF.setServices()` from putting its own data there.
+This module calls `NRF.setServices()` exactly once, in `setup()`
+(`espruino/BTHomeWritable.js:1049`), so the same error code arrives from our
+side at the same place the advertising latch of D-143 does, and the
+`scannable:true` that D-147 ships does nothing for it. One error, two causes,
+two remedies.
+
+**Reproduced here, RAM only, on both firmware lines of this bench** -- the
+Jolt.js `JOLTJS 2v28` on `COM18` and the nice!nano `NICENANO 2v29.396` on
+`COM9`:
+
+* a reset board with nothing stored takes the `jolt-scannable` bundle and
+  reports `ready fa:9c:55:a4:6a:0b [ 30 ]`, so the baseline holds;
+* with a scan response stored, the same upload prints that same `ready` line
+  and then `Uncaught Error: ERR 0x10 (INVALID ADDR)`. The minimal form is two
+  calls: `NRF.setScanResponse([])`, then `NRF.setServices()` on the module's own
+  service and characteristic;
+* **it is not the empty array.** A valid `[3,9,65,66]`, a complete local name,
+  throws exactly the same thing. The diagnosis in the thread blamed the empty
+  array; any stored scan response does it. `NRF.setScanResponse([2,1,6])` is
+  refused earlier and differently, with `ERR 0xa (INVALID_FLAGS)`, because
+  flags do not belong in a scan response;
+* **the order is the whole of it.** `setServices` and then `setScanResponse`
+  both succeed; `setServices` called a second time afterwards throws;
+* **`NRF.updateServices()` is unaffected**, and that is what the module uses
+  for every value it publishes once `setup()` is past, so a device that got
+  through `setup()` is in no danger;
+* `NRF.setScanResponse()` with no argument clears the store, after which
+  `setServices` works again.
+
+**What was done.** One note at the end of the page's `Notes`: set your scan
+response after `setup()`, or clear it before. Branch
+`bthomewritable-a-scan-response-breaks-setup` in
+`C:\Users\JP\Documents\perso\EspruinoDocs`, one file, +11 and nothing removed,
+based on `upstream/master` rather than on #768's branch so that it merges
+whatever happens to #768. The owner opens the pull request, and it joins
+`tools/watch_github.py` when it has a number.
+
+**Still owed to the thread, and the owner's to post:** the refinement above --
+that it is any stored scan response and not only the empty one, that only
+`setServices` is affected while `updateServices` is not, and that the order of
+the two calls is what decides. The module needs no change for any of it.
