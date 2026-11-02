@@ -2523,3 +2523,117 @@ with `ERR 0x9 (INVALID_LENGTH)` at `:2806`, the same line @enaon reported for
 `showName:false` so no name could overflow the packet. The `setServices` half
 is the same on both. Both boards were reset afterwards, with the store back to
 `null` and no timers left.
+
+## 26. What a custom scan response is actually worth after a restart
+
+**2026-11-02, nice!nano `NICENANO 2v29.396` on `COM9` and Jolt.js `JOLTJS
+2v28` on `COM18`, RAM only, bench lock taken and released.** §25 settled which
+call throws. This run answers a different question, raised by @fanoush on
+espruino/Espruino#2773: `_jswrap_ble_getScanResponse()` reads the stored scan
+response with `jsvGetString()`, which renders a JS array as **text**, so
+`[3,9,65,66]` leaves as `"3,9,65,66"`. The question for a module that
+advertises for a living is whether that corruption can ever pass *unnoticed*:
+an error is a bad day, but wrong bytes on air with no error anywhere is worse.
+
+**The payload was chosen so that both forms are legal advertising data**, which
+removes the shape of the packet as an explanation for anything observed. `SR =
+[16,65,66,...,80]` is 17 bytes, and its rendering is exactly 50 characters
+beginning with `1` (`0x31` = 49):
+
+| | bytes | first byte | reads as | total |
+| --- | --- | --- | --- | --- |
+| the array | `10 41 42 ... 50` | 16 | one structure, length 16, type `0x41` | 1 + 16 = 17 |
+| its rendering | `"16,65,66,..."` | 49 | one structure, length 49, type `0x36` | 1 + 49 = 50 |
+
+The observer is the other board, scanning actively, which hands scan response
+packets to the callback as reports of their own, so what is printed below is
+what was on air and not what the target believed it had set.
+
+### The four passes
+
+**One, the master build, before and after a restart.** With `SR` stored as an
+array and `showName:false`, the observer saw the advertising packet and the
+real bytes:
+
+```
+NEW 7B 02010603ff9005 |.......|
+NEW 17B 104142434445464748494a4b4c4d4e4f50 |.ABCDEFGHIJKLMNOP|
+```
+
+Then `NRF.sleep();NRF.wake()`, which is the shortest advertising restart that
+needs no central:
+
+```
+Uncaught Error: ERR 0x9 (INVALID_LENGTH) (:2806)
+```
+
+and after it the observer saw **nothing at all** for twelve seconds, not even
+the advertising packet. `NRF.setScanResponse()` and another restart brought the
+board back with its default scan response, which is also the proof that the
+observer was working:
+
+```
+NEW 7B 02010603ff9005 |.......|
+NEW 18B 11079ecadc240ee5a9e093f3a3b50100406e |.....$..........@n|
+```
+
+**Two, is the 63-byte buffer reachable?** `ESPR_MAX_ADVERTISEMENT_DATA` is 63
+on softdevices with extended advertising, and only there could a 50-byte
+rendering fit. This build refuses 37 bytes of *advertising* data outright, with
+the same `ERR 0x9` at `:2806`, so extended advertising is not in play on it and
+31 bytes is the ceiling that matters.
+
+**Three, the release build.** Same payload, Jolt.js 2v28 as the target, the
+nice!nano as the observer. Before the restart, the real 17 bytes on air. After
+`NRF.sleep();NRF.wake()`: **no error at all**, and in fifteen seconds the
+observer counted
+
+```
+72x 7B 02010603ff9005
+75x 18B 11079ecadc240ee5a9e093f3a3b50100406e
+```
+
+75 scan responses, every one of them the board's own default (the 128-bit UART
+UUID), and not one of the 17 bytes that were asked for -- while
+`E.internal.BLE_RESP` still held `[16,65,...,80]` and the sketch had no way to
+know.
+
+**Four, a `Uint8Array` instead of an array.** On the master build, the same 17
+bytes stored as a typed array behave identically: `ERR 0x9` on the restart and
+a board that stops advertising. That matches the code rather than contradicting
+it, because `jsvHasCharacterData()` is false for an ArrayBuffer, so
+`jsvGetString()` falls through to `jsvAsString()` and renders the text again.
+**So on a master build there is no container at all that keeps a custom scan
+response across an advertising restart.**
+
+### What the numbers say
+
+**The corruption cannot be silent on legacy advertising, and that is provable
+rather than lucky.** The first byte of the rendering is the first character of
+a decimal number, so `-` (45), `.` (46) or a digit (48 to 57). The structure it
+claims is therefore at least 45 bytes long and the packet must be at least 46
+bytes, while a legacy scan response is capped at 31. The two cannot hold at
+once, so the rendering is always refused -- loudly, and fatally, since the
+board then advertises nothing.
+
+**What was silent was the other line.** 2v28 does not corrupt the stored value,
+it forgets it: a plain advertising restart starts with the board's default scan
+response and never reapplies the stored one, with no error raised and the store
+still full. Reading both branches says why. `_jswrap_ble_getScanResponse()`
+exists only on `master`, called from `jsble_advertising_start()` at
+`targets/nrf5x/bluetooth.c:2794`; in `RELEASE_2V28` and `RELEASE_2V29` there is
+no such function, and the stored value is reapplied only on the
+`jswrap_ble_reconfigure` path (`libs/bluetooth/jswrap_bluetooth.c:267`), which
+goes through `jswrap_ble_setScanResponse()` and `JSV_GET_AS_CHAR_ARRAY` and so
+carries the right bytes -- but which a restart after a disconnect or a
+`wake()` does not reach. §25's two-board difference was therefore a
+before-and-after of that rewrite, not a difference between boards.
+
+**And it changes what this module's page may promise.** The note said that
+setting a scan response *after* `setup()` is enough on 2v28. It is not: on 2v28
+it is dropped at the next restart without a word, and this module restarts
+advertising on every rate change and after every disconnect. There is no safe
+window on either line, which is what the note now says.
+
+Both boards were reset afterwards, with `BLE_RESP` and `BLE_ADV_D` back to
+`null`, no timers armed, and each back to its own default advertising.

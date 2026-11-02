@@ -324,12 +324,17 @@ nothing of this module's on air, no sensor schedule and no connection
 handlers, while the `console.log` on the line below it still prints, because
 Espruino runs each top-level statement on its own: a sketch that died looks
 like one that started. So clear the store before `setup()`, and do not keep a
-scan response of your own while this module advertises. Setting one *after*
-`setup()` is enough on 2v28, but on 2v29 a stored scan response also refuses
-the next start of advertising, with `ERR 0x9 (INVALID_LENGTH)`, and this module
-restarts advertising on every rate change and after every disconnect.
-`NRF.updateServices()`, which is what the module uses for every value it
-publishes afterwards, is unaffected.
+scan response of your own while this module advertises.
+
+Setting one *after* `setup()` buys nothing either, because a stored scan
+response does not survive the next start of advertising, and this module
+restarts advertising on every rate change and after every disconnect. On 2v28
+the board quietly goes back to its own default scan response, with no error and
+the stored bytes still in `global['ÿ']`. On a 2v29 build from master the
+restart is refused outright with `ERR 0x9 (INVALID_LENGTH)` and the board stops
+advertising altogether, whether the bytes were stored as an array or as a
+`Uint8Array`. `NRF.updateServices()`, which is what the module uses for every
+value it publishes afterwards, is unaffected throughout.
 
 References
 ----------
