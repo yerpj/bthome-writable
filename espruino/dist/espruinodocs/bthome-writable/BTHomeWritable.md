@@ -314,13 +314,22 @@ saved to flash repeats the problem at every boot.
 **A scan response of your own breaks `setup()`.** `setup()` calls
 `NRF.setServices()` once, and that call throws `ERR 0x10 (INVALID ADDR)`
 whenever a scan response is already stored -- an empty
-`NRF.setScanResponse([])` as surely as a valid one, on 2v28 and on 2v29. The
-stored bytes show up as `BLE_RESP` in `global['\xff']`, and
-`NRF.setScanResponse()` with no argument clears them, so set your scan response
-*after* `setup()` or clear it before: the same call that refuses to run second
-runs first. `NRF.updateServices()`, which is what the module uses for every
-value it publishes afterwards, is unaffected, so a device that got through
-`setup()` is in no danger.
+`NRF.setScanResponse([])` as surely as a valid one, on 2v28 and on 2v29
+([#2773](https://github.com/espruino/Espruino/issues/2773)). The stored bytes
+show up as `BLE_RESP` in `global['\xff']`, and `NRF.setScanResponse()` with no
+argument clears them.
+
+That throw is not cosmetic. It leaves the device with no service to write to,
+nothing of this module's on air, no sensor schedule and no connection
+handlers, while the `console.log` on the line below it still prints, because
+Espruino runs each top-level statement on its own: a sketch that died looks
+like one that started. So clear the store before `setup()`, and do not keep a
+scan response of your own while this module advertises. Setting one *after*
+`setup()` is enough on 2v28, but on 2v29 a stored scan response also refuses
+the next start of advertising, with `ERR 0x9 (INVALID_LENGTH)`, and this module
+restarts advertising on every rate change and after every disconnect.
+`NRF.updateServices()`, which is what the module uses for every value it
+publishes afterwards, is unaffected.
 
 References
 ----------

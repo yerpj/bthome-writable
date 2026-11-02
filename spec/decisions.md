@@ -10575,6 +10575,31 @@ the valid `[3,9,65,66]`, the `ERR 0xa` of `[2,1,6]`, the order, the immunity of
 `updateServices()` and the clearing call. The page note is still unpushed and
 still to be reworded.
 
+**Settled on the bench 2026-11-02, and the note now says what the throw costs**
+(`docs/measurements.md` §25). The call that throws in this module's path is
+`NRF.setServices()` at `espruino/BTHomeWritable.js:1049`, the one place in
+`setup()` that sits before the `try { refreshAdvertising(); } finally {
+schedule(); ... }`. `E.dumpTimers()` after the throw reports **`No Timers
+found.`**, which is the proof: `schedule()` lives in that `finally` and would
+have armed had the exception come from `refreshAdvertising()`. So the device is
+left with no GATT service, nothing of ours on air, no sensor schedule and no
+connection handlers, and @fanoush's *"mostly harmless"* holds for a sketch that
+only advertises, not for one that configures a service there.
+
+**The `ready` line of 2026-10-29 was the console, not the module.** The
+uploader sends a sketch statement by statement and an uncaught error in one
+does not stop the next, so `bw.setup({...})` throws and the `console.log` below
+it still prints. A sketch that died looks like one that started, which is worth
+a sentence on the page by itself.
+
+**And the second half of #2773 reproduced here, with valid bytes.** With a scan
+response stored, `NRF.setAdvertising()` succeeds on the Jolt.js 2v28 and throws
+`ERR 0x9 (INVALID_LENGTH)` at `:2806` on the nice!nano 2v29.396, with
+`showName:false` so no name could overflow the packet. @enaon saw that line for
+`Uint8Array([0])` on 2v29.494; it is not only invalid bytes. This is why the
+note no longer advises *"set it after `setup()`"* on its own: this module
+restarts advertising on every rate change and after every disconnect.
+
 ## D-160 -- #768 and #769 are merged, and Gordon asks for the radio back
 
 **Status:** both merged 2026-10-29. One follow-up is owed and agreed in
