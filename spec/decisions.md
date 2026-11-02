@@ -10301,6 +10301,10 @@ fix of `02b8977` closed the five failures that began at `e2c19d0`.
 #768 joins the watchlist. The comment for #2772 stays optional and stays the
 owner's.
 
+**Merged 2026-10-29 13:38 UTC by @gfwilliams**, 113 additions and 48 deletions,
+one commit, no change asked for first. His one comment, at 13:02, is a request
+for a follow-up rather than an objection, and D-160 holds it.
+
 ## D-156 -- The AESCCM page fix is open as #769, and the module is not going away
 
 2026-10-28 08:40 UTC, [EspruinoDocs#769](https://github.com/espruino/EspruinoDocs/pull/769),
@@ -10337,6 +10341,8 @@ answer is worth keeping because the question will come back:
 And the module was already upstream, merged as #761 and live at
 espruino.com/AESCCM, so the pollution at stake was never a new module: it was a
 published measurement wrong by half, which is what #769 removes.
+
+**Merged 2026-10-29 12:51 UTC by @gfwilliams**, one word of review: *"Thanks!"*
 
 ## D-157 -- The saturation arm has its four devices, and a deduplicated stream nearly sent the campaign the wrong way
 
@@ -10529,3 +10535,163 @@ whatever happens to #768. The owner opens the pull request, and it joins
 that it is any stored scan response and not only the empty one, that only
 `setServices` is affected while `updateServices` is not, and that the order of
 the two calls is what decides. The module needs no change for any of it.
+
+**And the thread moved on 2026-10-29 afternoon, in a way that narrows the note
+written above.** @fanoush opened
+[espruino/Espruino#2773](https://github.com/espruino/Espruino/issues/2773) at
+09:07 UTC, *"NRF.setScanResponse breaks next start of advertising"*, tested on
+a 52840 with S140. @enaon then could not reproduce the advertising-restart half
+of it: on `2v29.107` and `2v29.494` a stored `NRF.setScanResponse([])` survives
+a connect and a disconnect, and only `NRF.setScanResponse(Uint8Array([0]))`
+breaks that path, with `ERR 0x3200` at `:2806`. What he does reproduce is ours:
+with `[]` stored, **`setServices` throws**. So the fault splits in two, and only
+one half is firmware-wide:
+
+* **any stored scan response breaks the next `setServices()`** -- seen here on
+  2v28 and 2v29.396, seen by @enaon on 2v29.107 and 2v29.494;
+* **a stored scan response breaking the next advertising start** depends on the
+  board and the data: @fanoush sees it on 52840/S140, @enaon only with invalid
+  bytes.
+
+That second half is what the page note has to be careful about, because this
+module restarts advertising on every interval change and after every
+disconnect, so *"set your scan response after `setup()`"* is sound advice for
+the `setServices` fault and no protection at all on a board where the restart
+fault is real. The note is to be reworded before the pull request is opened:
+either no custom scan response while the module advertises, or @fanoush's two
+calls, `NRF.setScanResponse([]); NRF.setScanResponse();`.
+
+**One upstream conclusion is in the process of being drawn from the wrong
+premise, and that is what the refinement is for.** At 14:41 @gfwilliams sorted
+the three call forms: `[]` *"appears to work"* and is the way to clear,
+`Uint8Array([0])` is invalid data so failing late is acceptable, and
+`setScanResponse()` should restore the default. That triage reads the fault as
+a length-and-validity problem. Our `[3,9,65,66]` says it is not: a complete
+local name, valid, breaks `setServices` exactly like the empty array does.
+#2773 joins `tools/watch_github.py`.
+
+## D-160 -- #768 and #769 are merged, and Gordon asks for the radio back
+
+**Status:** both merged 2026-10-29. One follow-up is owed and agreed in
+principle: a `setAdvertising` interception point. The reply is the owner's to
+post (D-091).
+
+[EspruinoDocs#769](https://github.com/espruino/EspruinoDocs/pull/769) went in at
+12:51 UTC with *"Thanks!"*, and
+[#768](https://github.com/espruino/EspruinoDocs/pull/768) at 13:38 UTC, 113
+additions and 48 deletions, nothing asked for first. The project's page and
+module upstream are now what D-153 prepared, and the AESCCM measurement of
+D-156 is corrected in place. Three pull requests of the four prepared so far
+are merged; the fourth, D-159's, is not yet pushed.
+
+**What @gfwilliams wrote at 13:02, before merging, is a request and not a
+condition.** Three things, in his order:
+
+1. perhaps do not specify options that are the defaults anyway, *"like
+   scannable/discoverable/connectable"*;
+2. it is a shame that the module took control of `setAdvertising`, which the
+   `BTHome` module left to the caller: he wants to change the name the device
+   advertises, and he cannot advertise more than one packet, which would make
+   this hard to use on a Bangle.js;
+3. rather than a pass-through for each option that will ever be added, a
+   `setAdvertising` option, so the module does
+   `(st.setAdvertising||NRF.setAdvertising)(...)` and a caller can intercept.
+
+**Point 3 is the right shape and should be accepted.** `setAdvertising` is a
+`"staticmethod"` in `jswrap_bluetooth.c`, so his idiom loses no `this`; the
+array form of `NRF.setAdvertising` already rotates several packets, so the hook
+is also what makes a Bangle.js possible, since today the module is the one
+handing the radio a single object. Three things the implementation owes, and
+they are the reason this is a decision and not a patch:
+
+* the `0xFCD2` bytes pass through unchanged -- the packet id and the advertising
+  counter live in them, and a caller that rebuilds the payload breaks D-029 and
+  the replay window;
+* exceptions pass through -- `publish()`
+  (`espruino/BTHomeWritable.js:645-682`) uses the throw from an oversized
+  packet to fall back to an 11-byte nameless one (D-022, D-029, D-046, D-088),
+  so an interceptor that swallows errors silently disables the fallback;
+* the interceptor is therefore called **twice** on that path, the second time
+  with `showName:false`.
+
+**Point 1 is half right, and the half matters.** Verified in both lines, master
+(`jswrap_bluetooth.c`) and `RELEASE_2V29`:
+
+| option | where the value lands | persists between calls? |
+| --- | --- | --- |
+| `interval` | `bleAdvertisingInterval`, global (master 1373, 2v29 1294) | yes |
+| `connectable` | `bleStatus`, global (master 1383, 2v29 1304) | yes |
+| `scannable` | `bleStatus`, global (master 1388, 2v29 1309) | yes |
+| `whenConnected` | `bleStatus`, global (master 1394, 2v29 1315) | yes |
+| `showName` | the packet being built (master 1087, 2v29 1007) | no |
+| `discoverable` | the packet being built (master 1098, 2v29 1015) | no |
+
+Every option is read only when the key is present, so the distinction is not
+presence, it is **where the value goes**. The first four write to global state
+that nothing resets, so an omitted option inherits whatever the last caller
+left, which is the mechanism of D-143 and D-147 and of #2772 itself. The last
+two are rebuilt per packet from a compiled-in default.
+
+So **`discoverable:true` is indeed the default and goes**:
+`BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE`, set in `jsble_setup_advdata`
+(`targets/nrf5x/bluetooth.c:2712` on 2v29) and in `advFlagsValue`
+(`jswrap_bluetooth.c:1068` on master). **`showName` stays**, not as a default
+but as a pass-through: the user may set it `false`, and the fallback packet
+must. **`connectable`, `scannable` and `whenConnected` stay** while they are
+sticky; the day #2772's fix lands, `scannable:true` becomes redundant for the
+connectable case and can go with it.
+
+**And the documentation contradicts both implementations.** The options comment
+says `discoverable: true/false // general discoverable, or limited - default is
+limited` (master 1296, 2v29 1217) where both start from *general*. Worth one
+line to Gordon, since the answer above rests on it.
+
+## D-161 -- The first end-user test arrives with a bench that cannot write
+
+**Status:** [yerpj/bthome-writable#3](https://github.com/yerpj/bthome-writable/issues/3)
+open since 2026-11-02 08:15 UTC. One `[DECISION, owner]` at the end.
+
+@MaBecker opened *"Testing as enduser"*: no findings yet, an inventory only, so
+it is a logbook he means to fill. It is the first test of this project by
+someone who is not its author, and it comes from an Espruino regular. His
+comment at 08:35, *"@yerpj like to add some Labels"*, is a permissions request
+and nothing more: the repository carries GitHub's ten default labels, so what
+he lacks is triage rights.
+
+**His bench is not ours, and three differences will produce failures that are
+not defects of this project.**
+
+1. **His proxies cannot carry a write.** He lists *"some Shelly Plug S MRT as
+   BLE Proxy"*. Home Assistant's remote-adapter matrix gives Shelly
+   advertisement listening and bundling, with single and multiple active
+   connections **not supported**, and Shelly's own documentation says Gen 2 and
+   newer forward advertisement data and do not proxy GATT connections. Their
+   `Active` scanner mode is active *scanning*, not a connection. So every write
+   has to go through the dongle on the host, while every advertisement arrives
+   through the Shellys: a device in range of a Shelly but not of the dongle
+   **appears in Home Assistant and fails every write**. That is the D-158
+   failure seen from the user's side, and it will read as our bug.
+2. **His dongle is a Bluetooth 4.0 CSR8510A10** (Feasycom FSC-BP119, the one
+   the Espruino shop sells). Its *"long range"* is class 1 transmit power,
+   18.5 dBm into an SMA antenna, and **not** LE Coded PHY, which 4.0 cannot do.
+   Nothing of D-143 or D-147 applies on his host, and a CSR 4.0 stack is the
+   weakest connection platform of any we have measured on.
+3. **Puck.js v1.0e and Pixl.js are boards we have never measured on.** Every
+   number in `docs/measurements.md` is a Puck.js 2v27, a Jolt.js 2v28 or a
+   nice!nano 2v29. The Pixl is the one to watch: nRF52832 driving an LCD, so
+   the tightest RAM of the set, and its encrypted path is the AESCCM adapter
+   case of D-156.
+
+**And he is ten days behind.** He runs BTHome Writable **0.2.0**, the tag of
+2026-10-24; `main` has since carried the protocol to `2.0-draft.11` and taken
+the rejected-write message, D-148, D-151 and D-152. Part of what he reports may
+already be fixed here, and neither of us can tell which part from a version
+number. He also runs @gfwilliams' Espruino integration 1.0.3 alongside, which
+is exactly the configuration that already produced one report addressed to the
+wrong extension (`CLAUDE.md`).
+
+**[DECISION, owner] Tag 0.3.0 before the reports start, or keep testing against
+`main`?** Recommended: tag. A HACS user cannot install `main` without leaving
+the store, so the alternative asks an end user to do something a zero-config
+project should not ask (rule 4), and every report against 0.2.0 costs a
+bisection against ten days of work.
