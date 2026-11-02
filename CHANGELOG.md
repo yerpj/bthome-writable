@@ -24,6 +24,8 @@ commit that earns one. The sentence here used to say that touching
 the manifest states -- so that reading made every change to the integration cut
 a release on its way past (D-148).
 
+## [0.3.0] - 2026-11-02
+
 ### Added
 
 - **A refused write is counted on the device, with or without a handler.**
@@ -289,6 +291,7 @@ version of its own.
   numbers, text and buttons from a BTHome device's own declaration, a bindkey
   prompt when the device is encrypted, and nothing to configure by hand.
 
-[Unreleased]: https://github.com/yerpj/bthome-writable/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/yerpj/bthome-writable/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/yerpj/bthome-writable/releases/tag/v0.3.0
 [0.2.0]: https://github.com/yerpj/bthome-writable/releases/tag/v0.2.0
 [0.1.0]: https://github.com/yerpj/bthome-writable/releases/tag/v0.1.0
