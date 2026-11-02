@@ -10570,6 +10570,11 @@ a length-and-validity problem. Our `[3,9,65,66]` says it is not: a complete
 local name, valid, breaks `setServices` exactly like the empty array does.
 #2773 joins `tools/watch_github.py`.
 
+**Posted 2026-11-02 10:17 UTC** on #2773 by the owner, verbatim as drafted:
+the valid `[3,9,65,66]`, the `ERR 0xa` of `[2,1,6]`, the order, the immunity of
+`updateServices()` and the clearing call. The page note is still unpushed and
+still to be reworded.
+
 ## D-160 -- #768 and #769 are merged, and Gordon asks for the radio back
 
 **Status:** both merged 2026-10-29. One follow-up is owed and agreed in
@@ -10646,6 +10651,19 @@ says `discoverable: true/false // general discoverable, or limited - default is
 limited` (master 1296, 2v29 1217) where both start from *general*. Worth one
 line to Gordon, since the answer above rests on it.
 
+**Posted 2026-11-02 10:24 UTC**, and the owner made two changes worth recording.
+He turned the bare `#2772` into a full link, which was right: on an
+EspruinoDocs thread that autolink points at `espruino/EspruinoDocs#2772`, which
+does not exist. And **he dropped the paragraph above**, so the documentation
+mismatch is not reported anywhere. It survives as a claim this project relies
+on: the published comment at espruino.com still tells a reader that the default
+is *limited* while both implementations start from *general*, and the day
+`discoverable:true` is removed from the module, that page is the only thing a
+reader has. It is a one-line fix in `libs/bluetooth/jswrap_bluetooth.c`, so it
+belongs to `espruino/Espruino` and not to the docs repository. He closed with an
+offer to discuss, so the hook is not to be written until @gfwilliams answers or
+a week has passed without one.
+
 ## D-161 -- The first end-user test arrives with a bench that cannot write
 
 **Status:** [yerpj/bthome-writable#3](https://github.com/yerpj/bthome-writable/issues/3)
@@ -10690,8 +10708,18 @@ number. He also runs @gfwilliams' Espruino integration 1.0.3 alongside, which
 is exactly the configuration that already produced one report addressed to the
 wrong extension (`CLAUDE.md`).
 
-**[DECISION, owner] Tag 0.3.0 before the reports start, or keep testing against
-`main`?** Recommended: tag. A HACS user cannot install `main` without leaving
-the store, so the alternative asks an end user to do something a zero-config
-project should not ask (rule 4), and every report against 0.2.0 costs a
-bisection against ten days of work.
+**~~[DECISION, owner] Tag 0.3.0 before the reports start, or keep testing
+against `main`?~~ Settled 2026-11-02: tag.** A HACS user cannot install `main`
+without leaving the store, so the alternative asks an end user to do something
+a zero-config project should not ask (rule 4), and every report against 0.2.0
+costs a bisection against ten days of work.
+
+**The owner answered #3 at 09:40 UTC** and the answer makes it public: *"I will
+tag 0.3.0 shortly, so some of what you hit may already be fixed."* So 0.3.0 is
+owed to an outside tester, not merely preferable. He hedged the Shelly
+paragraph to *"I think they do not proxy GATT connections"*, which is fairer
+than the draft: the matrix and Shelly's documentation both say it, but nothing
+here has measured it. And he added that the new boards *"will likely be almost
+identical"* to the measured ones, which holds for the Puck.js v1.0e (nRF52832,
+as every Puck is) and is the open question on the Pixl.js, where an LCD shares
+that same 64 kB.
