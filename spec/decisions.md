@@ -10664,6 +10664,20 @@ belongs to `espruino/Espruino` and not to the docs repository. He closed with an
 offer to discuss, so the hook is not to be written until @gfwilliams answers or
 a week has passed without one.
 
+**And merged is not published: espruino.com has not rebuilt.** Checked
+2026-11-02, three days after both merges. `espruino.com/modules/BTHomeWritable.js`
+serves 24 125 bytes with no occurrence of `scannable` and none of `rejects`,
+where `master` and this repository's built copy are the same 24 827 bytes and
+have both; `espruino.com/BTHomeWritable` has neither the battery figure nor the
+coin-cell table; and `espruino.com/AESCCM` still prints the **75 ms** that #769
+removed. So `require("BTHomeWritable")` currently fetches the pre-#768 module,
+without the `scannable:true` of D-147. That matters for anything said to a user
+in the next days: the module is not to be fetched from espruino.com until the
+site catches up, but from
+`raw.githubusercontent.com/espruino/EspruinoDocs/master/modules/BTHomeWritable.js`.
+The site build is @gfwilliams', who was away, so this is expected to resolve
+itself rather than something to report.
+
 ## D-161 -- The first end-user test arrives with a bench that cannot write
 
 **Status:** [yerpj/bthome-writable#3](https://github.com/yerpj/bthome-writable/issues/3)
@@ -10723,3 +10737,12 @@ here has measured it. And he added that the new boards *"will likely be almost
 identical"* to the measured ones, which holds for the Puck.js v1.0e (nRF52832,
 as every Puck is) and is the open question on the Pixl.js, where an LCD shares
 that same 64 kB.
+
+**0.3.0 is cut and published.** `v0.3.0`, *"a refusal that leaves a trace"*,
+merged as `8f181a0` with CI run 207 green and the three suites at 880 tests;
+the tag was pushed and the owner published the GitHub release at 12:10 UTC,
+not a draft and not a prerelease. That last step was his because `gh` is not
+installed here and because HACS reads releases rather than tags: `hacs.json`
+declares no `zip_release`, so HACS takes `custom_components/bthome_writable`
+from the tag, where the manifest states `0.3.0`. The promise made on #3 is
+therefore kept, and what the tester installs is what `main` holds.
