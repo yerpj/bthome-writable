@@ -330,7 +330,7 @@ Setting one *after* `setup()` buys nothing either, because a stored scan
 response does not survive the next start of advertising, and this module
 restarts advertising on every rate change and after every disconnect. On 2v28
 the board quietly goes back to its own default scan response, with no error and
-the stored bytes still in `global['ÿ']`. On a 2v29 build from master the
+the stored bytes still in `global['\xff']`. On a 2v29 build from master the
 restart is refused outright with `ERR 0x9 (INVALID_LENGTH)` and the board stops
 advertising altogether, whether the bytes were stored as an array or as a
 `Uint8Array`. `NRF.updateServices()`, which is what the module uses for every
