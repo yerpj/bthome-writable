@@ -10600,6 +10600,36 @@ response stored, `NRF.setAdvertising()` succeeds on the Jolt.js 2v28 and throws
 note no longer advises *"set it after `setup()`"* on its own: this module
 restarts advertising on every rate change and after every disconnect.
 
+**Amended again 2026-11-02 after a second run** (`docs/measurements.md` §26),
+which answers a question the first one raised: @fanoush found that
+`_jswrap_ble_getScanResponse()` reads the stored scan response with
+`jsvGetString()`, which renders a JS array as *text*, so the bytes that reach
+the softdevice are the decimal digits of the ones that were asked for. Three
+results, with a payload built so that both the real bytes and their rendering
+are legal advertising data:
+
+- **the corruption cannot be silent on legacy advertising.** The first byte of
+  a rendering is the first character of a decimal number, so 45 to 57, so the
+  structure it claims needs at least 46 bytes where a scan response allows 31.
+  The rendering is therefore always refused, and the board then advertises
+  **nothing at all** -- measured, twelve seconds of silence from an observing
+  board, and recovery only after the store was cleared.
+- **a `Uint8Array` is rendered the same way**, because
+  `jsvHasCharacterData()` is false for an ArrayBuffer. On a master build no
+  container keeps a custom scan response across a restart.
+- **the release line is the one that fails silently.** On 2v28 a restart raises
+  no error and the board advertises its *default* scan response, 75 packets out
+  of 75 observed, while the store still holds the custom bytes.
+
+**What it costs this project**: the page note's *"setting one after `setup()`
+is enough on 2v28"* was wrong, and is replaced by *there is no safe window on
+either line*. Nothing in `espruino/BTHomeWritable.js` changes: the module never
+calls `NRF.setScanResponse()`, so a device only reaches this if its own sketch
+stores one. Making `setup()` clear the store itself was considered and
+rejected, since it would discard an advertisement the sketch may own on
+purpose, against rule 3 (wrap, don't fork). A clearer exception from the module
+when `global['ÿ'].BLE_RESP` is set is open as a `[DECISION, owner]`.
+
 ## D-160 -- #768 and #769 are merged, and Gordon asks for the radio back
 
 **Status:** both merged 2026-10-29. One follow-up is owed and agreed in
