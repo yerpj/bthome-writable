@@ -2468,3 +2468,58 @@ Every figure above is one run, not a median: these are the first four-device
 runs this bench has ever done, and the point of the section is which mechanism
 answers, not how fast it is. `docs/data/slot-storm-arm-*.json` holds each run
 whole, including the slot timeline.
+
+## 25. Which call a stored scan response breaks, and what setup() leaves behind
+
+**2026-11-02, Jolt.js `JOLTJS 2v28` on `COM18` and nice!nano `NICENANO
+2v29.396` on `COM9`, RAM only, bench lock taken and released** (D-159). §24's
+question was upstream's; this one is ours: espruino/Espruino#2773 says a stored
+scan response breaks the next start of advertising, and @fanoush added on
+2026-10-30 that the error is *"mostly harmless"* because the device keeps
+advertising. This module calls `NRF.setServices()` once, in `setup()`, so
+whether that is harmless here depends on which call throws, and the transcript
+of 2026-10-29 was ambiguous: it printed the sketch's own `ready` line and
+*then* the error.
+
+**The ambiguity was Espruino's console, not the module.** The uploader sends a
+sketch statement by statement, and an uncaught error in one statement does not
+stop the next, so `bw.setup({...})` can throw and the `console.log("ready",
+...)` on the line below still runs. A sketch that has died looks like a sketch
+that started.
+
+Each run is a reset board, then one file whose first statement stores a valid
+4-byte scan response (`[3,9,65,66]`, a complete local name), then the calls
+under test. The control is the same file without that first statement.
+
+| | Jolt.js, 2v28 | nice!nano, 2v29.396 |
+| --- | --- | --- |
+| control: `setServices` then `setAdvertising`, nothing stored | ok, ok | ok, ok |
+| with a scan response stored: `NRF.setServices()` | **`ERR 0x10 (INVALID ADDR) (:1525)`** | **`ERR 0x10 (INVALID ADDR) (:1594)`** |
+| then `NRF.setAdvertising()`, `showName:false` | ok | **`ERR 0x9 (INVALID_LENGTH) (:2806)`** |
+| the real sketch, `bw.setup()` | throws `ERR 0x10`, `ready` still printed | throws `ERR 0x10`, `ready` still printed |
+| `E.dumpTimers()` after that throw | **`No Timers found.`** | the build has no `E.dumpTimers` |
+
+**So the call that throws is `NRF.setServices()`**, at
+`espruino/BTHomeWritable.js:1049`, and it is the one place in `setup()` that
+sits **before** the `try { refreshAdvertising(); } finally { schedule(); ... }`
+block. The empty timer list is the proof that it does: `schedule()` lives in
+that `finally`, and if the exception had come from `refreshAdvertising()` the
+`finally` would have run and armed it. Nothing was armed, so nothing ran after
+`setServices`.
+
+**What a device is left as.** Not a device missing a feature: a device missing
+the mechanism. No GATT service and therefore no characteristics to write to, no
+BTHome packet of ours on air since `publish()` was never reached, no sensor
+schedule, and no `connect` or `disconnect` handlers, so neither the idle
+timeout nor the net of D-114 exists. What survives is `plan()`, which answers
+`[ 30 ]` because the module builds its state before it configures the radio,
+and the board's own default advertising. **`ERR 0x10` here is not cosmetic**,
+and the page note has to say so.
+
+**And the firmware lines differ on the second half, as #2773 says.** With the
+scan response stored, `setAdvertising` succeeds on 2v28 and fails on 2v29.396
+with `ERR 0x9 (INVALID_LENGTH)` at `:2806`, the same line @enaon reported for
+`Uint8Array([0])` on 2v29.494 -- and this one was a *valid* scan response, with
+`showName:false` so no name could overflow the packet. The `setServices` half
+is the same on both. Both boards were reset afterwards, with the store back to
+`null` and no timers left.
