@@ -10628,7 +10628,7 @@ calls `NRF.setScanResponse()`, so a device only reaches this if its own sketch
 stores one. Making `setup()` clear the store itself was considered and
 rejected, since it would discard an advertisement the sketch may own on
 purpose, against rule 3 (wrap, don't fork). A clearer exception from the module
-when `global['ÿ'].BLE_RESP` is set is open as a `[DECISION, owner]`.
+when `global['\xff'].BLE_RESP` is set is open as a `[DECISION, owner]`.
 
 ## D-160 -- #768 and #769 are merged, and Gordon asks for the radio back
 
