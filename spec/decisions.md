@@ -9525,6 +9525,20 @@ packet, which should reproduce `ERR 0x10` without the module involved, and the
 same with `scannable:true` added, which should not. The owner posts; the draft
 is his to send or to rewrite (D-091).
 
+**Closed upstream 2026-11-05.** @gfwilliams merged `9745a6b7`, *"nRF52840: Fix
+ERR 0x10 (INVALID ADDR) in NRF.setAdvertising with scannable:false (fix
+#2772)"*, and closed
+[#2772](https://github.com/espruino/Espruino/issues/2772) as completed. The fix
+is in `jsble_advertising_start()` and it confirms the diagnosis of this entry by
+its shape: for legacy advertising the CONNECTABLE_NONSCANNABLE_DIRECTED branch
+is deleted outright, so the directed type with its NULL peer address can no
+longer be selected at all. `scannable:false` with `connectable:true` now clears
+`BLE_IS_NOT_SCANNABLE` and warns *"Connectable legacy advertisements can only
+be used with scannable:true. Enabling scan response."* It throws nothing, which
+is a behaviour change for any sketch that relied on the throw; this module never
+could, since it passes `scannable:true` (`advOptions()`), and the comment above
+that function now records that the error became a warning.
+
 ## D-144 — Two audits that could not see each other, and the prose held while the figures did not
 
 **2026-10-27, on the owner's instruction.** Two agents were run with no
@@ -9877,6 +9891,14 @@ The Jolt is left running the bench sketch from RAM, so a power cycle leaves it
 bare and silent. It is **not** in `tools/devices.py`: it has no Home Assistant
 entry, and the tools that read that file assume one. It is described in
 `docs/shared-bench.md` instead.
+
+**The firmware half closed on 2026-11-05** with `9745a6b7` (D-143). What that
+changes for this entry is the recipe, not the result: the two-command
+discrimination run on the Jolt.js on 2026-10-27 reproduces `ERR 0x10` on 2v28
+and on 2v29 builds older than that commit, and on a build that carries it the
+second command prints the *"Enabling scan response"* warning instead of
+throwing. The six options this module passes are unchanged and remain correct
+on both.
 
 ## D-148 -- A write one byte too long does not get refused, it costs the connection
 
@@ -10629,6 +10651,38 @@ stores one. Making `setup()` clear the store itself was considered and
 rejected, since it would discard an advertisement the sketch may own on
 purpose, against rule 3 (wrap, don't fork). A clearer exception from the module
 when `global['\xff'].BLE_RESP` is set is open as a `[DECISION, owner]`.
+
+**Closed upstream 2026-11-05.** @gfwilliams merged `3cbd6b93`, *"Fix
+NRF.setScanResponse causing problems at next start of advertising (fix
+#2773)"*, crediting @fanoush for the patch, and closed the issue as completed.
+Both halves of this entry are in that one commit: the surplus
+`jswrap_ble_setScanResponse()` call in `jswrap_ble_reconfigure_softdevice()` is
+now under `#ifndef NRF5X`, with the comment *"for NRF5X already done as part of
+jswrap_ble_setAdvertising(v, o) above"*, so a stored response is reapplied when
+advertising starts rather than before the services are set; and
+`_jswrap_ble_getScanResponse()` reads it with `jsvIterateCallbackToBytes()`
+instead of `jsvGetString()`, so the bytes handed to the softdevice are the bytes
+that were stored, for a plain array and for a `Uint8Array` alike.
+
+**The type guard was left out, and the reading posted from here was the one that
+held.** fanoush's patch carried `if (v && !(jsvIsArray(v) ||
+jsvIsArrayBuffer(v)))`; Gordon dropped it: *"I don't really see how we can even
+get in that state so I don't believe the check is needed and have left it out -
+jswrap_ble_setScanResponse will only set BLE_NAME_SCAN_RESPONSE_DATA if it's got
+an array or arraybuffer."* That is what the owner posted on 2026-11-04 at 21:03,
+after his `atob("AQID")` case was checked against `jswrap_atob` here and found
+unreachable. fanoush's remaining objection, a sketch writing into `E.internal`
+by hand, Gordon answered on principle: *"if they start fiddling with that then I
+think it's fair that they would get an exception from jsvIterateCallbackToBytes.
+There would be no crash or other problem - so it's probably better than silently
+failing"*.
+
+**What it leaves us.** The module page is rewritten: the throw and the lost scan
+response are now stated as the behaviour of 2v28 and of 2v29 builds older than
+2026-11-05, with a closing paragraph on the fix. The `[DECISION, owner]` above
+narrows rather than closes -- on a fixed build there is nothing for the module to
+detect, so a clearer exception would serve only the boards already in the field
+-- and it stays open.
 
 ## D-160 -- #768 and #769 are merged, and Gordon asks for the radio back
 

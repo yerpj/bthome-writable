@@ -2637,3 +2637,11 @@ window on either line, which is what the note now says.
 
 Both boards were reset afterwards, with `BLE_RESP` and `BLE_ADV_D` back to
 `null`, no timers armed, and each back to its own default advertising.
+
+**Fixed upstream on 2026-11-05**, in `3cbd6b93` (espruino#2773, @fanoush's
+patch): `_jswrap_ble_getScanResponse()` now uses `jsvIterateCallbackToBytes()`,
+and the surplus call in `jswrap_ble_reconfigure_softdevice()` is excluded on
+nRF5x. Everything measured in this section and in §25 is therefore the behaviour
+of 2v28 and of 2v29 builds older than that date; nothing here was re-measured on
+a build that carries the fix, and a rerun of the four passes above is what would
+close it (D-159).
