@@ -649,7 +649,14 @@ function encodeOne(e, v) {
    one statement so that nothing can run in between, while the six below do not
    (D-147). Passing `scannable:false` with `connectable:true` throws the same
    way, and a reset clears it, which is why the report said a power cycle had
-   helped. */
+   helped.
+
+   Fixed upstream on 2026-11-05 in `9745a6b7` (espruino#2772): the
+   CONNECTABLE_NONSCANNABLE_DIRECTED branch is gone, and a connectable legacy
+   advertisement with scannable off is forced back to scannable with a warning
+   instead of throwing. Naming the option stays right either way -- it is what
+   stops the inheritance on every firmware already in the field, and on a fixed
+   build it is what keeps that warning off the console. */
 function advOptions() {
   return { interval:st.advInterval, connectable:true, scannable:true, discoverable:true, whenConnected:st.whenConnected, showName:st.showName };
 }
