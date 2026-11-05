@@ -34,9 +34,9 @@
   "ci": {
     "comments": 0,
     "state": "success",
-    "title": "116f644 main",
-    "updated": "2026-10-29T09:05:03Z",
-    "url": "https://github.com/yerpj/bthome-writable/actions/runs/40846853328",
+    "title": "1eb13f2 main",
+    "updated": "2026-11-02T20:17:55Z",
+    "url": "https://github.com/yerpj/bthome-writable/actions/runs/41517928652",
     "why": "our own CI, last run"
   },
   "espruino#8024": {
@@ -48,18 +48,18 @@
     "why": "the design discussion (71 replies collapsed on the page)"
   },
   "espruino/Espruino#2772": {
-    "comments": 11,
-    "state": "open",
+    "comments": 13,
+    "state": "closed",
     "title": "nRF52840: `ERR 0x10 (INVALID ADDR)` in NRF.setAdvertising",
-    "updated": "2026-10-29T12:50:45Z",
+    "updated": "2026-11-05T10:12:18Z",
     "url": "https://github.com/espruino/Espruino/issues/2772",
     "why": "the firmware's INVALID ADDR (D-143, D-147)"
   },
   "espruino/Espruino#2773": {
-    "comments": 8,
-    "state": "open",
+    "comments": 25,
+    "state": "closed",
     "title": "NRF.setScanResponse breaks next start of advertising",
-    "updated": "2026-10-30T13:36:43Z",
+    "updated": "2026-11-05T11:23:39Z",
     "url": "https://github.com/espruino/Espruino/issues/2773",
     "why": "setScanResponse breaks setup() (D-159)"
   },
@@ -120,10 +120,10 @@
     "why": "the changed() fold (D-123, D-124)"
   },
   "espruino/EspruinoDocs#768": {
-    "comments": 1,
+    "comments": 2,
     "state": "merged",
     "title": "BTHomeWritable: name scannable, count refusals, and price a coin cell",
-    "updated": "2026-10-29T13:39:07Z",
+    "updated": "2026-11-02T10:24:01Z",
     "url": "https://github.com/espruino/EspruinoDocs/pull/768",
     "why": "scannable and the coin cell (D-155)"
   },
@@ -160,10 +160,10 @@
     "why": "@enaon, ON-OFF-ON"
   },
   "yerpj/bthome-writable#3": {
-    "comments": 1,
+    "comments": 4,
     "state": "open",
     "title": "Testing as enduser",
-    "updated": "2026-11-02T08:35:35Z",
+    "updated": "2026-11-02T14:19:56Z",
     "url": "https://github.com/yerpj/bthome-writable/issues/3",
     "why": "@MaBecker, testing as an end user"
   }
