@@ -24,19 +24,19 @@
     "why": "Shelly BLU range and interval"
   },
   "Bluetooth-Devices/bthome-ble#424": {
-    "comments": 1,
+    "comments": 2,
     "state": "open",
     "title": "feat: parse the writable entries object (0xFF)",
-    "updated": "2026-10-15T15:20:39Z",
+    "updated": "2026-11-05T13:52:47Z",
     "url": "https://github.com/Bluetooth-Devices/bthome-ble/pull/424",
     "why": "the parser (D-098)"
   },
   "ci": {
     "comments": 0,
     "state": "success",
-    "title": "1eb13f2 main",
-    "updated": "2026-11-02T20:17:55Z",
-    "url": "https://github.com/yerpj/bthome-writable/actions/runs/41517928652",
+    "title": "f298eb6 main",
+    "updated": "2026-11-05T14:05:52Z",
+    "url": "https://github.com/yerpj/bthome-writable/actions/runs/42041710458",
     "why": "our own CI, last run"
   },
   "espruino#8024": {
@@ -56,10 +56,10 @@
     "why": "the firmware's INVALID ADDR (D-143, D-147)"
   },
   "espruino/Espruino#2773": {
-    "comments": 25,
+    "comments": 26,
     "state": "closed",
     "title": "NRF.setScanResponse breaks next start of advertising",
-    "updated": "2026-11-05T11:23:39Z",
+    "updated": "2026-11-05T13:14:28Z",
     "url": "https://github.com/espruino/Espruino/issues/2773",
     "why": "setScanResponse breaks setup() (D-159)"
   },
