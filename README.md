@@ -26,7 +26,8 @@ bindkey prompt an encrypted BTHome device already asks for:
 
 **The device decides what is writable, not a table in this repository.** The
 classification is read from `bthome-ble` at runtime, so an object BTHome assigns
-next year needs no change here. The counts are against `bthome-ble` 3.22.1.
+next year needs no change here. The counts are against `bthome-ble` 3.25.0, and
+have not moved since 3.22.1.
 
 A device whose values can also change by themselves makes those characteristics
 readable and bumps BTHome's settings revision (`0x65`) when they do, so Home
