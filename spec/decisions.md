@@ -10922,7 +10922,7 @@ their own suite. That is a true statement about a past run, and re-running it on
 
 ## D-163 -- The submission is relaunched, with one question, in one place
 
-**Posted 2026-11-05 by the owner** on
+**Posted 2026-11-05 at 13:52 UTC by the owner** on
 [`Bluetooth-Devices/bthome-ble#424`](https://github.com/Bluetooth-Devices/bthome-ble/pull/424),
 addressed to @Ernst79 by name. The text is his, written from a French outline
 and rewritten in his own English (rule 7, D-091, D-097); its substance: one
@@ -10955,8 +10955,31 @@ final text, the owner's call: the Espruino link carries the same fact without
 putting a third party forward, and @gfwilliams had already commented on `#82`
 anyway.
 
-**What is pending.** The comment's verbatim text is not quoted here: the
-anonymous GitHub API hit its hourly limit while this was being written, so the
-quote and the watchlist baseline wait for the next sweep. And the answer itself
-is what the next entry records -- including a no, which closes both PRs and is
-the one outcome this project has never planned for.
+**As posted**, verbatim:
+
+> Hi @Ernst79,
+>
+> Just one question. Would you consider adding 0xFF to the BTHome spec, to
+> support the proposed [bthome-writable](https://github.com/yerpj/bthome-writable)
+> integration?
+>
+> This PR is the parser-only slice of the project. Today an unknown object ID
+> has no known length, so parsing stops there and everything after it is lost.
+> This teaches the parser that 0xFF is length-prefixed, so it can read past it
+> and expose what it read as device.writable_entries.
+>
+> It already exists on both sides: a Home Assistant integration, installed
+> through HACS as a custom repository, and an
+> [Espruino module](https://www.espruino.com/BTHomeWritable) published on
+> espruino.com and running on real hardware.
+>
+> The documentation side is ready in
+> [home-assistant/bthome.io#82](https://github.com/home-assistant/bthome.io/pull/82).
+>
+> If you disagree with the concept, no worries, just tell me and I will close
+> both PRs.
+
+**What is pending.** The answer, which is what the next entry records --
+including a no, which closes both PRs and is the one outcome this project has
+never planned for. Nothing had moved on either PR by the 15:43 sweep of
+2026-11-05.
