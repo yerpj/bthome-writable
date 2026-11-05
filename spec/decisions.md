@@ -10919,3 +10919,44 @@ library -- an object the library does not know is simply not offered.
 records the patch as *"applied and run before being offered"* against 3.24.0 and
 their own suite. That is a true statement about a past run, and re-running it on
 3.25.0 would make it current. It is only worth doing if the thread asks.
+
+## D-163 -- The submission is relaunched, with one question, in one place
+
+**Posted 2026-11-05 by the owner** on
+[`Bluetooth-Devices/bthome-ble#424`](https://github.com/Bluetooth-Devices/bthome-ble/pull/424),
+addressed to @Ernst79 by name. The text is his, written from a French outline
+and rewritten in his own English (rule 7, D-091, D-097); its substance: one
+question, would he consider adding `0xFF` to the BTHome spec to support the
+proposed bthome-writable integration; this PR is the parser-only slice, and the
+reason it matters to BTHome itself, that an unknown object ID has no known
+length so parsing stops there and everything after it is lost; that the thing
+already exists on both sides, a Home Assistant integration installed through
+HACS as a custom repository and an
+[Espruino module](https://www.espruino.com/BTHomeWritable) running on hardware;
+that the documentation half is ready in `home-assistant/bthome.io#82`; and that
+a no is an acceptable answer, in which case both PRs get closed.
+
+**Why #424 rather than #82, and why a name.** @Ernst79 maintains both, and
+`bthome-ble#430` shows the order he practises: @Bascht74 opened a new button
+event on 2026-10-26 at 20:43, @Ernst79 **approved it at 21:18** and merged it
+the next morning, then asked in the thread *"Could you please add it to the
+bthome documentation as well"*, and `bthome.io#83` followed. Parser first,
+documentation after, which is the order this project already has. Against that,
+`#424` sat from 2026-10-15 to 2026-11-05 with no review, no label, no assignee
+and no reviewer requested: it was not refused, it was unseen. The owner cannot
+request a reviewer on a repository he has no write access to, so a comment that
+mentions him is the whole of the available mechanism.
+
+**What was checked before it went out.** Both PRs `mergeable`, state `clean`,
+unchanged since 15 and 14 October. The README the message points at was wrong by
+three releases on one footnote and is corrected (D-162). The Espruino module
+link resolves to the page EspruinoDocs serves. Gordon's name was left out of the
+final text, the owner's call: the Espruino link carries the same fact without
+putting a third party forward, and @gfwilliams had already commented on `#82`
+anyway.
+
+**What is pending.** The comment's verbatim text is not quoted here: the
+anonymous GitHub API hit its hourly limit while this was being written, so the
+quote and the watchlist baseline wait for the next sweep. And the answer itself
+is what the next entry records -- including a no, which closes both PRs and is
+the one outcome this project has never planned for.
