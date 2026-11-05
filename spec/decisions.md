@@ -10873,3 +10873,49 @@ installed here and because HACS reads releases rather than tags: `hacs.json`
 declares no `zip_release`, so HACS takes `custom_components/bthome_writable`
 from the tag, where the manifest states `0.3.0`. The promise made on #3 is
 therefore kept, and what the tester installs is what `main` holds.
+
+## D-162 -- The counts are recounted against 3.25.0, and one row's values moved
+
+**Why now.** The owner is about to ask @Ernst79 to reserve `0xFF`
+(`Bluetooth-Devices/bthome-ble#424`), and that question sends a maintainer to
+this repository's README, whose object counts carried the footnote *"against
+`bthome-ble` 3.22.1"* while the library is at **3.25.0**, released 2026-10-27.
+Three releases is the kind of detail a maintainer checks first.
+
+**Recounted with `protocol.describe()` on 3.25.0**, the library installed in the
+tools environment for the purpose: **28** binary, **59** numeric, **1** string
+(`0x53`), **3** event (`0x3A`, `0x3B`, `0x3C`), **1** raw (`0x54`) and **3**
+device-info (`0xF0`-`0xF2`), 95 objects in all. So every count the README and
+`spec/PLATFORMS.md` quote is the same on 3.22.1 and on 3.25.0, and the earlier
+92 against 3.22.1 differs only by those three device-info objects, which are
+`meta` and are offered as nothing.
+
+**What did move is values, not objects.** `BUTTON_EVENTS` gained `hold_release`
+(`0x81`) in 3.25.0, from `Bluetooth-Devices/bthome-ble#430` -- @Bascht74's PR,
+opened 2026-10-26 at 20:43, **approved by @Ernst79 at 21:18** and merged the next
+morning, which is also the measurement that says our own PR was not refused but
+unseen. A declared `0x3A` is therefore offered as **eight** buttons where it was
+seven, and `0x3C` stays at two. Nothing changes in this repository for it: the
+table is read at runtime (`_object_table`, rule in `PLATFORMS.md`), which is the
+whole point of not keeping a copy.
+
+**Which suite saw which library.** The tools suite ran green on 3.25.0, 360
+tests, and that is where the recount was made. The Home Assistant suite still
+resolves **3.22.1**, because its harness pins a Home Assistant release that holds
+`habluetooth` and `cryptography` back, which is exactly why CI runs two jobs
+rather than one (`.github/workflows/ci.yml`). So the newer library is exercised
+by the tools side here, and by whatever CI's own resolution installs on each
+side; the integration's runtime claim -- an object the library does not know is
+not offered -- is tested on both.
+
+**Changed:** the README footnote now says 3.25.0 and that the counts have not
+moved since 3.22.1; `spec/PLATFORMS.md` records the recount, names the eight and
+the two, and its version table reads 3.25.0 for the tools environment;
+`requirements-dev.txt` raises its floor to the version the recount was made on.
+`manifest.json` keeps `bthome-ble>=3.22.1`, because nothing here needs the newer
+library -- an object the library does not know is simply not offered.
+
+**Not done, and offered to the owner:** `spec/bthome-ble-parser/README.md` still
+records the patch as *"applied and run before being offered"* against 3.24.0 and
+their own suite. That is a true statement about a past run, and re-running it on
+3.25.0 would make it current. It is only worth doing if the thread asks.

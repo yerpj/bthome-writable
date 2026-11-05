@@ -16,14 +16,14 @@ time BTHome assigns a new id.
 `bthome-ble` already sorts every object into four kinds, and that sorting is the
 one this table uses. The counts are of the library, so they move when BTHome
 assigns an id; these are **92 objects, counted against `bthome-ble` 3.22.1** with
-`protocol.describe`:
+`protocol.describe`, and every count below is unchanged in 3.25.0:
 
 | kind | count | writable ⇒ platform |
 |---|---|---|
 | binary sensor | 28 | `switch` |
 | numeric sensor | 59 | `number` |
 | string (`0x53`) | 1 | `text` |
-| event (`0x3A` button, `0x3C` dimmer) | 3 | `button`, one per value |
+| event (`0x3A` button, `0x3C` dimmer) | 3 | `button`, one per value: 8 and 2 in 3.25.0 |
 | command (`0x3B`) | — | — not offered, §2.1 excludes it |
 | raw (`0x54`) | 1 | — not exposed |
 
@@ -36,13 +36,21 @@ minimum. The note that stood here said 3.9.2 and claimed the metadata objects
 | library | objects | `0xF0`–`0xF2` |
 |---|---|---|
 | 3.22.1 (integration, `manifest.json`) | 92 | absent |
-| 3.24.0 (tools environment, `requirements-dev.txt`) | 95 | **present**, as `device_type_id`, `firmware_version_4`, `firmware_version_3` |
+| 3.25.0 (tools environment, `requirements-dev.txt`) | 95 | **present**, as `device_type_id`, `firmware_version_4`, `firmware_version_3` |
 
 So they were *added* later rather than never present, and the earlier total of 95
 was right for a newer library than the one it was attributed to. Nothing
 functional turns on it — `FORBIDDEN_ENTRIES` refuses `0xF0`–`0xF2` either way
 (§2.1) — but the numbers in this table move with the library, so **state the
-version whenever you quote them.** The classification itself is read from
+version whenever you quote them.**
+
+**Recounted again 2026-11-05 against 3.25.0**, the current release (2026-10-27),
+with the same `protocol.describe`: 28 binary, 59 numeric, one string, three
+event, one raw, and the three device-info objects, 95 in all. So the five counts
+this table offers are the same on 3.22.1 and on 3.25.0, and what did move is one
+row's *values* rather than its objects: `BUTTON_EVENTS` gained `hold_release`
+(`0x81`) in 3.25.0, so a declared `0x3A` is now offered as eight buttons instead
+of seven, while `0x3C` stays at two. Read at runtime, so no change here (D-162). The classification itself is read from
 `bthome-ble` at runtime and is never copied into this project, which is why a
 new object type needs no code change here.
 
