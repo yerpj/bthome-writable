@@ -185,6 +185,24 @@ attempts, for the ESPHome race where a slot is reported free before it is
 (`BLEAK_OUT_OF_SLOTS_BACKOFF_TIME`), so it is the host's own figure rather than
 one of ours (D-133)."""
 
+NAME_THE_HOST_WHEN_A_CONNECTION_IS_REFUSED: Final = True
+"""Whether a refused connection may name the host's slots as a possible cause
+(D-158, option c).
+
+An ESPHome proxy with no slot left refuses by disconnecting rather than by
+saying it is out of slots, so `BleakOutOfConnectionSlotsError` is never raised
+for one and `SLOT_COOLDOWN` never fires. Measured: one slot and four devices,
+two commands delivered and two failed with `Failed to connect after 5
+attempt(s): Disconnected`, and no slot error in any run of the campaign. The
+message named nothing the user could act on, where the host is exactly what ran
+out.
+
+So when a command is refused while this integration holds or is queueing for
+other connections of its own, the message says the host may be out of slots.
+Only the message: no hold-off, no retry, no timing of any kind, because a
+device that genuinely drops its links looks identical from here and a heuristic
+that moved timing would punish it (D-158 rejected that as option b)."""
+
 CONFIRM_WRITES_BY_READING_BACK: Final = True
 """Whether an acknowledged write must be checked against the device (D-117)
  [DECISION]

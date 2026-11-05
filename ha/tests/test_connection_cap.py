@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import time
 
+from bleak.exc import BleakError
 from bleak_retry_connector import BleakOutOfConnectionSlotsError
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType, InvalidData
@@ -390,6 +391,50 @@ async def test_a_command_that_finds_no_slot_says_which_it_was(
 
     assert connection_slots().holding_off > 0, "and the host is given a moment"
     assert gatt.connections == 0
+
+
+async def test_a_refused_connection_under_load_names_the_host_too(
+    hass: HomeAssistant, gatt
+) -> None:
+    """D-158 option c: the failure a proxy actually produces.
+
+    A proxy with no slot left disconnects instead of saying it is out of slots,
+    so the clause above never fires for one and the user reads
+    `Failed to connect ...: Disconnected`, which names the device and not the
+    host. Said here, because this integration knows what else it was doing.
+    """
+    coordinator = BTHomeWritableCoordinator(hass, ONE)
+    coordinator.declaration = Declaration.restore({"layout": [0x1E]})
+    gatt.declare(1)
+    gatt.fail_on_connect = BleakError("Failed to connect after 5 attempt(s)")
+    elsewhere = connection_slots()
+    await elsewhere.acquire()  # another device of ours is holding a slot
+
+    try:
+        with pytest.raises(WriteFailed, match="may be out of connection slots"):
+            await coordinator._write_now(1, b"\x01")
+    finally:
+        elsewhere.release()
+
+    assert connection_slots().holding_off == 0, "and no timing moved: no hold-off"
+
+
+async def test_a_refused_connection_on_a_quiet_host_keeps_its_own_words(
+    hass: HomeAssistant, gatt
+) -> None:
+    """The other half of option c, and the reason it is not a diagnosis.
+
+    One command, nothing else in flight: the host's slots explain nothing, so
+    the error says what it said. A device that drops its links is unchanged by
+    this entry.
+    """
+    coordinator = BTHomeWritableCoordinator(hass, ONE)
+    coordinator.declaration = Declaration.restore({"layout": [0x1E]})
+    gatt.declare(1)
+    gatt.fail_on_connect = BleakError("Failed to connect after 5 attempt(s)")
+
+    with pytest.raises(BleakError, match="Failed to connect"):
+        await coordinator._write_now(1, b"\x01")
 
 
 async def test_a_read_that_finds_no_slot_leaves_the_state_alone(

@@ -10436,7 +10436,7 @@ wall where it is wanted; and the third arm, the one asking whether D-133's
 host-wide hold-off makes a device wait although its own scanner has free slots,
 needs the second room to have a receiver.
 
-## D-158 -- The campaign ran, and an ESPHome proxy refuses by disconnecting  [DECISION, owner]
+## D-158 -- The campaign ran, and an ESPHome proxy refuses by disconnecting
 
 **Status:** measured 2026-10-28, `docs/measurements.md` §24, runs in
 `docs/data/slot-storm-arm-*.json`, tool in `tools/slot_storm.py`. One decision
@@ -10492,8 +10492,9 @@ authenticate"* and *"entry 1: a read did not authenticate"*, and the Puck's
 entry had to be reloaded before it came back: the counter state of §5.6 under
 contention is worth its own session.
 
-**[DECISION, owner]** Finding 3 is a behaviour question, not a bug to patch on
-my own initiative (rule 1). Three options, with a recommendation:
+**~~[DECISION, owner]~~ Settled 2026-11-05: option c.** Finding 3 is a
+behaviour question, not a bug to patch on my own initiative (rule 1). Three
+options, with a recommendation:
 
 * **a.** Leave it. The hold-off is for hosts that report exhaustion, and a proxy
   storm is already reported as an undelivered command.
@@ -10505,6 +10506,19 @@ my own initiative (rule 1). Three options, with a recommendation:
   add *"the host may be out of connection slots"* to `WriteFailed` without
   changing any timing. **Recommended**: it costs nothing, it is true, and it
   sends the user to the right place, which is what D-133's third change was for.
+
+**Implemented as chosen**, on `feat/a-refused-connection-may-name-the-host`. A
+`BleakError` from `_connect()` in the command path is re-raised as
+`WriteFailed`, keeping the original words and adding what this integration knows
+and the user does not: how many other connections of ours were open or queued at
+that moment, that a proxy with no slot left refuses by disconnecting rather than
+by saying so, and that a device which drops its links looks the same from here.
+Nothing else changes: no hold-off, no retry, no interval, and
+`BleakOutOfConnectionSlotsError` keeps its own clause above. The behaviour is
+named `NAME_THE_HOST_WHEN_A_CONNECTION_IS_REFUSED` in `const.py`, and a quiet
+host is the second test: one command, nothing else in flight, and the error
+reaches the caller untouched, since the slots would explain nothing. Two tests
+in `ha/tests/test_connection_cap.py`, suite at 239.
 
 ## D-159 -- A scan response of the sketch's own makes setup() throw, and it is a second ERR 0x10
 
@@ -10650,7 +10664,8 @@ calls `NRF.setScanResponse()`, so a device only reaches this if its own sketch
 stores one. Making `setup()` clear the store itself was considered and
 rejected, since it would discard an advertisement the sketch may own on
 purpose, against rule 3 (wrap, don't fork). A clearer exception from the module
-when `global['\xff'].BLE_RESP` is set is open as a `[DECISION, owner]`.
+when `global['\xff'].BLE_RESP` is set was opened as a `[DECISION, owner]`
+and closed by the owner on 2026-11-05 with a no, at the end of this entry.
 
 **Closed upstream 2026-11-05.** @gfwilliams merged `3cbd6b93`, *"Fix
 NRF.setScanResponse causing problems at next start of advertising (fix
@@ -10682,7 +10697,10 @@ response are now stated as the behaviour of 2v28 and of 2v29 builds older than
 2026-11-05, with a closing paragraph on the fix. The `[DECISION, owner]` above
 narrows rather than closes -- on a fixed build there is nothing for the module to
 detect, so a clearer exception would serve only the boards already in the field
--- and it stays open.
+-- and **the owner closed it on 2026-11-05: no**. The module gets no new check.
+It would read `global['\xff']` on every `setup()` to warn about a firmware that
+has been fixed, serving only the boards already in the field, and the sketch
+that stored the scan response is the one place that already knows it did.
 
 ## D-160 -- #768 and #769 are merged, and Gordon asks for the radio back
 

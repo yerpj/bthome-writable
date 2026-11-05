@@ -16,6 +16,7 @@ import secrets
 import time
 from typing import Any, NamedTuple
 
+from bleak.exc import BleakError
 from bleak_retry_connector import (
     BleakClientWithServiceCache,
     BleakOutOfConnectionSlotsError,
@@ -43,6 +44,7 @@ from .const import (
     EVENT_WRITE,
     FOLD_A_DUE_READ_INTO_A_WRITE,
     FOLD_THE_COUNTER_QUESTION_INTO_A_WRITE,
+    NAME_THE_HOST_WHEN_A_CONNECTION_IS_REFUSED,
     READ_RETRY,
     RESYNC_JUMP,
     SERVICE_UUID,
@@ -911,6 +913,31 @@ class BTHomeWritableCoordinator:
                     "devices at once than it has slots for. Fewer simultaneous "
                     "connections, or another Bluetooth proxy, is what fixes it"
                 ) from exhausted
+            except BleakError as refused:
+                # The clause above is for a host that says it is out of slots.
+                # A proxy does not say it: it refuses by disconnecting, so a
+                # command fails here with `Failed to connect after 5
+                # attempt(s): Disconnected` and nothing names the host (D-158
+                # finding 3, measured with one slot and four devices). When
+                # this integration had other links of its own open or queued
+                # at that moment, the possibility is worth naming, since it is
+                # the user's to act on and the device may be sitting there
+                # advertising. Named only: the error keeps its own words, and
+                # no timing moves, because a device that genuinely drops links
+                # is indistinguishable from here.
+                crowded = self._slots.in_flight - 1 + self._slots.waiting
+                if NAME_THE_HOST_WHEN_A_CONNECTION_IS_REFUSED and crowded > 0:
+                    raise WriteFailed(
+                        f"{self.address}: {refused}. The host may be out of "
+                        "connection slots: this integration was using or "
+                        f"waiting for {crowded} other connection(s) at the "
+                        "time, and a Bluetooth proxy with none left refuses by "
+                        "disconnecting rather than by saying so. Fewer "
+                        "simultaneous connections, or another proxy, is what "
+                        "fixes that; a device that drops its links looks the "
+                        "same from here"
+                    ) from refused
+                raise
             connected = time.monotonic()
             try:
                 if self._resync_counter:

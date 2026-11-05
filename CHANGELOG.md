@@ -24,6 +24,22 @@ commit that earns one. The sentence here used to say that touching
 the manifest states -- so that reading made every change to the integration cut
 a release on its way past (D-148).
 
+### Changed
+
+- **A write refused while the host is busy may now name the host's connection
+  slots.** A Bluetooth proxy with no slot left refuses by disconnecting rather
+  than by reporting exhaustion, so `BleakOutOfConnectionSlotsError` is never
+  raised for one and the user read `Failed to connect after 5 attempt(s):
+  Disconnected`, which names the device although the device may be sitting
+  there advertising. Measured during the saturation campaign: one slot and four
+  devices, two commands delivered, two refused that way, and no slot error in
+  any run (D-158). When a command is refused while this integration holds or is
+  queueing for other connections of its own, the failure now says the host may
+  be out of connection slots and what fixes that. The message only: no hold-off
+  and no retry, since a device that genuinely drops its links is
+  indistinguishable from here, which is why the heuristic was rejected
+  (`NAME_THE_HOST_WHEN_A_CONNECTION_IS_REFUSED`).
+
 ## [0.3.0] - 2026-11-02
 
 ### Added
