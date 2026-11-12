@@ -34,9 +34,9 @@
   "ci": {
     "comments": 0,
     "state": "success",
-    "title": "a432556 main",
-    "updated": "2026-11-05T14:43:42Z",
-    "url": "https://github.com/yerpj/bthome-writable/actions/runs/42047801445",
+    "title": "9c5edc6 main",
+    "updated": "2026-11-11T19:11:50Z",
+    "url": "https://github.com/yerpj/bthome-writable/actions/runs/43084918932",
     "why": "our own CI, last run"
   },
   "espruino#8024": {
@@ -160,10 +160,10 @@
     "why": "@enaon, ON-OFF-ON"
   },
   "yerpj/bthome-writable#3": {
-    "comments": 5,
+    "comments": 6,
     "state": "open",
     "title": "Testing as enduser",
-    "updated": "2026-11-11T12:51:47Z",
+    "updated": "2026-11-11T22:48:55Z",
     "url": "https://github.com/yerpj/bthome-writable/issues/3",
     "why": "@MaBecker, testing as an end user"
   }
