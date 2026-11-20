@@ -10983,3 +10983,55 @@ anyway.
 including a no, which closes both PRs and is the one outcome this project has
 never planned for. Nothing had moved on either PR by the 15:43 sweep of
 2026-11-05.
+
+## D-164 -- How the module gets onto a device, and which of five routes to take  [DECISION]
+
+**Asked by the owner** on 2026-11-20: can an end user use bthome-writable
+without meeting the transport, given "beaucoup de modules, tailles grandes".
+Measured in `docs/install-paths.md`; the numbers are not repeated here, the
+ruling is.
+
+**What the measurement changes about the question.** The install is already one
+file: the documented path is a single minified bundle of about 21 kB and nothing
+to resolve. The module is 11 956 bytes as espruino.com serves it, a fifth of the
+57 878-byte source, and the three modules together are 15 471. So size is real
+but small, and splitting the module buys less than a quarter of an upload for a
+second module to keep in step, which is what rule 3 and D-084 exist to prevent.
+
+What hurt on 2026-11-20 was not size. A 12 kB upload is 25 s of writing with no
+flow control in either direction, 52 separate flash writes, and fixed sleeps
+instead of acknowledgement; the link dropped twice at the same point on a board
+with 400 kB of free Storage and no error flags. And the cost that shapes a
+user's day is neither: the module is sent again at every edit, even when it is
+already in Storage, because the Web IDE scans `require()` and fetches from
+espruino.com. That last one is quoted from espruino.com's own page.
+
+**The five routes** are set out in the document: (A) the pasteable bundle, as
+today; (B) the module in Storage once, which D-023 verified on hardware, made
+usable from the Web IDE by writing `require(("BTHomeWritable"))` so the scanner
+does not re-fetch it; (C) a smaller module, where sealing is 17.1% of the
+generated copy and `AESCCM` another 1 868 bytes on the wire; (D) the module
+carried inside the firmware, which is the only route that removes the upload
+entirely and is @gfwilliams' call, on espruino#8024; (E) flow control in
+`tools/espruino_deploy.py`, waiting for the prompt rather than sleeping, and one
+flash write rather than 52.
+
+**Recommended order: E, then B documented, then D asked, and C only if D is
+refused** -- and then only the AESCCM half of it, whose catch is that hiding
+`require("AESCCM")` from the scanner breaks a sealed sketch exactly as D-084
+recorded, unless the sealed path requires it explicitly.
+
+**For the owner to settle**, because each item is a different kind of
+commitment: whether E is worth doing now (ours, small, fixes what was seen);
+whether B becomes the documented path for Web IDE users, which changes
+`docs/espruino-quickstart.md`; whether D is asked of Gordon, which is a request
+on a thread the owner drives and which would bind the module's version to a
+firmware release; and whether C is ruled out for good, so the question stops
+coming back.
+
+**Not done here, deliberately.** No code changed: this entry is a study, and
+rule 1 keeps the choice with the owner. The one free finding needs no decision:
+espruino.com says a flash module name may be at most eight characters, which
+`BTHomeWritable` at fourteen contradicts, verified on hardware in D-023. A user
+who reads that sentence will not try route B at all, so it is worth a line to
+EspruinoDocs whenever the next page change goes out.
