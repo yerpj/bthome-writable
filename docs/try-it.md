@@ -49,7 +49,8 @@ git clone https://github.com/yerpj/bthome-writable && cd bthome-writable
 cp -r custom_components/bthome_writable <config>/custom_components/
 ```
 
-Restart Home Assistant. (Or add the repo to HACS instead.)
+Restart Home Assistant. (Or add the repo to the Marketplace instead, HACS
+on 2026.10 and older.)
 
 ### 2. The sketch, either way
 

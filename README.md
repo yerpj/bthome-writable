@@ -7,7 +7,7 @@ with BTHome's own encryption — to that entry's own GATT characteristic, and
 disconnects. The write response is the acknowledgement: a writable value is
 never advertised back.
 
-[![HACS: custom repository](https://img.shields.io/badge/HACS-custom%20repository-41BDF5.svg)](https://hacs.xyz/docs/faq/custom_repositories)
+[![Marketplace / HACS: custom repository](https://img.shields.io/badge/Marketplace%20%2F%20HACS-custom%20repository-41BDF5.svg)](https://hacs.xyz/docs/faq/custom_repositories)
 [![CI](https://github.com/yerpj/bthome-writable/actions/workflows/ci.yml/badge.svg)](https://github.com/yerpj/bthome-writable/actions/workflows/ci.yml)
 
 ![A BTHome device with writable controls in Home Assistant](https://raw.githubusercontent.com/yerpj/bthome-writable/main/docs/screenshots/device-page.png)
@@ -44,16 +44,23 @@ Assistant knows to read them again.
 
 ## Install
 
-Through HACS, as a custom repository:
+As a custom repository. Home Assistant **2026.11** folded HACS into a built-in
+**Marketplace** and blocks the standalone HACS installer, so the first step
+depends on your version; the rest is the same.
 
-1. **HACS → ⋮ → Custom repositories**
+1. **Settings → Marketplace → ⋮ → Custom repositories** on 2026.11 and newer,
+   or **HACS → ⋮ → Custom repositories** on 2026.7 to 2026.10
 2. Repository `https://github.com/yerpj/bthome-writable`, type **Integration**, Add
 3. Find **BTHome Writable** in the list, **Download**
 4. **Restart Home Assistant** — a custom integration is not loaded until you do
 
+An existing HACS setup is migrated to the Marketplace, custom repositories
+included, the first time Home Assistant starts after the update.
+
 Your device should then be discovered without being asked for.
 [`docs/home-assistant-install.md`](docs/home-assistant-install.md) is the longer
-version: installing without HACS, and what to do when a control misbehaves.
+version: installing without either store, and what to do when a control
+misbehaves.
 
 > **Status: draft / pre-release** — protocol 2.0-draft.11. It works, and every
 > claim here is measured on three benches, two of them not mine. But the wire
