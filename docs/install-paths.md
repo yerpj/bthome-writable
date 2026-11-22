@@ -13,17 +13,23 @@ Every number here is measured, and says how.
 
 | What is sent | Bytes | Measured by |
 |---|---|---|
-| `BTHomeWritable.min.js`, as espruino.com serves it | 11 956 | `curl https://www.espruino.com/modules/BTHomeWritable.min.js` |
+| `BTHomeWritable.min.js`, as espruino.com serves it | 12 091 | `curl https://www.espruino.com/modules/BTHomeWritable.min.js` |
 | `BTHome.min.js`, upstream | 1 647 | likewise |
 | `AESCCM.min.js`, this project's | 1 868 | likewise |
-| a sketch whose `require`s pull all three | 15 471 | the sum |
+| a sketch whose `require`s pull all three | 15 606 | the sum |
 | a pasteable standalone bundle (`espruino/dist/*.min.js`) | 20 535 to 26 053 | `ls -l` |
 | a sketch alone, with the module already in Storage | 1 to 3 kB | `ventil.js` is 2 428 |
 
 The module source in this repository is 57 878 bytes, the generated EspruinoDocs
-copy 24 827, and espruino.com minifies that to 11 956. So the published module
+copy 24 827, and espruino.com minifies that to 12 091. So the published module
 is a fifth of the source: the comments that make this repository readable are
 not what the user uploads.
+
+Those three figures were re-measured on 2026-11-21, after espruino.com
+refreshed its copy (`Last-Modified: Fri, 20 Nov 2026 16:44:37 GMT`). The
+published minified module now carries `scannable:true`, so D-155 has reached
+the module server and a project no longer needs its own build of the module to
+get it. Its exports match the generated copy's, all twenty-two of them.
 
 **The transport.** Nordic UART, write without response, and therefore no flow
 control in either direction. `tools/espruino_deploy.py` sends 50 bytes every
@@ -41,7 +47,7 @@ afterwards, because a chunk that does not arrive is never committed.
 
 ## The three costs, which are not the same problem
 
-1. **Bytes on the wire.** 13.6 kB unsealed, 15.5 kB sealed, or one 20.8 kB
+1. **Bytes on the wire.** 13.7 kB unsealed, 15.6 kB sealed, or one 20.8 kB
    bundle. This is the cost people notice first and the one that matters least:
    it is a one-off if the module stays on the device.
 2. **No flow control.** A 12 kB upload is 25 s of continuous writing with fixed
@@ -121,7 +127,7 @@ USB, so this is a fallback and not an answer.
 4. **C** only if D is refused, and then only the AESCCM half, with the sealed
    path's explicit `require` spelled out.
 
-## Two things found on the way
+## Three things found on the way
 
 - espruino.com's module page says *"Modules written to Espruino's flash memory
   can only have names that are a maximum of 8 characters long."* `BTHomeWritable`
@@ -131,3 +137,15 @@ USB, so this is a fallback and not an answer.
 - The `Unreachable` that followed the failed uploads is the same symptom D-023
   recorded for forcing uncached service discovery on this host, and it presented
   then, as now, as a dead device.
+- The module's capacity check does not see the device name. `BUDGET` is
+  `31 - 3 - 4 = 24`, which is the advertising payload less the flags and the
+  service-data header, and it has no term for the name that `showName` puts in
+  the same 31 bytes. A sealed device with two readable entries needs 17 bytes
+  of service data, which passes that check and totals 24 of 31 without a name.
+  Add an eleven-character name and its thirteen-byte AD element makes 37, and
+  the radio answers `ERR 0x9 (INVALID_LENGTH)` from inside `setup()`. Measured
+  on an nRF52840 on 2026-11-21, and reproduced under Node against a radio stub
+  that enforces the 31 bytes. `maxServiceData` exists to catch this at setup,
+  but it has to be set by hand and nothing points a reader at it until the
+  packet has already been refused. Whether the default budget should subtract
+  the name is a change to observable behaviour, so it is the owner's (D-165).
