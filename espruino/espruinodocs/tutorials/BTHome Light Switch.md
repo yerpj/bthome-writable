@@ -25,7 +25,9 @@ You'll need
 * Home Assistant with Bluetooth working, set up as in
   [BTHome and Home Assistant Setup](/BTHome+Setup)
 * the [bthome-writable](https://github.com/yerpj/bthome-writable) integration,
-  installed through [HACS](https://hacs.xyz/). It is needed because **the
+  installed from Home Assistant's Marketplace (Settings -> Marketplace on
+  2026.11 and newer, [HACS](https://hacs.xyz/) before that). It is needed
+  because **the
   declaration uses an object id BTHome has not assigned yet**: core BTHome goes
   on reading your sensors and ignores the rest, so adding this to a device
   breaks nothing that already works.
