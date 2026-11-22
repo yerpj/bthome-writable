@@ -4,7 +4,24 @@ You need Home Assistant **2026.7 or newer** with Bluetooth working — an adapte
 the host, or an ESPHome Bluetooth proxy in range of your device. If the core
 BTHome integration already shows your device's sensors, Bluetooth is working.
 
-## Install through HACS
+## Install it
+
+Which menu you use depends on your version. Home Assistant **2026.11** folded
+HACS into a built-in **Marketplace** and blocks the standalone HACS installer
+on that release, so both paths are given here.
+
+**2026.11 and newer**
+
+1. **Settings → Marketplace → ⋮ → Custom repositories.**
+2. Repository: `https://github.com/yerpj/bthome-writable`. Type: **Integration**.
+   Add.
+3. Find **BTHome Writable**, **Download**.
+4. **Restart Home Assistant.** A custom integration is not loaded until you do.
+
+An existing HACS setup, its custom repositories included, is migrated to the
+Marketplace the first time Home Assistant starts after the update.
+
+**2026.7 to 2026.10**
 
 1. **HACS → ⋮ → Custom repositories.**
 2. Repository: `https://github.com/yerpj/bthome-writable`. Type: **Integration**.
@@ -13,10 +30,11 @@ BTHome integration already shows your device's sensors, Bluetooth is working.
 4. **Restart Home Assistant.** A custom integration is not loaded until you do.
 
 <details>
-<summary>Without HACS</summary>
+<summary>Without either</summary>
 
 Copy `custom_components/bthome_writable/` from this repository into your
-`config/custom_components/` directory, and restart. That is all HACS does.
+`config/custom_components/` directory, and restart. That is all either store
+does.
 
 </details>
 

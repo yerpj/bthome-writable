@@ -28,8 +28,14 @@ assumes **RAM**, which is the default and what the next paragraph relies on.
 
 That file is generated with the `BTHomeWritable` module inlined, so there is
 nothing of this project to install. `require("BTHome")` is resolved by the Web
-IDE from Espruino's own module library. (The encrypted example needs one more
-module -- see the note under *Other examples*.)
+IDE from Espruino's own module library.
+
+You do not have to use a bundle at all. Since EspruinoDocs#761 and #762,
+espruino.com serves all three modules, and the module's own
+`require("BTHome")` and `require("AESCCM")` are plain strings the IDE's scanner
+follows: write your sketch with ordinary `require("BTHomeWritable")` and the
+IDE fetches what it needs. The bundles stay for a reader who wants one file,
+and for a device with no network between it and espruino.com.
 
 The console should answer with the board's address and which object types it is
 offering writes for — `30` is `0x1E`, BTHome's `light`:
@@ -179,13 +185,12 @@ front:
 
 Each has a build under `espruino/dist/` with `BTHomeWritable` inlined.
 
-**`encrypted-light-standalone.js` is the exception to "paste and go":** it still
-calls `require("AESCCM")`, which lives in this repository (`espruino/AESCCM.js`)
-and is not something the Web IDE can fetch from espruino.com. Either send it with
-`python -m tools.espruino_deploy --address <mac> --app
-espruino/examples/encrypted-light.js`, which uploads both modules to Storage, or
-paste `AESCCM.js` into Storage yourself first. Pasting the bundle alone gives a
-device that advertises and then throws on its first seal.
+`encrypted-light-standalone.js` used to be the exception to "paste and go",
+because `require("AESCCM")` could not be fetched from espruino.com. That ended
+with EspruinoDocs#761: measured 2026-11-21, espruino.com serves
+`AESCCM.min.js` (1 868 bytes), `BTHome.min.js` (1 647) and
+`BTHomeWritable.min.js` (12 091), so the Web IDE resolves all three by itself
+and a plain `require()` is enough.
 
 ## When something does not work
 

@@ -11035,3 +11035,65 @@ espruino.com says a flash module name may be at most eight characters, which
 `BTHomeWritable` at fourteen contradicts, verified on hardware in D-023. A user
 who reads that sentence will not try route B at all, so it is worth a line to
 EspruinoDocs whenever the next page change goes out.
+
+---
+
+## D-165 `[DECISION]` — The advertising budget does not count the device name
+
+**Status:** measured on hardware 2026-11-21 and reproduced under Node; the
+change it proposes is the owner's.
+
+A sealed nRF52840 running two readable entries refused its own first packet:
+
+```
+Uncaught Error: the radio refused 17 bytes of service data: ERR 0x9 (INVALID_LENGTH)
+    at setup (.bootcde:28:364)
+```
+
+**The arithmetic.** The service data is 17 bytes: 9 of objects, 4 of counter, 4
+of MIC. With the flags (3) and the service-data header (4) that is 24 of the
+advertising packet's 31, which fits. The device was named `gunble 83a8`, and an
+eleven-character name is a thirteen-byte AD element, which takes the total to
+37. The radio refuses the whole packet.
+
+**Why the module did not catch it.** `BUDGET` is `31 - 3 - 4 = 24` and has no
+term for the name, so 17 passes. `showName` is documented, defaults to true,
+and its entry already says *"If your packet is refused, this is the first thing
+to try"* -- but nothing says so before the refusal, and the refusal arrives as
+a SoftDevice error code from inside `setup()`. `maxServiceData` is the existing
+answer and has to be set by hand, which means knowing the number this entry
+exists to explain.
+
+**What was done.** Nothing to the module (the owner, 2026-11-21: *"Ne change
+pas le module"*). The sketch that met it sets `showName : false` and was
+reflashed; the packet is 24 of 31 and the device works through Home Assistant,
+both entries written and read back. A Node harness with a radio stub that
+enforces the 31 bytes reproduces the refusal word for word without the fix and
+accepts the packet with it, so the diagnosis rests on a reproduction rather
+than on the arithmetic alone.
+
+**For the owner to settle:** whether `planPacket` should subtract the name's AD
+cost from the default budget when `showName` is true, which would turn
+`ERR 0x9` into `capacity_exceeded` naming the name. It is implementation rather
+than protocol, so rule 2 does not bite, but it changes what a device does at
+`setup()` -- a sketch that advertises today would start throwing a different,
+earlier error -- so rule 1 does. The alternative is documentation only: say in
+`docs/espruino-quickstart.md` what the name costs, and leave the radio to
+refuse.
+
+**Related.** D-030 and D-046 measured what the name costs on a Puck.js and a
+nice!nano; D-049 is where `maxServiceData` came from; D-029 is why a throwing
+`setup()` in `.bootcde` is dangerous, and why the fallback packet of D-022
+mattered here: the device stayed connectable throughout and was fixed over the
+air.
+
+**Also recorded 2026-11-21:** espruino.com refreshed its published module
+(`Last-Modified: Fri, 20 Nov 2026 16:44:37 GMT`). `BTHomeWritable.min.js` is
+now 12 091 bytes and carries `scannable:true`, so D-155 has reached the module
+server; `AESCCM.min.js` (1 868) and `BTHome.min.js` (1 647) are served too, and
+the module's own `require()` calls are plain strings the Web IDE's scanner
+follows. A user therefore installs nothing separately, which is what
+`docs/espruino-quickstart.md` and `docs/install-paths.md` now say. Separately,
+Home Assistant 2026.11 replaced HACS with a built-in Marketplace and blocks the
+standalone HACS installer, so `docs/home-assistant-install.md` now gives both
+menus -- @MaBecker raised this on #3 and was right.
