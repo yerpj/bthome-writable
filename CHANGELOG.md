@@ -26,6 +26,35 @@ a release on its way past (D-148).
 
 ### Changed
 
+- **A sealed Espruino device offers the counter report without being asked, and
+  the receiver asks for it when the device restarted rather than whenever its
+  settings revision moved.** Two halves of one fault. §5.3 has a device resume
+  its write counter from a persisted mark, so after every reboot it sits above
+  the last counter it accepted and above a receiver that did not restart with
+  it; every command is then refused, and refused in silence, because §4.2
+  acknowledges a write before it validates it. The remedy, §5.6's counter
+  report, was off by default on the device, so the receiver asked a question
+  nothing could answer. Met for the third time on 2026-11-24, on the owner's
+  own ventilation board, where four commands in a row were counted as
+  `counter_not_increasing` while Home Assistant showed each of them as applied
+  (D-078 fault 1, D-079, D-166).
+
+  `counterReport` now defaults to `true` whenever a `bindkey` is set, and
+  `false` takes the characteristic away. A device in clear never offers it,
+  having no key to seal the answer with. The advertising packet does not change
+  by one byte: the report is a GATT characteristic and never appears in the
+  service data.
+
+  On the receiver's side the arming moved from the settings revision to the
+  advertising counter. The revision moves on every change a device announces,
+  so a device whose entries are readable armed the question on every command
+  and paid the exchange on the next one, which `docs/measurements.md` §21
+  measures at 715 ms inside the command's own connection. A device that jumped
+  its write counter is a device that jumped its advertising counter, both being
+  resumed from a mark, so a forward jump of `RESTART_COUNTER_JUMP` or more is
+  the signal; an ordinary advertisement moves it by one, and a counter that
+  restarted near zero arrives as a wrap and is read as the jump it is.
+
 - **A write refused while the host is busy may now name the host's connection
   slots.** A Bluetooth proxy with no slot left refuses by disconnecting rather
   than by reporting exhaustion, so `BleakOutOfConnectionSlotsError` is never

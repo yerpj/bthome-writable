@@ -10,6 +10,27 @@ A draft number is not a semantic version: nothing is frozen until the first
 release, and `decisions.md` carries the reasoning and the measurement behind
 each line below.
 
+## 2.0-draft.12 - 2026-11-24
+
+### Changed
+
+- **§9 item 4 records that both reference implementations now ship the counter
+  report by default.** The receiver already asked for it (D-080); a sealed
+  device now offers it unless `counterReport:false` says otherwise (D-166).
+  **Nothing normative moved**: §5.6 is still `MAY` from end to end, a device
+  that does not offer the characteristic is still fully conformant, and a
+  receiver must still tolerate its absence. What changed is a default in the
+  reference device, and the reason is three hardware reproductions of the one
+  failure §4.2 cannot report: a device resumes its write counter from a
+  persisted mark, a receiver that did not restart with it has every command
+  refused, and the refusal is acknowledged before it is validated (D-078 fault
+  1, D-079, and the owner's own board on 2026-11-24).
+
+  The draft number moves because this document changed, which is the rule of
+  2026-10-22 and what `tools/tests/test_changelog.py` enforces. A reader
+  diffing draft.11 against draft.12 will find one status note and no change to
+  any requirement.
+
 ## 2.0-draft.11 - 2026-10-27
 
 ### Added

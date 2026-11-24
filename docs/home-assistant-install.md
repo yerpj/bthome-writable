@@ -178,11 +178,15 @@ device. The likeliest causes, in order:
   logbook, because the device acknowledges the write before checking the counter
   and then discards it. A device must resume its counter strictly above anything
   it accepted, so a restart puts it ahead of Home Assistant with no way to say
-  so. Handled, where the device offers the counter report: a device that
-  restarts picks a fresh settings revision, and Home Assistant asks it where its
-  counter is before the next command. Nothing to do.
-  **A device that offers no counter report has to be told instead** — press
-  *Resynchronise write counter* on it, or reload it.
+  so. Handled, where the device offers the counter report, which an Espruino
+  device sealed with a bindkey does without being asked: a restart resumes the
+  device's advertising counter well above where it was, Home Assistant reads
+  that as the restart it is, and the next command asks the device where its
+  write counter is before writing. Nothing to do, and nothing to notice.
+  **A device that offers no counter report has to be told instead.** Press
+  *Resynchronise write counter* on it, or reload it. If you ever meet a device
+  that accepts every command and obeys none, that is the symptom, and that
+  button is the cure.
 - A device simply refusing the write, which it must do if the object ID or the
   length is not exactly what that entry expects.
 

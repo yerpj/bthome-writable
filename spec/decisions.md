@@ -11097,3 +11097,143 @@ follows. A user therefore installs nothing separately, which is what
 Home Assistant 2026.11 replaced HACS with a built-in Marketplace and blocks the
 standalone HACS installer, so `docs/home-assistant-install.md` now gives both
 menus -- @MaBecker raised this on #3 and was right.
+
+
+## D-166 -- the counter report is the default, and the restart is the signal  [DECISION, ruled]
+
+**Status:** 2026-11-24, ruled by the owner after the diagnosis below: *"applique
+les corrections, teste, verifie le tout, met a jour la doc"*. Implemented the
+same day. Module, receiver, tests, `PROTOCOL.md` §9 item 4 and **2.0-draft.12**.
+
+### What happened, on the owner's own board
+
+The ventilation board `EB:FE:B5:03:83:A8`, sealed, two readable entries, flashed
+by the owner that morning. Home Assistant showed the device, accepted every
+command and showed each new value. Nothing moved on the device.
+
+The device said why, and only the device could:
+
+```
+rejects: {"counter_not_increasing":4}
+```
+
+One write sent from Home Assistant took that counter from 3 to 4, so every
+command had been refused, one by one. `.bwctr` held `{w:1795517978,a:10000000}`;
+the receiver's own stored mark, in the config entry, held **the same**
+1795517978. Both sides had persisted the same high-water mark. The board was
+reflashed at 11:01 and resumed its floor *from* that mark, which is 64 above the
+last counter it had actually accepted; Home Assistant had not restarted, so its
+counter was still climbing from 1795517915. Every write landed under the floor.
+It would have taken 64 commands to climb out.
+
+**Two things made it invisible.** §4.2 acknowledges a write before validating
+it, so the receiver sees success. And the owner's other evidence looked healthy
+for the same reason: the Espruino console showing `-> Bluetooth` then
+`<- Bluetooth` is the normal write cycle, a central connecting, writing and
+leaving.
+
+One press of the resynchronise button, `RESYNC_JUMP` of 100 000, and the next
+four commands all landed: 42, 30, 55, 24, read back on the device, with the
+packet id moving 1 to 2 and the settings revision 220 to 221.
+
+**This is the third hardware reproduction of one failure.** D-078 fault 1 and
+D-079 found it on the bench; this is the first time it was met on a device that
+is not a bench example, written by its owner against the published
+documentation.
+
+### An instrumentation error of mine, recorded because it cost a reject code
+
+`rejects()` also gained `{"error":3}` during the diagnosis, one per command. The
+cause was mine: prints from the entry's `set` go to the Bluetooth console while
+a central is connected, so to see them I replaced `print` with a capture that
+pushed into an array, and the capture threw. `onWrite`'s catch has no code to
+attach, so `reject()` counted it as `error`. The state was applied first, so
+nothing was lost, but a bench reading is a measurement and a measurement I
+disturbed has to say so. With `print` restored, a clean write leaves the
+counters where they are.
+
+### The ruling, and the two halves it has
+
+**The device offers the report by default.** `counterReport` was off on both
+sides in D-075 so that nothing normative changed, and D-080 moved the receiver's
+half to on. The device's half stayed off, so a receiver asked a question a
+device following the documentation could not answer. It now defaults to true
+whenever a `bindkey` is set, never without one, since the report is sealed and a
+device with no key has nothing to seal it with. `counterReport:false` takes the
+characteristic away.
+
+It costs no advertising: the option adds one entry to the GATT table and the
+declaration stays `[0xFF, 2, 0x10, 0x09]`, the service data 17 bytes, the packet
+24 of 31 on this board. It costs no upload either, `counterCharacteristic()`
+being in the module whether it is called or not.
+
+**The receiver asks when the device restarted, not when its revision moved.**
+This is the half that makes the first one affordable, and it was found by
+reading the receiver rather than on the bench. `_notice_revision` armed the
+question on every change of settings revision. A device whose entries are
+readable calls `changed()` on every write, so **every command armed the question
+for the next one**, and §21 of `docs/measurements.md` measures that exchange at
+715 ms inside the command's own connection, next to a write that inflates from
+42 ms to about 800 ms. Turning the device's half on without touching this would
+have traded a silent failure for about 1.5 s on every command for ever. The
+ventilation board pays nothing today only because `_offers_counter_report` had
+already been set to False.
+
+The signal is the **advertising counter**, and the argument is not a heuristic
+about reboots: a device that jumped its write counter is a device that jumped
+its advertising counter, because §5.3 has both resumed from a persisted mark and
+a device persists them together. In this module they are the two fields of one
+file, `w` striding 64 and `a` striding a million. So `RESTART_COUNTER_JUMP` is
+1000: three orders of magnitude above an ordinary step of one, three below the
+module's own advertising stride. A counter that restarted near zero, which
+`bthome-ble` exempts from its replay check below `COUNTER_RESTART_CEILING`,
+arrives as a wrap and the modular subtraction reads it as the forward jump it
+is.
+
+It leans low deliberately. A false positive costs one question, whose adoption
+refuses to move the counter backwards (D-083 item 11); a false negative costs
+every command until the receiver catches up. A device that persists its two
+counters by different schemes can still slip through, and for that the
+resynchronise button of §5.3 remains.
+
+### What this is not
+
+Not a protocol change. §5.6 is `MAY` from end to end, a device that does not
+offer the characteristic is still fully conformant, and a receiver must still
+tolerate its absence; §9 item 4 now records that both reference implementations
+ship it by default and that what moved is a device default. The draft number
+moves because the document changed, which is the rule of 2026-10-22, and a
+reader diffing draft.11 against draft.12 finds one status note.
+
+Not a change to anything `bthome-ble` or bthome.io can see either, which matters
+while #424 and #82 are waiting: the report is a GATT characteristic and never
+appears in an advertisement, so the request to reserve object `0xFF` is
+untouched by all of this.
+
+### Tests
+
+Espruino, 286 from 283: a sealed device offers the report without being asked,
+`counterReport:false` takes it away, a device in clear never offers it, and the
+ventilation board's own option set -- sealed, two readable entries,
+`showName:false`, no `counterReport` of its own -- gets the characteristic while
+its packet stays at 17 bytes of service data, the figure measured on the board.
+Receiver, 241 from 239: a revision that moves without a restart asks nothing,
+five commands with the revision moving on each and no question ever owed, which
+is the ventilation board's own shape, and a counter that restarted near zero
+asks. The two tests that had the revision as the signal were rewritten around
+the counter jump; `test_a_device_without_the_report_is_not_asked_twice` was
+asserting on a connection count that the fold of D-129 had already made
+meaningless, and now asserts the state machine it was written for.
+
+### Open, and the owner's to write
+
+The 800 ms write inflation of §21 is still unexplained, quantised in steps of
+200 ms where the same write on a bare link takes 42 ms. §21 called it *"the one
+number here that looks like a defect rather than a cost"*, and with the exchange
+now riding only the commands that follow a restart it is rarer but not gone.
+
+espruino#8024 is where §5.6 belongs and where Gordon has never said whether it
+belongs in the document. The reference device offering it by default is the
+moment to ask, and this is the third reproduction to cite. @MaBecker's #3, which
+is end-user testing, is the thread this would have saved. Rule 7: the messages
+are the owner's.

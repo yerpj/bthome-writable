@@ -1,6 +1,6 @@
 # BTHome Writable — protocol specification
 
-**Version:** 2.0-draft.11 · **Status:** DRAFT, nothing frozen · **License:** MIT
+**Version:** 2.0-draft.12 · **Status:** DRAFT, nothing frozen · **License:** MIT
 
 BTHome standardizes a BLE **uplink**: a device broadcasts its state in
 advertising, a receiver parses it. It has no **downlink**. This document
@@ -641,12 +641,14 @@ Open items:
    than through that module's tables. Nothing is lost; it is one more place the
    wrapper has to know a format upstream will probably gain.
 4. **§5.6 is implemented but not yet agreed.** Both reference implementations
-   ship the counter report, and the reference receiver asks for it by default
-   (`decisions.md` D-075, D-077, D-080); Gordon has commented on its
+   ship the counter report by default: the receiver asks for it, and a sealed
+   device offers it unless told not to
+   (`decisions.md` D-075, D-077, D-080, D-166); Gordon has commented on its
    characteristic number but not on whether it belongs in this document. It is
    written here because the code speaks it — a specification that omits what the
    implementations do is worse than one with an unsettled section — and it is
    marked optional throughout so that a device ignoring it is fully conformant.
+   What moved in D-166 is a device default, not a requirement of this document.
 
 Settled since draft.1: the size of a write is `ATT_MTU - 3` and fragmentation is
 out of scope (§4.4, `decisions.md` D-058); the settings revision `0x65` is not
