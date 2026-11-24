@@ -46,6 +46,7 @@ from .const import (
     FOLD_THE_COUNTER_QUESTION_INTO_A_WRITE,
     NAME_THE_HOST_WHEN_A_CONNECTION_IS_REFUSED,
     READ_RETRY,
+    RESTART_COUNTER_JUMP,
     RESYNC_JUMP,
     SERVICE_UUID,
     SLOT_COOLDOWN,
@@ -325,26 +326,14 @@ class BTHomeWritableCoordinator:
         """
         if revision is None:
             return
-        previous = self._revision_advertised
         self._revision_advertised = revision
-        # A revision that moves while we are watching is what a restart looks
-        # like: `setup()` picks a random one precisely so that a device whose
-        # values went back to their defaults is re-read. A restart also resumes
-        # the write counter ahead of ours, in silence, so take the same signal
-        # for both (D-092).
-        #
-        # `changed()` moves it too, and that arms a resynchronisation nothing
-        # needed. It costs one connection before the next command, and the
-        # adoption refuses to move the counter backwards (D-083 item 11), so a
-        # needless one changes nothing.
-        if (
-            previous is not None
-            and revision != previous
-            and ALLOW_COUNTER_SYNC
-            and self.bindkey is not None
-            and self._offers_counter_report is not False
-        ):
-            self._resync_counter = True
+        # This signal is for the read of §3.2 and for nothing else since D-166.
+        # It used to arm the counter question too, because a fresh random
+        # revision is what a restart looks like -- but `changed()` moves the
+        # revision as well, so a device whose entries are readable armed the
+        # question on every command and paid the exchange on the next one. The
+        # restart is read from the advertising counter instead, in
+        # `_notice_advertising_counter`.
         if revision == self._revision_read:
             return
         if (
@@ -456,8 +445,48 @@ class BTHomeWritableCoordinator:
         self._authentication_failures = 0
         counter = advertising_counter(payload)
         if counter is not None:
+            self._notice_advertising_counter(counter)
             self.encryption_counter = counter
         return objects
+
+    def _notice_advertising_counter(self, counter: int) -> None:
+        """Ask the device for its write counter when it looks like it restarted.
+
+        §5.3 has a device resume its write counter strictly above anything it
+        may have accepted, and nothing on the air says that it did: the
+        receiver's next writes are refused, and refused in silence, because §4.2
+        acknowledges before validating. §5.6's question is the remedy and the
+        only thing left to choose is when to ask it.
+
+        A device that jumped its write counter is a device that jumped this one,
+        both being resumed from a persisted mark -- `RESTART_COUNTER_JUMP` holds
+        the reasoning and the threshold. A counter that restarted near zero
+        arrives here as a wrap, and the modular subtraction treats it as the
+        large forward jump it is.
+
+        Called before `encryption_counter` is moved, so the comparison is
+        against the last counter heard.
+        """
+        if (
+            not ALLOW_COUNTER_SYNC
+            or self.bindkey is None
+            or self._offers_counter_report is False
+        ):
+            return
+        if self.encryption_counter == 0:
+            # The first sealed advertisement of this run: nothing to compare
+            # against, and setup has already armed the question (D-129).
+            return
+        if (counter - self.encryption_counter) % 2**32 < RESTART_COUNTER_JUMP:
+            return
+        _LOGGER.debug(
+            "%s: the advertising counter went from %d to %d, which is a "
+            "restart; the next command will ask for the write counter",
+            self.address,
+            self.encryption_counter,
+            counter,
+        )
+        self._resync_counter = True
 
     def _counter_increased(self, payload: bytes) -> bool:
         """`bthome-ble`'s replay check, thresholds included.

@@ -312,6 +312,31 @@ sent, without having to ask the device anything. It is a forward jump, which
 to speak of -- seconds since 1970 leave about 2.5 billion values inside 32
 bits."""
 
+RESTART_COUNTER_JUMP: Final = 1_000
+"""How far the advertising counter must jump to count as a device restart.
+
+The counter question of §5.6 is owed exactly when a device has restarted, and
+the problem is knowing. The settings revision used to be the signal and it is
+the wrong one: it moves on every change a device announces, so a device whose
+entries are readable moved it on every command, and the question rode nearly
+every command for an exchange measured at 715 ms inside the command's own
+connection (`docs/measurements.md` §21, D-166).
+
+The advertising counter is the signal. A device that jumped its write counter is
+a device that jumped its advertising counter, because §5.3 has both resumed from
+a persisted high-water mark and a device persists them together -- in the
+reference module they are the two fields of one file, where the advertising mark
+strides a million and the write mark 64. An ordinary advertisement moves the
+counter by one; a device that restarted near zero shows up as a wrap, which the
+arithmetic below treats the same way.
+
+A thousand is three orders of magnitude above an ordinary step and three below
+the reference module's stride. It leans low on purpose: a false positive costs
+one question, whose adoption refuses to move the counter backwards (D-083 item
+11), while a false negative costs every command until the receiver catches up.
+A device that persists its two counters by different schemes can still slip
+through, and for that the resynchronise button of §5.3 remains."""
+
 RESYNC_JUMP: Final = 100_000
 """How far a resynchronisation moves the counter.
 

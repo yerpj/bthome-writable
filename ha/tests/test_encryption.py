@@ -733,9 +733,13 @@ async def test_a_device_that_restarted_is_asked_again_before_the_next_write(
     but it only ever ran while the config entry was being set up, which is never
     the moment a device reboots.
 
-    The settings revision is the signal, and it is not a borrowed one: a device
-    picks a fresh random revision at startup precisely because its values may
-    have gone back to their defaults.
+    The signal is the **advertising counter**, since D-166. The settings
+    revision was the first choice, a device picking a fresh random one at
+    startup precisely because its values may have gone back to their defaults
+    -- but `changed()` moves the revision too, so a device whose entries are
+    readable armed the question on every command and paid the exchange on the
+    next one. A device that resumed its write counter from a mark resumed this
+    one from a mark as well, and that jump is the restart.
     """
     key, address = bytes(range(16)), "A4:C1:38:8E:1F:2B"
     coordinator = BTHomeWritableCoordinator(
@@ -753,12 +757,85 @@ async def test_a_device_that_restarted_is_asked_again_before_the_next_write(
         await coordinator._write_now(1, b"")
         assert write_counter_of(gatt.writes[-1][1]) < 900_000, "nothing to ask yet"
 
-        # The device restarts: a fresh revision, and a counter we cannot see.
-        feed(coordinator, sealed_advertisement(5_001, key, address, 93), address)
+        # The device restarts: the advertising counter resumes from its mark,
+        # a stride above where it was, and a fresh random revision comes with
+        # it. The write counter did the same and nothing on the air says so.
+        feed(coordinator, sealed_advertisement(1_005_001, key, address, 93), address)
         await coordinator._write_now(1, b"")
 
     assert write_counter_of(gatt.writes[-1][1]) > 900_000, (
         "the write went out behind the device, which refuses it without a word"
+    )
+
+
+async def test_a_revision_that_moves_without_a_restart_asks_nothing(
+    hass: HomeAssistant, gatt
+) -> None:
+    """The regression D-166 exists for, and the reason the signal moved.
+
+    A device whose entries are readable calls `changed()` on every write, so its
+    settings revision moves after every command. While that was the arming
+    signal, the next command carried a counter question nothing needed -- an
+    exchange measured at 715 ms inside the command's own connection
+    (`docs/measurements.md` §21) -- and it did so for ever, because every
+    command armed the next one.
+
+    Met on the owner's ventilation board on 2026-11-24: two readable entries,
+    and a revision that moved on every one of four commands.
+    """
+    key, address = bytes(range(16)), "A4:C1:38:8E:1F:2B"
+    coordinator = BTHomeWritableCoordinator(
+        hass, address, bindkey=key, write_counter=10
+    )
+    gatt.declare(1)
+    gatt.offer_counter_report(
+        lambda: counter_report(900_000, gatt.writes[-1][1], key, address)
+    )
+
+    with patch.object(coordinator, "async_request_read"):
+        # One advertisement per command, the counter stepping by one and the
+        # revision moving every time, exactly as `changed()` leaves it.
+        for step, revision in enumerate((7, 93, 18, 204, 61)):
+            feed(
+                coordinator,
+                sealed_advertisement(5_000 + step, key, address, revision),
+                address,
+            )
+            await coordinator._write_now(1, b"")
+
+    assert coordinator._resync_counter is False, "no question was ever owed"
+    assert write_counter_of(gatt.writes[-1][1]) < 900_000, (
+        "and no command paid for one"
+    )
+
+
+async def test_a_counter_that_restarted_near_zero_asks(
+    hass: HomeAssistant, gatt
+) -> None:
+    """A device whose counter file was erased, or whose battery was changed,
+    resumes near zero rather than above its mark.
+
+    `bthome-ble` exempts that from its replay check below
+    `COUNTER_RESTART_CEILING`, so the advertisement is accepted -- and it is a
+    restart, which is exactly when the write counter needs asking about. The
+    modular subtraction reads a wrap as the large forward jump it is.
+    """
+    key, address = bytes(range(16)), "A4:C1:38:8E:1F:2B"
+    coordinator = BTHomeWritableCoordinator(
+        hass, address, bindkey=key, write_counter=10
+    )
+    gatt.declare(1)
+    gatt.offer_counter_report(
+        lambda: counter_report(900_000, gatt.writes[-1][1], key, address)
+    )
+
+    with patch.object(coordinator, "async_request_read"):
+        feed(coordinator, sealed_advertisement(5_000, key, address, 7), address)
+        feed(coordinator, sealed_advertisement(3, key, address, 7), address)
+        await coordinator._write_now(1, b"")
+
+    assert write_counter_of(gatt.writes[-1][1]) > 900_000, (
+        "the device was asked, and the write went out above what it reported"
     )
 
 
@@ -800,13 +877,18 @@ async def test_a_device_without_the_report_is_not_asked_twice(
 
     with patch.object(coordinator, "async_request_read"):
         feed(coordinator, sealed_advertisement(5_000, key, address, 7), address)
-        feed(coordinator, sealed_advertisement(5_001, key, address, 8), address)
+        feed(coordinator, sealed_advertisement(1_005_001, key, address, 8), address)
         await coordinator._write_now(1, b"")
-        asked = gatt.connections
-        feed(coordinator, sealed_advertisement(5_002, key, address, 9), address)
+        assert coordinator._offers_counter_report is None, (
+            "one miss says nothing: the table had just been dropped (D-080)"
+        )
+        assert coordinator._resync_counter is True, "so the question stays owed"
+
+        feed(coordinator, sealed_advertisement(2_005_002, key, address, 9), address)
         await coordinator._write_now(1, b"")
 
-    assert gatt.connections == asked + 1, "the second change asked again"
+    assert coordinator._offers_counter_report is False, "the second look settled it"
+    assert coordinator._resync_counter is False, "and nothing is owed any more"
 
 
 async def test_the_counter_rule_is_never_stricter_than_the_librarys(

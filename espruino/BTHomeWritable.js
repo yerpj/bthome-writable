@@ -58,13 +58,15 @@ Options:
                  20 with showName false; a nice!nano 5 to 7 with its name and 20
                  to 22 without, depending on the firmware build (D-046, D-049).
                  Set it and the packet is checked at setup.
-  counterReport  offer the counter report of §5.6 at 2FAA1000 (default false,
-                 and only with a bindkey). Without it this device resumes its
-                 write counter ahead of the receiver after every restart and
-                 silently refuses writes until the receiver catches up (D-078);
-                 with it the receiver asks instead of guessing. Home Assistant
-                 asks by default, so a device that does not offer it simply
-                 keeps the old behaviour.
+  counterReport  offer the counter report of §5.6 at 2FAA1000. Default true
+                 when a bindkey is set, and never offered without one, since
+                 the report is sealed. Set it to false and this device resumes
+                 its write counter above the last one it accepted at every
+                 boot with no way of telling a receiver, and a receiver that
+                 did not restart with it then has every command refused in
+                 silence, S4.2 acknowledging a write before it validates it.
+                 Three hardware reproductions, the last one on a user's own
+                 board (D-078, D-079, D-166).
   onError        called with a rejected write's error. Optional, and
                  `rejects()` counts them whether it is given or not (S7)
 
@@ -86,7 +88,7 @@ const BUDGET = 31 - 3 - 4; // adv payload - Flags AD - service data header (S2.4
 const UUID_TAIL = "-3B0B-4B1A-9E2A-B4C2952E62F2"; // provisional (D-001)
 const SERVICE_UUID = "2FAA0000" + UUID_TAIL;
 const COUNTER_UUID = "2FAA1000" + UUID_TAIL; /* the counter
-   report (D-075), off unless `counterReport:true`.
+   report (D-075), offered unless `counterReport:false` (D-166).
 
    Not an entry: S4.1 keeps 0001-0FFF for entries and reserves 1000 and above
    for the protocol's own characteristics. It answers the one question a
@@ -1032,10 +1034,16 @@ function setup(opts) {
   if (key) saveMarks();
   if (st.plan.writable.length) {
     const chars = {}, svcs = {};
-    // Off by default: it is a protocol addition, still under discussion in
-    // espruino#8024, and a device that does not offer it loses nothing that
-    // worked before.
-    if (opts.counterReport === true && key) chars[COUNTER_UUID] = counterCharacteristic();
+    // On for a sealed device since D-166. It was off because S5.6 is a
+    // protocol addition still under discussion in espruino#8024, and a device
+    // that did not offer it lost nothing that had worked before -- but what it
+    // loses is the only remedy for the one failure S4.2 cannot report: this
+    // device resumes its write counter from the persisted mark, above the last
+    // counter it accepted, and a receiver that did not restart with it has
+    // every command refused in silence. Three hardware reproductions, the last
+    // on a user's own board. A device with no key has nothing to seal the
+    // answer with, so a device in clear never offers it.
+    if (opts.counterReport !== false && key) chars[COUNTER_UUID] = counterCharacteristic();
     st.plan.writable.forEach(w => {
       const c = {
         writable : true,

@@ -1630,6 +1630,17 @@ python -m tools.espruino_upload --port COM6 espruino/dist/revision-lamp-standalo
 .venv-ha/Scripts/python.exe -m tools.counter_question_cost --device lamp --arm folded --reps 10
 ```
 
+**Who pays this now, since 2026-11-24.** Every number above was taken while the
+counter question was armed by a change of settings revision, which is what
+D-166 moved. A device whose entries are readable moves that revision on every
+command, so the 715 ms exchange rode **every** command on such a device, and
+the table above is what one of them cost. The question is now armed by a jump
+in the advertising counter, which is a restart, so it is paid once after a
+device reboots and once after Home Assistant restarts rather than on every
+command. The *immediate* row keeps its full value, that being exactly the
+restart case; the *settled* row is now a rare event rather than the steady
+state.
+
 ---
 
 ## Reproducing any of this

@@ -62,7 +62,7 @@ Your device should then be discovered without being asked for.
 version: installing without either store, and what to do when a control
 misbehaves.
 
-> **Status: draft / pre-release** — protocol 2.0-draft.11. It works, and every
+> **Status: draft / pre-release** — protocol 2.0-draft.12. It works, and every
 > claim here is measured on three benches, two of them not mine. But the wire
 > format is not frozen: the GATT UUIDs freeze at the first public release, and
 > the declaration's object id `0xFF` is

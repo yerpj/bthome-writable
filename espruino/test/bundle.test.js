@@ -851,15 +851,18 @@ test("a mark written by earlier firmware still loads", () => {
 });
 
 
-/* --- the counter report (D-075), off unless asked for ---------------------- */
+/* --- the counter report (D-075), offered unless refused (D-166) ------------ */
 
-test("a device does not offer the counter report unless it is turned on", () => {
-  /* It is a protocol addition still under discussion, and a device that does
-   * not offer it loses nothing that worked before.
+test("a sealed device offers the counter report without being asked", () => {
+  /* The default moved in D-166. A device that does not offer it resumes its
+   * write counter up to a stride above the last one it accepted and then
+   * refuses every command in silence, S4.2 acknowledging before it validates,
+   * and the receiver has no way to find out: three hardware reproductions,
+   * D-078 fault 1, D-079, and a user's own board on 2026-11-24.
    *
-   * Asked of `setup()` rather than of the shipped example, which now turns it
-   * on deliberately (D-080) -- this test used to read the example's choice and
-   * so stopped testing the default the moment that choice changed. */
+   * Asked of `setup()` rather than of the shipped example, which turns it on
+   * deliberately (D-080) -- this test used to read the example's choice and so
+   * stopped testing the default the moment that choice changed. */
   const result = run(load("encrypted-light-standalone.js"));
   result.context.bw.setup({
     advertise: [{ type: "light", set: () => {} }],
@@ -869,8 +872,82 @@ test("a device does not offer the counter report unless it is turned on", () => 
   const uuids = Object.keys(result.characteristics).map((u) => u.toUpperCase());
 
   assert.ok(
+    uuids.some((u) => u.startsWith("2FAA1000")),
+    `expected a counter characteristic by default, got ${uuids.join(", ")}`
+  );
+  assert.ok(uuids.some((u) => u.startsWith("2FAA0001")), "and the entry is there");
+});
+
+test("the shape that failed on 2026-11-24 now gets the report and still fits", () => {
+  /* The owner's ventilation board: sealed, two entries that are both readable,
+   * `showName:false` because the name does not fit (D-165), and no
+   * `counterReport` of its own because the documented default was off. It was
+   * reflashed, resumed its write counter above its receiver's, and refused
+   * four commands in a row while Home Assistant showed each as applied.
+   *
+   * Both halves of D-166 are asserted here, because turning the report on
+   * would have been no use if it had cost the packet a byte: the service data
+   * is 17 bytes sealed, which is 24 of the 31 with the flags and the header,
+   * exactly as before. */
+  const result = run(load("encrypted-light-standalone.js"));
+  let on = false;
+  let speed = 24;
+  result.context.bw.setup({
+    advertise: [
+      { type: "power_on", get: () => on, set: (v) => (on = !!v) },
+      { type: "count", get: () => speed, set: (v) => (speed = v) },
+    ],
+    interval: 500,
+    bindkey: "231d39c1d7cc1ab1aee224cd096db932",
+    showName: false,
+  });
+  const uuids = Object.keys(result.characteristics).map((u) => u.toUpperCase());
+
+  assert.ok(
+    uuids.some((u) => u.startsWith("2FAA1000")),
+    `the board would now answer the question, got ${uuids.join(", ")}`
+  );
+  const packet = result.advertised[result.advertised.length - 1];
+  assert.equal(
+    packet.length,
+    17,
+    `and the packet is the same size it was, got ${packet.length}`
+  );
+});
+
+test("counterReport false takes the characteristic away", () => {
+  /* The option survives the change of default, because the characteristic is
+   * the one piece of GATT a device can decline without becoming unwritable. */
+  const result = run(load("encrypted-light-standalone.js"));
+  result.context.bw.setup({
+    advertise: [{ type: "light", set: () => {} }],
+    interval: 1000,
+    bindkey: "231d39c1d7cc1ab1aee224cd096db932",
+    counterReport: false,
+  });
+  const uuids = Object.keys(result.characteristics).map((u) => u.toUpperCase());
+
+  assert.ok(
     !uuids.some((u) => u.startsWith("2FAA1000")),
-    `no counter characteristic by default, got ${uuids.join(", ")}`
+    `expected no counter characteristic, got ${uuids.join(", ")}`
+  );
+  assert.ok(uuids.some((u) => u.startsWith("2FAA0001")), "but the entry is there");
+});
+
+test("a device in clear never offers the counter report", () => {
+  /* The report is sealed under the read direction byte and must not be answered
+   * in clear (S5.6), so a device with no key has nothing to answer with. The
+   * default of D-166 is "on when sealed", not "on". */
+  const result = run(load("encrypted-light-standalone.js"));
+  result.context.bw.setup({
+    advertise: [{ type: "light", set: () => {} }],
+    interval: 1000,
+  });
+  const uuids = Object.keys(result.characteristics).map((u) => u.toUpperCase());
+
+  assert.ok(
+    !uuids.some((u) => u.startsWith("2FAA1000")),
+    `expected no counter characteristic, got ${uuids.join(", ")}`
   );
   assert.ok(uuids.some((u) => u.startsWith("2FAA0001")), "but the entry is there");
 });

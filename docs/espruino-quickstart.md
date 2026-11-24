@@ -178,7 +178,7 @@ front:
 | `light-loop.js` | The LED plus the board's own light sensor, so a receiver sees the write had a *physical* effect rather than an echo. |
 | `three-lights.js` | Three objects sharing one BTHome ID, told apart by entry number. |
 | `button-light.js` | A light the board's own button also switches: readable characteristic, settings revision, `bw.changed()`. |
-| `encrypted-light.js` | The same, sealed with a bindkey, and offering the counter report (`counterReport: true`). |
+| `encrypted-light.js` | The same, sealed with a bindkey. It states `counterReport: true` although a sealed device now offers the report anyway (D-166), because this is the sketch the bench measures the exchange against. |
 | `oled-text.js` | A writable `text` object driving an SSD1306. |
 | `display-text.js` | The same idea without a screen: the text is printed to the console, so the write path can be followed on a board with no display. |
 | `light-loop-no-led.js` | `light-loop.js` with the write driving no pin, to separate the radio's cost from the LED's when a coin cell stalls a write (D-052). |
