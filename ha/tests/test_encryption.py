@@ -804,9 +804,7 @@ async def test_a_revision_that_moves_without_a_restart_asks_nothing(
             await coordinator._write_now(1, b"")
 
     assert coordinator._resync_counter is False, "no question was ever owed"
-    assert write_counter_of(gatt.writes[-1][1]) < 900_000, (
-        "and no command paid for one"
-    )
+    assert write_counter_of(gatt.writes[-1][1]) < 900_000, "and no command paid for one"
 
 
 async def test_a_counter_that_restarted_near_zero_asks(
