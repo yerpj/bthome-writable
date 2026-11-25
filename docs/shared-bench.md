@@ -10,6 +10,14 @@ adapter that instance owns, two ESPHome Bluetooth proxies, one Puck.js, four
 nice!nanos, one Jolt.js and one OOTY debug board on `COM8` that switches a 3V3
 rail. There is exactly one of each.
 
+**The software on it moved on 2026-11-25.** Core 2026.7.4 to **2026.11.3**,
+HAOS 17.1 to **18.5** (running from slot B, with 17.1 still `good` in slot A),
+Supervisor 2026.11.0, File editor 6.3.1, Terminal & SSH 10.6.0, Mosquitto
+7.1.3, Samba 12.11.0, and the integration deployed from `main` at **0.4.0**,
+replacing an installed copy whose manifest still said 0.1.0. It is a Raspberry
+Pi 3 (`rpi3-64`), which is why each of those took ten to thirty minutes.
+Anything measured before that date was measured on 2026.7.4 and HAOS 17.1.
+
 **A Jolt.js arrived 2026-10-27**, `FA:9C:55:A4:6A:0B` on `COM18`, `JOLTJS 2v28`,
 and it is the only board here whose firmware offers the coded phy: it reproduces
 the advertising latch of D-143 on demand and it is how `c718aed` was validated
@@ -263,6 +271,49 @@ in range of the Home Assistant host's own adapter and work without it.
 
 **If you re-enable it:** reboot the ESP32 first, and expect every write to a
 device you have reflashed since to vanish silently until you do.
+
+## Talking to the Supervisor on this installation
+
+**The REST proxy is shut: `/api/hassio/*` answers `401` with the bench token.**
+The WebSocket proxy, the one the frontend itself uses, is open, and everything
+goes through it:
+
+```python
+from tools.ha_bench import _ws
+info = await _ws(session, {"type": "supervisor/api",
+                           "endpoint": "/os/info", "method": "get"})
+```
+
+`/jobs/info`, `/host/info` (disk space), `/resolution/info` (issues and
+suggestions), `/addons`, `/core/info` and `POST /store/addons/<slug>/update`
+all answer that way.
+
+**It gives up after about ten seconds, and it lies when it does.** A job that
+takes longer comes back as `{"code": "unknown_error", "message": ""}`, and the
+same job fired through `update.install` over REST returns `500 Server got
+itself in trouble`, while the job itself runs happily on to completion. Neither
+is a refusal. On 2026-11-25 the Core update answered that way after ten seconds
+and finished thirty minutes later. So after firing anything that installs, read
+`/jobs/info` and the installed version, never the call's own result. And do not
+wait on an `update.*` entity's `in_progress` either: it drops back to `False`
+minutes before the install actually ends.
+
+**When the Supervisor is wedged, port 4357 is the only window.** The observer
+answers with no authentication at all, giving *Supervisor*, *Support*, *Health*
+and the tail of the supervisor log. A Supervisor that has stopped logging in
+the middle of a line, with *Support* and *Health* stuck on `Processing...`, is
+hung: `hassio.host_reboot` then returns 500 or times out and never writes
+`Initialize host reboot using logind`, because logind is precisely what it can
+no longer reach. **Only cutting the power clears that**, which means the owner.
+It happened on 2026-11-24, with three add-on updates left `in_progress` for
+hours, after `Could not stop container app_core_samba: tried to kill container,
+but did not receive an exit event` and `Can't update host system information!`.
+Everything came back `Healthy` on the first boot after the power cut.
+
+**The Supervisor reports a dead DNS server**, `dns://192.168.137.1`, a Windows
+connection-sharing address left in the network configuration, plus the matching
+`dns_server_ipv6_error`. CoreDNS falls back, so image pulls work, but they are
+slower than they should be and the failure is intermittent rather than clean.
 
 ## Reading the Home Assistant log on this installation
 
