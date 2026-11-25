@@ -11266,7 +11266,9 @@ constant was chosen for.
 
 The fan never moved. Every test write sent the value the device already had, so
 `ventil.json` read `{"on": true, "speed": 21}` throughout: a verification that
-costs the owner nothing is one that can be run on a device in service.
+costs the owner nothing is one that can be run on a device in service. It is
+also a verification that cannot see past the protocol, which the last section
+here is about.
 
 Three things the deployment taught, none of them about the protocol:
 
@@ -11279,15 +11281,69 @@ Three things the deployment taught, none of them about the protocol:
   two places only.
 - **`setup()` survives being called twice**, measured on the board before
   relying on it (`SECOND SETUP OK, ids [16, 9]`, and a central connected
-  afterwards). That is what makes `save()` safe here: the restored image fires
-  `E.on("init")` over a setup that has already run. The module documents no such
+  afterwards). It is needed at every boot of this board, not just after a
+  `save()`: the sketch ends with both `E.on("init", start)` and
+  `if (!bw.plan()) start();`, so booting `.bootcde` prints
+  `BTHomeWritable ventilation ready` twice. The module documents no such
   guarantee and this is the only evidence for it.
-- **The board now has two boot paths**, and the one that wins is the `save()`
-  image carrying this module. `.bootcde` still holds the pre-D-166 bundle,
-  shadowed. It was left there deliberately: a stale fallback that works, minus
-  the counter report, beats no fallback at all on a device that drives a fan.
-  `--port` on the deploy tool is what would collapse them back to one.
+- **`save()` refused, and the board was never running from an image.** The
+  console answers `Uncaught Error: Cannot save: .bootcde file already exists.
+  Please remove it first.`, and it answered that this morning too, which an
+  earlier draft of this section recorded as a `save()` image shadowing
+  `.bootcde`. There was no such image: `Storage.list()` reads
+  `.bootcde,.bwctr,ventil.json` and no `.varimg` anywhere. The new module ran
+  from RAM all day, and the boot path stayed the pre-D-166 bundle. D-023's
+  convention was not optional, and the route that went around it simply did not
+  take.
 
 The receiver running all this is the integration at **0.4.0**, deployed the same
 morning over the copy Home Assistant had been running, whose manifest still said
 `0.1.0`.
+
+### The pin the sketch did not have, 2026-11-25
+
+The owner moved the `count` slider in Home Assistant and nothing happened. The
+protocol was not at fault, and the measurements say so precisely:
+
+* the board held `{"on": true, "speed": 42}` in RAM **and** in `ventil.json`,
+  with `bw.rejects()` empty, so the command had arrived, been accepted and been
+  persisted;
+* `D31.getMode()` read `af_output`, `E.getErrorFlags()` was empty, and PWM0 was
+  enabled with `COUNTERTOP` 16000 at prescaler 0, which is the 1 kHz the sketch
+  asks for, and a compare value of 9280, which is the 42 % it asks for.
+
+The board was doing exactly as told. `PSEL.OUT[0]` said where: **pin 31**. The
+bundle that had been in service, still readable in `.bootcde`, sets
+`PWM_PIN = D47; // P1.15`. The sketch on disk sets `D31; // P0.31`, and so does
+its header. The fan is wired to P1.15, so the rebuild drove a pin that goes
+nowhere, perfectly.
+
+Two things the board also told us, once asked: `process.env.BOARD` is `GUNBLE`,
+a custom nRF52840 and not the "Espruino nRF52840" in the sketch's header, and it
+has `LED` but no `LED2` -- so the `LED2` in that same rebuild had silently
+switched off the one witness that would have shown the output moving. A header
+that disagreed with its own code is the whole fault: the header is what a
+rebuild is read against.
+
+**The lesson is about the verification above, not about the pin.** Writing only
+values the device already had was the right call for the owner's fan and the
+wrong call for the finding: a no-op write exercises the protocol end to end and
+nothing downstream of it. One write that changes something the owner can see is
+the cheapest thing that would have caught this, and it belongs in every hardware
+verification from here on.
+
+Repaired by restoring the three forms the bundle in service actually used --
+`D47`, `LED`, and `pinMode` left commented out -- rebuilding, and writing the
+bundle into `.bootcde` over the USB console with this repository's own
+`write_statements` from `tools/espruino_deploy.py`, 91 statements of 384 bytes.
+Flash read back 34 247 bytes at CRC32 `643728533`, the file's own value. `load()`
+then proved the boot path, because `reset()` does not run the boot code and left
+the fan stopped until it did. One real command from Home Assistant closed it:
+`number.gunble_83a8_count` to 55 gave `duty 55%` on pin 47 with `ventil.json`
+`{"on": true, "speed": 55}` and `rejects()` still `{}` -- across three restarts
+since the receiver's previous command, `a` striding `18000000` to `21000000`, so
+D-166's adoption path carried it. Set back to the owner's 42.
+
+The board now has one boot path, which is what D-023 asked for all along, and
+`--port` on `tools/espruino_deploy.py` is still the fix that would make this
+route a command rather than a script.
