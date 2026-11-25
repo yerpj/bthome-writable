@@ -23,6 +23,11 @@ and what it is worth.
 | **Receiver** | Home Assistant 2026.7.4 (HAOS) on a Raspberry Pi 3, built-in `bcm43438` adapter, plus an ESP32 Bluetooth proxy (`esp32-bluetooth-proxy-1f1020`) |
 | **Bench host** | Windows workstation with its own adapter, for the `tools/` measurements |
 
+**The receiver moved on 2026-11-25**, to Core 2026.11.3 on HAOS 18.5 with the
+integration at 0.4.0. Every number in this document was taken on 2026.7.4 and
+HAOS 17.1, so a measurement repeated after that date has to say which side
+changed before it is compared with one here.
+
 **That is the bench of sections 1 to 16.** Sections 17 and after use boards that
 arrived later: three more nice!nanos (`revision-lamp` on `COM6`, then `lamp2`
 and `lamp3` from 2026-10-24) and a second proxy,
