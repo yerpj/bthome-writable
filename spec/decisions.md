@@ -11104,6 +11104,8 @@ menus -- @MaBecker raised this on #3 and was right.
 **Status:** 2026-11-24, ruled by the owner after the diagnosis below: *"applique
 les corrections, teste, verifie le tout, met a jour la doc"*. Implemented the
 same day. Module, receiver, tests, `PROTOCOL.md` §9 item 4 and **2.0-draft.12**.
+**Verified on the owner's board on 2026-11-25**, after he asked for it: the
+last section here has the numbers.
 
 ### What happened, on the owner's own board
 
@@ -11237,3 +11239,55 @@ belongs in the document. The reference device offering it by default is the
 moment to ask, and this is the third reproduction to cite. @MaBecker's #3, which
 is end-user testing, is the thread this would have saved. Rule 7: the messages
 are the owner's.
+
+### Verified on hardware, 2026-11-25
+
+Both halves ran on the owner's ventilation board, in the exact situation that
+produces the failure: the device restarted and the receiver did not. **Not one
+refusal, across two restarts.** `bw.rejects()` stayed `{}` from the first
+command to the last, where the same board a day earlier answered
+`{"counter_not_increasing": 4}`.
+
+The arithmetic is the proof, not the silence. After the reflash and the first
+command, the device's mark was `{"w": 1795718200, "a": 18000000}` and the
+receiver's stored `write_counter` was `1795718199`, while the wall clock stood
+at `1795604194`. A receiver seeded from the epoch (D-080) and merely counting
+would have been at about `1795618046`, which is where yesterday's button press
+left it: `1795517978` plus one `RESYNC_JUMP` plus four commands. Today's figure
+is **one further `RESYNC_JUMP` above that**, 100 000 in a single command, which
+only the adoption path produces. The question was asked and the answer taken,
+and nobody pressed anything.
+
+The advertising counter is the signal and it behaved as §5.3 says: `a` went
+`10000000` yesterday, `17000000`, then `18000000`, striding by exactly
+1 000 000 per restart. `RESTART_COUNTER_JUMP` is 1000, so the signal arrives
+three orders of magnitude clear of the threshold, which is the margin the
+constant was chosen for.
+
+The fan never moved. Every test write sent the value the device already had, so
+`ventil.json` read `{"on": true, "speed": 21}` throughout: a verification that
+costs the owner nothing is one that can be run on a device in service.
+
+Three things the deployment taught, none of them about the protocol:
+
+- **The bench host cannot see this board over BLE.** `tools/espruino_deploy.py`
+  scanned 180 s and never found `EB:FE:B5:03:83:A8`, so its route -- modules in
+  Storage by name, the sketch in `.bootcde` -- was unavailable, and the bundle
+  went over the USB console instead. This is D-138's duplicate coalescing: the
+  board advertises a sealed payload that only changes when something changes.
+  Giving that tool a `--port` is the fix; its transport touches the client in
+  two places only.
+- **`setup()` survives being called twice**, measured on the board before
+  relying on it (`SECOND SETUP OK, ids [16, 9]`, and a central connected
+  afterwards). That is what makes `save()` safe here: the restored image fires
+  `E.on("init")` over a setup that has already run. The module documents no such
+  guarantee and this is the only evidence for it.
+- **The board now has two boot paths**, and the one that wins is the `save()`
+  image carrying this module. `.bootcde` still holds the pre-D-166 bundle,
+  shadowed. It was left there deliberately: a stale fallback that works, minus
+  the counter report, beats no fallback at all on a device that drives a fan.
+  `--port` on the deploy tool is what would collapse them back to one.
+
+The receiver running all this is the integration at **0.4.0**, deployed the same
+morning over the copy Home Assistant had been running, whose manifest still said
+`0.1.0`.
