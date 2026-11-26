@@ -34,9 +34,9 @@
   "ci": {
     "comments": 0,
     "state": "success",
-    "title": "142af85 main",
-    "updated": "2026-11-25T12:54:21Z",
-    "url": "https://github.com/yerpj/bthome-writable/actions/runs/45618256732",
+    "title": "980d62a main",
+    "updated": "2026-11-25T14:20:22Z",
+    "url": "https://github.com/yerpj/bthome-writable/actions/runs/45632961672",
     "why": "our own CI, last run"
   },
   "espruino#8024": {
@@ -136,10 +136,10 @@
     "why": "the AESCCM page fix (D-156)"
   },
   "espruino/EspruinoDocs#779": {
-    "comments": 0,
-    "state": "open",
+    "comments": 1,
+    "state": "merged",
     "title": "BTHomeWritable: a sealed device offers the counter report by default",
-    "updated": "2026-11-25T13:16:41Z",
+    "updated": "2026-11-26T11:28:36Z",
     "url": "https://github.com/espruino/EspruinoDocs/pull/779",
     "why": "the counter report by default (D-166)"
   },
