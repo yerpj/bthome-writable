@@ -11347,3 +11347,23 @@ D-166's adoption path carried it. Set back to the owner's 42.
 The board now has one boot path, which is what D-023 asked for all along, and
 `--port` on `tools/espruino_deploy.py` is still the fix that would make this
 route a command rather than a script.
+
+### Upstream, 2026-11-26
+
+[EspruinoDocs#779](https://github.com/espruino/EspruinoDocs/pull/779) is
+merged, at 11:28 UTC, in `1d72d034`, three commits and two files, +52 -10.
+Gordon's whole review was "Cool - thanks!", which is what a change carrying its
+reasons in the diff earns on that project. So the default above is now the
+module's default everywhere, not this repository's opinion of it, and
+`counterReport : false` is the documented way back.
+
+**It is not yet the published default**, and that distinction has a user on the
+other end of it. `espruino.com/modules/BTHomeWritable.js` still serves
+`91c85939` of 2026-10-28, which is #768's module, so a device that runs
+`require("BTHomeWritable")` today still gets `counterReport === true` and the
+opt-in behaviour this decision removed. The page at `espruino.com/BTHomeWritable`
+likewise still prints `counterReport : true` and has never heard of the
+Marketplace. D-160 recorded the same lag against #768 and it has since cleared,
+so the wait is days and not a thing to work around -- but until it clears, the
+answer to "I set no option and the counter report is not there" is the
+publication date, not the code.
